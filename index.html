@@ -4233,7 +4233,7 @@ function renderProjectDetailPage() {
       <div class="stat-card">
         <div class="stat-label">Client</div>
         <div style="font-size:16px;font-weight:600;color:var(--text);margin-top:6px;">${client ? client.name : '—'}</div>
-        ${p.assigned_to ? `<div style="display:flex;align-items:center;gap:5px;margin-top:8px;">${(()=>{const u=USERS.find(x=>x.name===p.assigned_to);return u?avatarHTML(u.id,20):'';})()}<span style="font-size:12px;color:var(--text-dim);">${p.assigned_to}</span></div>` : ''}
+        ${(()=>{ const names=getAssignees(p); if(!names.length) return ''; return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">'+names.map(n=>{const u=USERS.find(x=>x.name===n);return `<span style="display:inline-flex;align-items:center;gap:5px;">${u?avatarHTML(u.id,20):''}<span style="font-size:12px;color:var(--text-dim);">${n}</span></span>`;}).join('')+'</div>'; })()}
       </div>
       <div class="stat-card">
         <div class="stat-label">Avancement</div>
@@ -11347,11 +11347,30 @@ function escHTML(str) {
   window._s33OpenFolderName = null; // folder name currently opened in modal (null = none)
 
   // ── HELPERS ─────────────────────────────────────────────────
+  function normalizeFolders(arr) {
+    // Convertit les strings simples (venant des templates) en objets complets
+    return arr.map(function(f, i) {
+      if (typeof f === 'string') {
+        // Chercher dans DEFAULT_FOLDERS si le nom correspond
+        const def = DEFAULT_FOLDERS.find(function(d){ return d.name === f; });
+        if (def) return Object.assign({}, def);
+        return { id: 'f_tpl_' + i, name: f, icon: 'folder', color: PALETTE[i % PALETTE.length] };
+      }
+      // Objet mais champs manquants
+      return {
+        id: f.id || ('f_' + i),
+        name: f.name || 'Dossier ' + (i+1),
+        icon: f.icon || 'folder',
+        color: f.color || PALETTE[i % PALETTE.length]
+      };
+    });
+  }
+
   function getProjectFolders(p) {
-    if (Array.isArray(p.document_folders) && p.document_folders.length > 0) return p.document_folders;
+    if (Array.isArray(p.document_folders) && p.document_folders.length > 0) return normalizeFolders(p.document_folders);
     try {
       const saved = JSON.parse(localStorage.getItem('s33_folders_' + p.id) || 'null');
-      if (Array.isArray(saved) && saved.length) return saved;
+      if (Array.isArray(saved) && saved.length) return normalizeFolders(saved);
     } catch(e) {}
     return DEFAULT_FOLDERS.slice();
   }

@@ -4645,7 +4645,7 @@ function makeProjectCard(p, small) {
     </div>
     <div class="proj-card-client" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
       <span>${client ? client.name : '—'}</span>
-      ${p.assigned_to ? `<span title="${p.assigned_to}" style="display:inline-flex;align-items:center;gap:6px;">${(()=>{const u=USERS.find(x=>x.name===p.assigned_to);return u?avatarHTML(u.id,34):'';})()}<span style="font-size:11px;font-weight:600;color:var(--text-dim);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.assigned_to.split(' ')[0]}</span></span>` : ''}
+      ${p.assigned_to ? `<span title="${p.assigned_to}">${(()=>{const u=USERS.find(x=>x.name===p.assigned_to);return u?avatarHTML(u.id,36):'';})()}</span>` : ''}
     </div>
     <div class="proj-card-meta">
       <span class="badge badge-dim ${phaseClass}" style="font-size:9px;">${p.phase}</span>

@@ -5719,16 +5719,35 @@ function selectPayMethod(btn, method) {
 async function confirmPayment(invoiceId, date, method, btn) {
   if (!date) { toast('Choisissez une date'); return; }
   btn.innerHTML = '…';
+  btn.disabled = true;
   const inv = db.invoices.find(x => x.id === invoiceId);
   const updateObj = { status: 'Payée', paid_date: date, payment_method: method || null };
-  // localStorage fallback in case column doesn't exist
   if (method) localStorage.setItem('s33_paymethod_' + invoiceId, method);
+
+  let saved = false;
   try {
+    // Tentative 1 : avec payment_method
     await sbUpdateOrThrow('invoices', invoiceId, updateObj);
+    saved = true;
   } catch(e) {
-    delete updateObj.payment_method;
-    await sbUpdate('invoices', invoiceId, updateObj);
+    console.warn('[confirmPayment] Échec avec payment_method, tentative sans :', e.message);
+    try {
+      // Tentative 2 : sans payment_method (colonne peut-être absente)
+      const fallbackObj = { status: 'Payée', paid_date: date };
+      await sbUpdateOrThrow('invoices', invoiceId, fallbackObj);
+      saved = true;
+    } catch(e2) {
+      console.error('[confirmPayment] Échec total sauvegarde paiement :', e2.message);
+    }
   }
+
+  if (!saved) {
+    btn.innerHTML = 'Confirmer';
+    btn.disabled = false;
+    toast('❌ Erreur : paiement non sauvegardé — vérifiez votre connexion', 'error');
+    return;
+  }
+
   inv.status = 'Payée';
   inv.paid_date = date;
   inv.payment_method = method || localStorage.getItem('s33_paymethod_' + invoiceId) || null;

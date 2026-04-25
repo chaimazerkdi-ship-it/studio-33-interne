@@ -3301,10 +3301,8 @@
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
-        <label>Responsable</label>
-        <select id="p-responsable">
-          <option value="">— Aucun —</option>
-        </select>
+        <label>Responsables (1-3 personnes)</label>
+        <div id="p-responsable-wrap" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);min-height:44px;"></div>
       </div>
       <div class="form-row" style="margin-bottom:0">
         <label>Budget (MAD)</label>
@@ -4216,7 +4214,7 @@ function renderProjectDetailPage() {
         <div style="font-size:22px;font-weight:800;color:var(--text);line-height:1.2;">${p.name}</div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px;">
           ${client ? `<span style="font-size:13px;color:var(--text-dim);">${client.name}</span>` : ''}
-          ${p.assigned_to ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:3px 10px 3px 5px;">${(()=>{const u=USERS.find(x=>x.name===p.assigned_to);return u?avatarHTML(u.id,18):'';})()}<span>${p.assigned_to}</span></span>` : ''}
+          ${(()=>{ const names=getAssignees(p); return names.map(n=>{const u=USERS.find(x=>x.name===n);return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:3px 10px 3px 5px;">${u?avatarHTML(u.id,18):''}<span>${n}</span></span>`;}).join(''); })()}
         </div>
       </div>
       <span class="badge ${phaseColors[p.phase]||'badge-dim'}">${p.phase}</span>
@@ -4645,7 +4643,7 @@ function makeProjectCard(p, small) {
     </div>
     <div class="proj-card-client" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
       <span>${client ? client.name : '—'}</span>
-      ${p.assigned_to ? `<span title="${p.assigned_to}">${(()=>{const u=USERS.find(x=>x.name===p.assigned_to);return u?avatarHTML(u.id,36):'';})()}</span>` : ''}
+      ${(()=>{ const names=getAssignees(p); if(!names.length) return ''; return '<span style="display:inline-flex;gap:-6px;align-items:center;" title="'+names.join(', ')+'">'+names.map((n,i)=>{const u=USERS.find(x=>x.name===n);return u?'<span style="display:inline-block;margin-left:'+( i>0?'-8':'0')+'px;border:2px solid var(--surface);border-radius:50%;">'+avatarHTML(u.id,34)+'</span>':''}).join('')+'</span>'; })()}
     </div>
     <div class="proj-card-meta">
       <span class="badge badge-dim ${phaseClass}" style="font-size:9px;">${p.phase}</span>
@@ -5159,7 +5157,7 @@ function openModal(id) {
       document.getElementById('p-link').value = '';
       document.getElementById('p-client').value = '';
       document.getElementById('p-client-search').value = '';
-      populateResponsableSelect('p-responsable');
+      populateResponsableSelect('p-responsable', '');
     }
   }
   if (id === 'invoice-modal') {
@@ -5205,12 +5203,65 @@ function populateProjectSelect(selectId) {
   sel.innerHTML = db.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 }
 
-function populateResponsableSelect(selectId, currentVal) {
-  const sel = document.getElementById(selectId);
-  if (!sel) return;
-  sel.innerHTML = '<option value="">— Aucun —</option>' +
-    USERS.map(u => `<option value="${u.name}" ${currentVal === u.name ? 'selected' : ''}>${u.name}</option>`).join('');
-  if (currentVal) sel.value = currentVal;
+// ── Multi-assignees helpers ─────────────────────────────────────────
+function getAssignees(p) {
+  const v = p.assigned_to;
+  if (!v) return [];
+  try { const arr = JSON.parse(v); return Array.isArray(arr) ? arr : [arr]; }
+  catch { return v ? [v] : []; }
+}
+
+function populateResponsableSelect(wrapperId, currentVal) {
+  const wrap = document.getElementById(wrapperId === 'p-responsable' ? 'p-responsable-wrap' : wrapperId);
+  if (!wrap) return;
+  // Parse current selection (string or JSON array)
+  let selected = [];
+  if (currentVal) {
+    try { const arr = JSON.parse(currentVal); selected = Array.isArray(arr) ? arr : [currentVal]; }
+    catch { selected = [currentVal]; }
+  }
+  wrap.innerHTML = USERS.map(u => {
+    const isSelected = selected.includes(u.name);
+    const photo = getUserPhoto(u.id);
+    const avatarEl = photo
+      ? `<img src="${photo}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+      : `<div style="width:28px;height:28px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;">${u.avatar}</div>`;
+    return `<div data-name="${u.name}" onclick="toggleResponsable(this,'${u.name}')"
+      style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;
+             border-radius:99px;cursor:pointer;border:2px solid ${isSelected ? 'var(--gold)' : 'var(--border)'};
+             background:${isSelected ? 'rgba(181,135,10,.08)' : 'var(--surface)'};
+             transition:all .15s;user-select:none;">
+      ${avatarEl}
+      <span style="font-size:12px;font-weight:600;color:${isSelected ? 'var(--gold)' : 'var(--text-dim)'};">${u.name.split(' ')[0]}</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleResponsable(el, name) {
+  const wrap = el.closest('#p-responsable-wrap');
+  const selected = Array.from(wrap.querySelectorAll('[data-name]'))
+    .filter(d => d.style.borderColor === 'var(--gold)' || d.style.borderColor.includes('181,135'))
+    .map(d => d.dataset.name);
+  // Re-read via class check
+  const isNowSelected = el.style.borderColor.includes('181,135') || el.style.borderColor === 'var(--gold)';
+  const currentSelected = Array.from(wrap.querySelectorAll('[data-name]'))
+    .filter(d => d.dataset.selected === '1').map(d => d.dataset.name);
+
+  const wasSelected = el.dataset.selected === '1';
+  if (!wasSelected && currentSelected.length >= 3) {
+    toast('Maximum 3 responsables par projet'); return;
+  }
+  el.dataset.selected = wasSelected ? '0' : '1';
+  el.style.borderColor = wasSelected ? 'var(--border)' : 'var(--gold)';
+  el.style.background = wasSelected ? 'var(--surface)' : 'rgba(181,135,10,.08)';
+  el.querySelector('span').style.color = wasSelected ? 'var(--text-dim)' : 'var(--gold)';
+}
+
+function getSelectedResponsables() {
+  const wrap = document.getElementById('p-responsable-wrap');
+  if (!wrap) return null;
+  const names = Array.from(wrap.querySelectorAll('[data-selected="1"]')).map(d => d.dataset.name);
+  return names.length ? JSON.stringify(names) : null;
 }
 
 function filterClientDropdown() {
@@ -5260,7 +5311,7 @@ async function saveProject() {
     type: document.getElementById('p-type')?.value || 'Autre',
     budget: parseFloat(document.getElementById('p-budget').value) || 0,
     contract_date: document.getElementById('p-contract-date').value || null,
-    assigned_to: document.getElementById('p-responsable').value || null,
+    assigned_to: getSelectedResponsables(),
     notes: document.getElementById('p-notes').value,
     link: document.getElementById('p-link').value,
   };
@@ -5321,6 +5372,20 @@ function editProject(id) {
   document.getElementById('p-contract-date').value = p.contract_date || p.contractDate || '';
   const assignedVal = p.assigned_to || localStorage.getItem('s33_assigned_' + p.id) || '';
   populateResponsableSelect('p-responsable', assignedVal);
+  // Pré-cocher les chips sélectionnés
+  setTimeout(() => {
+    let names = [];
+    try { const arr = JSON.parse(assignedVal); names = Array.isArray(arr) ? arr : [assignedVal]; }
+    catch { if (assignedVal) names = [assignedVal]; }
+    document.querySelectorAll('#p-responsable-wrap [data-name]').forEach(el => {
+      if (names.includes(el.dataset.name)) {
+        el.dataset.selected = '1';
+        el.style.borderColor = 'var(--gold)';
+        el.style.background = 'rgba(181,135,10,.08)';
+        el.querySelector('span').style.color = 'var(--gold)';
+      }
+    });
+  }, 0);
   document.getElementById('p-notes').value = p.notes || '';
   document.getElementById('p-link').value = p.link || '';
   openModal('project-modal');
@@ -13408,7 +13473,7 @@ function escHTML(str) {
         '</div>' +
         '<div style="display:flex;gap:6px;margin-top:10px;" onclick="event.stopPropagation()">' +
           '<button class="btn btn-outline" style="flex:1;padding:4px 8px;font-size:11px;" onclick="duplicateTemplate(' + t.id + ')">Dupliquer</button>' +
-          (!t.is_default ? '<button class="btn btn-outline" style="flex:1;padding:4px 8px;font-size:11px;color:#ef4444;" onclick="deleteTemplate(' + t.id + ')">Supprimer</button>' : '') +
+          '<button class="btn btn-outline" style="flex:1;padding:4px 8px;font-size:11px;color:#ef4444;" onclick="deleteTemplate(' + t.id + ')"><span class="mi mi-sm">delete</span> Supprimer</button>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -13545,12 +13610,15 @@ function escHTML(str) {
   window.deleteTemplate = async function(id) {
     const t = (db.projectTemplates || []).find(function(x){ return x.id === id; });
     if (!t) return;
-    if (t.is_default) { toast('Les templates par défaut ne peuvent pas être supprimés (duplique-les)'); return; }
-    if (!confirm('Supprimer le template "' + t.name + '" ?')) return;
-    try { await sbDelete('project_templates', id); } catch(e) {}
+    if (!confirm('Supprimer le template "' + t.name + '" ? Cette action est irréversible.')) return;
+    try {
+      await sbDelete('project_templates', id);
+    } catch(e) {
+      console.warn('deleteTemplate DB error:', e);
+    }
     db.projectTemplates = (db.projectTemplates || []).filter(function(x){ return x.id !== id; });
     persistLocalTpl();
-    toast('Template supprimé');
+    toast('Template "' + t.name + '" supprimé');
     renderTemplates();
   };
 

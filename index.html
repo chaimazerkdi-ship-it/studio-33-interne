@@ -3620,6 +3620,49 @@ async function sbFetch(table, method='GET', body=null, query='', throwOnError=fa
 async function sbGet(table, query='') { return sbFetch(table, 'GET', null, query); }
 async function sbInsert(table, body) { return sbFetch(table, 'POST', body, '', false); }
 async function sbInsertOrThrow(table, body) { return sbFetch(table, 'POST', body, '', true); }
+
+// ── Chargement différé (lazy) des données binaires media ─────────────
+// La colonne `data` (base64) n'est PAS chargée au démarrage.
+// Elle est récupérée à la demande et mise en cache.
+const _mediaDataCache = {};
+async function getMediaData(id) {
+  if (_mediaDataCache[id] !== undefined) return _mediaDataCache[id];
+  const rows = await sbGet('media', `?select=data&id=eq.${id}`);
+  const d = rows?.[0]?.data ?? null;
+  _mediaDataCache[id] = d;
+  return d;
+}
+async function downloadDocById(id, name) {
+  const data = await getMediaData(id);
+  if (!data) { toast('Fichier introuvable ou non chargé'); return; }
+  downloadDoc(data, name);
+}
+function applyLazyMediaImages() {
+  const imgs = document.querySelectorAll('img[data-mid]');
+  if (!imgs.length) return;
+  const loadImg = async (img) => {
+    if (img.dataset.loaded === '1') return;
+    img.dataset.loaded = '1';
+    const data = await getMediaData(parseInt(img.dataset.mid));
+    if (data) { img.src = data; img.style.opacity = '1'; }
+  };
+  if ('IntersectionObserver' in window) {
+    const obs = new IntersectionObserver((entries, o) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        o.unobserve(entry.target);
+        loadImg(entry.target);
+      });
+    }, { rootMargin: '150px' });
+    imgs.forEach(img => {
+      img.style.opacity = '0';
+      img.style.transition = 'opacity .35s';
+      obs.observe(img);
+    });
+  } else {
+    imgs.forEach(img => loadImg(img));
+  }
+}
 async function sbUpdate(table, id, body) { return sbFetch(table, 'PATCH', body, `?id=eq.${id}`, false); }
 async function sbUpdateOrThrow(table, id, body) { return sbFetch(table, 'PATCH', body, `?id=eq.${id}`, true); }
 async function sbDelete(table, id) { return sbFetch(table, 'DELETE', null, `?id=eq.${id}`); }
@@ -3683,7 +3726,7 @@ async function loadDB() {
       sbGet('devis', '?order=id'),
       sbGet('charges', '?order=id'),
       sbGet('entrees', '?order=id'),
-      sbGet('media', '?order=id'),
+      sbGet('media', '?select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year&order=id'),
       sbGet('app_config'),
       sbGet('user_tasks', '?order=created_at'),
       sbGet('daily_reports', '?order=submitted_at.desc'),
@@ -4253,14 +4296,14 @@ function renderProjectDetailPage() {
               <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='var(--shadow-lg)'" onmouseout="this.style.boxShadow='none'">
                 ${doc.is_pdf || doc.doc_type !== 'photo_chantier'
                   ? `<div style="height:80px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:32px;">${typeIcons[doc.doc_type]||'<span class="mi mi-lg">description</span>'}</div>`
-                  : `<img src="${doc.data}" style="width:100%;height:80px;object-fit:cover;" alt="${doc.name}">`
+                  : `<img src="" data-mid="${doc.id}" style="width:100%;height:80px;object-fit:cover;transition:opacity .3s;opacity:0;" alt="${doc.name}" onload="this.style.opacity=1">`
                 }
                 <div style="padding:8px 10px;">
                   <div style="font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${doc.name}">${doc.name}</div>
                   <div style="font-size:10px;color:var(--text-dim);margin-top:2px;">${typeLabels[doc.doc_type]||doc.doc_type}</div>
                   <div style="font-size:10px;color:var(--text-faint);margin-top:1px;">${doc.size||''} · ${doc.added_at||''}</div>
                   <div style="display:flex;gap:5px;margin-top:8px;">
-                    <button onclick="downloadDoc('${doc.data}','${doc.name}')" style="flex:1;padding:4px;background:var(--surface2);border:none;border-radius:var(--radius-sm);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:10px;font-weight:600;cursor:pointer;color:var(--text);">⬇ Télécharger</button>
+                    <button onclick="downloadDocById(${doc.id},'${doc.name.replace(/'/g,"\\'")}')" style="flex:1;padding:4px;background:var(--surface2);border:none;border-radius:var(--radius-sm);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:10px;font-weight:600;cursor:pointer;color:var(--text);">⬇ Télécharger</button>
                     <button onclick="deleteProjectDoc(${p.id},${doc.id})" style="padding:4px 7px;background:#fff0f0;border:none;border-radius:var(--radius-sm);font-size:11px;cursor:pointer;color:#c0392b;"><span class="mi mi-sm">delete</span></button>
                   </div>
                 </div>
@@ -6601,7 +6644,7 @@ function renderMediatheque() {
     const typeColor = m.type === '3D / Rendu' ? 'badge-gold' : m.type === 'Plan PDF' ? 'badge-blue' : 'badge-dim';
     const thumb = m.isPDF
       ? `<div class="media-thumb-pdf"><span class="mi">description</span><span>PDF</span></div>`
-      : `<img class="media-thumb" src="${m.data}" alt="${m.name}" loading="lazy">`;
+      : `<img class="media-thumb" src="" data-mid="${m.id}" alt="${m.name}" loading="lazy">`;
 
     return `<div class="media-card" onclick="${m.isPDF ? `openPDF(${m.id})` : `openLightbox(${m.id})`}">
       ${thumb}
@@ -6615,6 +6658,9 @@ function renderMediatheque() {
       </div>
     </div>`;
   }).join('');
+
+  // Charger les images en lazy après rendu de la grid
+  requestAnimationFrame(() => applyLazyMediaImages());
 
   // List view
   document.getElementById('media-list-tbody').innerHTML = items.map(m => {
@@ -6644,14 +6690,18 @@ function openLightbox(id) {
   document.body.style.overflow = 'hidden';
 }
 
-function showLightboxItem() {
+async function showLightboxItem() {
   const m = lightboxItems[lightboxIndex];
   if (!m) return;
-  document.getElementById('lightbox-img').src = m.data;
+  const imgEl = document.getElementById('lightbox-img');
+  imgEl.style.opacity = '0.3';
+  imgEl.src = '';
   const proj = m.projectId ? db.projects.find(p => p.id === m.projectId) : null;
   document.getElementById('lightbox-title').textContent = m.name + (proj ? ' — ' + proj.name : '');
   document.getElementById('lightbox-nav-prev').style.opacity = lightboxIndex > 0 ? '1' : '0.2';
   document.getElementById('lightbox-nav-next').style.opacity = lightboxIndex < lightboxItems.length-1 ? '1' : '0.2';
+  const data = await getMediaData(m.id);
+  if (data) { imgEl.src = data; imgEl.style.opacity = '1'; }
 }
 
 function lightboxNav(dir) {
@@ -6666,12 +6716,16 @@ function closeLightbox() {
   document.body.style.overflow = '';
 }
 
-function openPDF(id) {
+async function openPDF(id) {
   const m = db.media.find(x => x.id === id);
-  if (!m || !m.data) return;
+  if (!m) return;
+  toast('Chargement du PDF…');
+  const data = await getMediaData(id);
+  if (!data) { toast('Impossible de charger le fichier'); return; }
   const w = window.open('', '_blank');
+  if (!w) { toast('Autorisez les pop-ups pour ouvrir le PDF'); return; }
   w.document.write(`<html><head><title>${m.name}</title></head><body style="margin:0;background:#222;">
-    <embed src="${m.data}" type="application/pdf" width="100%" height="100%" style="height:100vh;">
+    <embed src="${data}" type="application/pdf" width="100%" height="100%" style="height:100vh;">
   </body></html>`);
 }
 
@@ -11288,11 +11342,11 @@ function escHTML(str) {
             '</div>'
           : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;">' +
             folderDocs.map(d => {
-              const isImg = !d.is_pdf && d.data && d.data.startsWith && d.data.startsWith('data:image');
+              const isImg = !d.is_pdf && (d.mime ? d.mime.startsWith('image') : (!d.doc_type || d.doc_type === 'photo_chantier'));
               const icon = d.is_pdf ? 'picture_as_pdf' : (isImg ? '' : 'description');
               return '<div class="s33-doc-card">' +
                 '<div class="s33-doc-preview" onclick="s33OpenDoc(' + d.id + ')" title="Ouvrir">' +
-                  (isImg ? '<img src="' + d.data + '" alt="">' : '<span class="mi mi-lg">' + icon + '</span>') +
+                  (isImg ? '<img src="" data-mid="' + d.id + '" alt="" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s;" onload="this.style.opacity=1">' : '<span class="mi mi-lg">' + icon + '</span>') +
                 '</div>' +
                 '<div class="s33-doc-body">' +
                   '<div class="s33-doc-name" title="' + escHTML(d.name) + '">' + escHTML(d.name) + '</div>' +
@@ -11301,7 +11355,7 @@ function escHTML(str) {
                   '<div class="s33-doc-actions">' +
                     '<button class="s33-doc-btn" onclick="s33OpenDoc(' + d.id + ')" title="Voir"><span class="mi mi-sm">visibility</span></button>' +
                     '<button class="s33-doc-btn" onclick="s33MoveDoc(' + p.id + ',' + d.id + ')" title="Déplacer"><span class="mi mi-sm">drive_file_move</span></button>' +
-                    '<button class="s33-doc-btn" onclick="downloadDoc(\'' + d.data + '\',\'' + escHTML(d.name).replace(/'/g,"&#39;") + '\')" title="Télécharger"><span class="mi mi-sm">download</span></button>' +
+                    '<button class="s33-doc-btn" onclick="downloadDocById(' + d.id + ',\'' + escHTML(d.name).replace(/'/g,"&#39;") + '\')" title="Télécharger"><span class="mi mi-sm">download</span></button>' +
                     '<button class="s33-doc-btn s33-doc-btn-danger" onclick="s33DeleteDoc(' + d.id + ')" title="Supprimer"><span class="mi mi-sm">delete</span></button>' +
                   '</div>' +
                 '</div>' +
@@ -11309,6 +11363,8 @@ function escHTML(str) {
             }).join('') +
           '</div>') +
       '</div>';
+    // Activer le lazy loading des images dans le modal
+    requestAnimationFrame(() => applyLazyMediaImages());
   }
 
   // ── ACTIONS ─────────────────────────────────────────────────
@@ -11336,15 +11392,18 @@ function escHTML(str) {
   // Legacy (no longer used — kept as no-op for safety)
   window.s33BackToFolders = function() { s33CloseFolder(); };
 
-  window.s33OpenDoc = function(docId) {
+  window.s33OpenDoc = async function(docId) {
     const d = (db.media || []).find(m => m.id === docId);
-    if (!d || !d.data) return;
+    if (!d) return;
+    toast('Chargement…');
+    const data = await getMediaData(docId);
+    if (!data) { toast('Fichier introuvable'); return; }
     const w = window.open();
     if (!w) { toast('Autorisez les pop-ups pour ouvrir le fichier'); return; }
     if (d.is_pdf) {
-      w.document.write('<iframe src="' + d.data + '" style="position:fixed;inset:0;width:100vw;height:100vh;border:none;"></iframe><title>' + escHTML(d.name) + '</title>');
+      w.document.write('<iframe src="' + data + '" style="position:fixed;inset:0;width:100vw;height:100vh;border:none;"></iframe><title>' + escHTML(d.name) + '</title>');
     } else {
-      w.document.write('<img src="' + d.data + '" style="max-width:100vw;max-height:100vh;display:block;margin:auto;"><title>' + escHTML(d.name) + '</title>');
+      w.document.write('<img src="' + data + '" style="max-width:100vw;max-height:100vh;display:block;margin:auto;"><title>' + escHTML(d.name) + '</title>');
     }
   };
 

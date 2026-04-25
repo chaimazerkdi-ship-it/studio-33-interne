@@ -3911,8 +3911,16 @@ let currentUser = null;
 /* ── Photo helpers ─────────────────────────────────────────────── */
 function getUserPhoto(userId) {
   if (!db.userProfiles || !userId) return null;
-  const p = db.userProfiles.find(p => String(p.user_id) === String(userId));
-  return (p && p.photo) ? p.photo : null;
+  // 1) Match direct par user_id (UUID Supabase — fonctionne pour l'utilisateur connecté)
+  let p = db.userProfiles.find(p => String(p.user_id) === String(userId));
+  if (p && p.photo) return p.photo;
+  // 2) Fallback : match par username (USERS[] utilise des IDs numériques, pas des UUIDs)
+  const user = USERS.find(u => String(u.id) === String(userId));
+  if (user && user.username) {
+    p = db.userProfiles.find(p => p.username === user.username);
+    if (p && p.photo) return p.photo;
+  }
+  return null;
 }
 
 /**
@@ -10101,7 +10109,8 @@ function renderPPProfil() {
 
     <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">
 
-    <!-- Mot de passe -->
+    <!-- Mot de passe — réservé aux admins uniquement -->
+    ${currentUser && currentUser.role === 'admin' ? `
     <div class="pp-form-row">
       <label class="pp-label" for="pp-new-pass">Nouveau mot de passe</label>
       <input class="pp-input" id="pp-new-pass" type="password" placeholder="Laisser vide = pas de changement">
@@ -10109,7 +10118,11 @@ function renderPPProfil() {
     <div class="pp-form-row">
       <label class="pp-label" for="pp-confirm-pass">Confirmer le mot de passe</label>
       <input class="pp-input" id="pp-confirm-pass" type="password" placeholder="Confirmer...">
-    </div>
+    </div>` : `
+    <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 14px;font-size:12px;color:var(--text-dim);">
+      <span class="mi mi-sm" style="vertical-align:middle;">lock</span>
+      Le changement de mot de passe est géré par l'administrateur.
+    </div>`}
 
     <button onclick="savePPProfil()" class="btn btn-gold" style="width:100%;margin-top:8px;">Enregistrer</button>
 
@@ -10213,11 +10226,13 @@ async function savePPProfil() {
     currentUser.name     = displayName || currentUser.name;
     currentUser.jobTitle = jobTitle;
 
-    // Change password if provided
-    if (newPass) {
+    // Change password — admin uniquement
+    if (newPass && currentUser.role === 'admin') {
       await adminUsers('change_password', { auth_user_id: currentUser.id, new_password: newPass });
-      document.getElementById('pp-new-pass').value     = '';
-      document.getElementById('pp-confirm-pass').value = '';
+      const npEl = document.getElementById('pp-new-pass');
+      const cpEl = document.getElementById('pp-confirm-pass');
+      if (npEl) npEl.value = '';
+      if (cpEl) cpEl.value = '';
     }
 
     await loadDB();

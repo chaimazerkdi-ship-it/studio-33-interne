@@ -3912,13 +3912,28 @@ let currentUser = null;
 function getUserPhoto(userId) {
   if (!db.userProfiles || !userId) return null;
   // 1) Match direct par user_id (UUID Supabase — fonctionne pour l'utilisateur connecté)
-  let p = db.userProfiles.find(p => String(p.user_id) === String(userId));
+  let p = db.userProfiles.find(pr => String(pr.user_id) === String(userId));
   if (p && p.photo) return p.photo;
-  // 2) Fallback : match par username (USERS[] utilise des IDs numériques, pas des UUIDs)
+  // 2) Fallback : match par username via USERS[] (IDs numériques → username)
   const user = USERS.find(u => String(u.id) === String(userId));
-  if (user && user.username) {
-    p = db.userProfiles.find(p => p.username === user.username);
-    if (p && p.photo) return p.photo;
+  if (user) {
+    if (user.username) {
+      p = db.userProfiles.find(pr => pr.username === user.username);
+      if (p && p.photo) return p.photo;
+    }
+    // 3) Fallback : match par nom complet
+    if (user.name) {
+      p = db.userProfiles.find(pr => pr.username && user.name.toLowerCase().startsWith(pr.username.toLowerCase()));
+      if (p && p.photo) return p.photo;
+    }
+  }
+  // 4) Fallback via team_members : lien entre ID numérique et UUID Supabase
+  if (db.teamMembers) {
+    const tm = db.teamMembers.find(t => String(t.id) === String(userId) || (user && t.username === user?.username));
+    if (tm && tm.user_id) {
+      p = db.userProfiles.find(pr => String(pr.user_id) === String(tm.user_id));
+      if (p && p.photo) return p.photo;
+    }
   }
   return null;
 }
@@ -4635,7 +4650,7 @@ function makeProjectCard(p, small) {
     </div>
     <div class="proj-card-client" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
       <span>${client ? client.name : '—'}</span>
-      ${p.assigned_to ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--text-dim);">${(()=>{const u=USERS.find(x=>x.name===p.assigned_to);return u?avatarHTML(u.id,16):''})()}<span>${p.assigned_to.split(' ')[0]}</span></span>` : ''}
+      ${p.assigned_to ? `<span title="${p.assigned_to}" style="display:inline-flex;align-items:center;gap:6px;">${(()=>{const u=USERS.find(x=>x.name===p.assigned_to);return u?avatarHTML(u.id,34):'';})()}<span style="font-size:11px;font-weight:600;color:var(--text-dim);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.assigned_to.split(' ')[0]}</span></span>` : ''}
     </div>
     <div class="proj-card-meta">
       <span class="badge badge-dim ${phaseClass}" style="font-size:9px;">${p.phase}</span>

@@ -7489,14 +7489,16 @@ function renderMediatheque() {
     `).join('');
   }
 
-  // Filter media (exclude internal panneau state JSON — not displayable as image)
-  let items = (db.media || []).filter(m => m.doc_type !== 'panneau_state');
-  if (projectFilter === 'general') items = items.filter(m => m.isGeneral || !m.projectId);
-  else if (projectFilter !== 'all') items = items.filter(m => m.projectId === parseInt(projectFilter));
-  if (mediaTypeFilter !== 'Tout') items = items.filter(m => m.type === mediaTypeFilter);
+  // Separate panneau_state items (shown specially) from regular media
+  let allMedia = db.media || [];
+  let panneauStates = allMedia.filter(m => m.doc_type === 'panneau_state');
+  let items = allMedia.filter(m => m.doc_type !== 'panneau_state');
+  if (projectFilter === 'general') { items = items.filter(m => m.isGeneral || !m.projectId); panneauStates = []; }
+  else if (projectFilter !== 'all') { items = items.filter(m => m.projectId === parseInt(projectFilter)); panneauStates = panneauStates.filter(m => m.projectId === parseInt(projectFilter)); }
+  if (mediaTypeFilter !== 'Tout') { items = items.filter(m => m.type === mediaTypeFilter); panneauStates = []; }
 
   const emptyEl = document.getElementById('media-empty');
-  if (items.length === 0) {
+  if (items.length === 0 && panneauStates.length === 0) {
     if (emptyEl) emptyEl.style.display = 'block';
     document.getElementById('media-grid').innerHTML = '';
     document.getElementById('media-list-tbody').innerHTML = '';
@@ -7504,11 +7506,31 @@ function renderMediatheque() {
   }
   if (emptyEl) emptyEl.style.display = 'none';
 
-  // Store for lightbox
+  // Store for lightbox (regular images only)
   lightboxItems = items.filter(m => !m.isPDF);
 
+  // Panneau state cards (special design — opens panneau editor)
+  const panneauCards = panneauStates.map(m => {
+    const proj = m.projectId ? db.projects.find(p => p.id === m.projectId) : null;
+    return `<div class="media-card" onclick="openPanneauFromMedia(${m.projectId})" title="Ouvrir dans Panneau chantier" style="border:1.5px solid var(--gold);cursor:pointer;">
+      <div class="media-thumb-pdf" style="background:linear-gradient(135deg,#1a1a1a,#2d2d2d);color:var(--gold);gap:4px;">
+        <span class="mi" style="font-size:28px;">dashboard_customize</span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.5px;">PANNEAU</span>
+      </div>
+      <button class="media-card-del" onclick="event.stopPropagation();deleteMedia(${m.id})">×</button>
+      <div class="media-card-body">
+        <div class="media-card-name">${m.name}</div>
+        <div class="media-card-meta">
+          <span class="badge badge-gold" style="font-size:8px;padding:2px 7px;">Modifiable</span>
+          <span>${proj ? proj.name : '—'}</span>
+        </div>
+        <div style="font-size:10px;color:var(--gold);font-weight:600;margin-top:4px;">↗ Cliquer pour modifier</div>
+      </div>
+    </div>`;
+  }).join('');
+
   // Grid view
-  document.getElementById('media-grid').innerHTML = items.map((m, i) => {
+  document.getElementById('media-grid').innerHTML = panneauCards + items.map((m, i) => {
     const proj = m.projectId ? db.projects.find(p => p.id === m.projectId) : null;
     const typeColor = m.type === '3D / Rendu' ? 'badge-gold' : m.type === 'Plan PDF' ? 'badge-blue' : 'badge-dim';
     const thumb = m.isPDF
@@ -7596,6 +7618,19 @@ async function openPDF(id) {
   w.document.write(`<html><head><title>${m.name}</title></head><body style="margin:0;background:#222;">
     <embed src="${data}" type="application/pdf" width="100%" height="100%" style="height:100vh;">
   </body></html>`);
+}
+
+function openPanneauFromMedia(projectId) {
+  navigate('panneau');
+  // Let panneau init, then select the project
+  setTimeout(() => {
+    const sel = document.getElementById('pc-save-project');
+    if (sel && projectId) {
+      sel.value = projectId;
+      sel.dispatchEvent(new Event('change'));
+    }
+    toast('Panneau chargé — sélectionnez le projet pour recharger l\'état sauvegardé');
+  }, 300);
 }
 
 async function deleteMedia(id) {

@@ -3146,9 +3146,10 @@
           <div class="page-title">PV de réunion de chantier</div>
           <div class="page-subtitle">Générateur de procès-verbaux — export PDF</div>
         </div>
-        <div style="display:flex;gap:10px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn" onclick="pvReset()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);font-weight:600;cursor:pointer;padding:8px 16px;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;"><span class="mi">restart_alt</span> Nouveau PV</button>
-          <button class="btn btn-gold" onclick="pvGeneratePDF()"><span class="mi">picture_as_pdf</span> Générer le PDF</button>
+          <button class="btn" onclick="pvSaveToProject()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-weight:600;cursor:pointer;padding:8px 16px;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;"><span class="mi">save</span> Enregistrer dans le projet</button>
+          <button class="btn btn-gold" onclick="pvGeneratePDF()"><span class="mi">picture_as_pdf</span> Télécharger PDF</button>
         </div>
       </div>
       <div class="pv-wrap">
@@ -6024,18 +6025,57 @@ function pvLoadScript(url) {
   });
 }
 
-async function pvGeneratePDF() {
-  try {
-    // Load jsPDF + autotable on demand
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-      toast('Chargement de jsPDF…');
-      await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
-    }
-    if (!window.jspdf || !window.jspdf.jsPDF) { toast('Erreur : jsPDF non disponible'); return; }
-    if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) {
-      await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
-    }
+async function pvEnsureLibs() {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    toast('Chargement de jsPDF…');
+    await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  }
+  if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('jsPDF non disponible');
+  if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) {
+    await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  }
+}
 
+async function pvSaveToProject() {
+  const projId = parseInt(document.getElementById('pv-project-select')?.value);
+  if (!projId) { toast('Sélectionnez un projet lié avant d\'enregistrer'); return; }
+  const proj = db.projects.find(p => p.id === projId);
+  if (!proj) return;
+  try {
+    await pvEnsureLibs();
+    toast('Génération du PDF…');
+    const doc = await pvBuildDoc();
+    const dataUri = doc.output('datauristring'); // data:application/pdf;base64,...
+    const chantier = document.getElementById('pv-chantier').value || proj.name;
+    const num = document.getElementById('pv-num_reunion').value || '';
+    const dateVal = document.getElementById('pv-date_reunion').value || new Date().toISOString().split('T')[0];
+    const name = `PV — ${chantier}${num ? ' — ' + num : ''} — ${pvFmtDate(dateVal)}`;
+    const sizeKo = Math.round(dataUri.length * 0.75 / 1024) + ' Ko';
+    const obj = {
+      name,
+      type: 'Plan PDF',
+      doc_type: 'pv_chantier',
+      is_pdf: true,
+      is_project_doc: true,
+      project_id: projId,
+      data: dataUri,
+      size: sizeKo,
+      added_at: new Date().toISOString().split('T')[0]
+    };
+    const res = await sbInsert('media', obj);
+    if (res && res.length > 0) {
+      db.media.push({ ...res[0], isPDF: true, projectId: projId });
+      toast('✓ PV enregistré dans le projet "' + proj.name + '"');
+    } else {
+      toast('Erreur lors de l\'enregistrement');
+    }
+  } catch(err) {
+    console.error('pvSaveToProject:', err);
+    toast('Erreur : ' + (err.message || 'impossible de sauvegarder'));
+  }
+}
+
+async function pvBuildDoc() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
@@ -6349,13 +6389,19 @@ async function pvGeneratePDF() {
       doc.text(`Page ${p} / ${total}`, W - MARGIN, H - 9, { align:'right' });
     }
 
+    return doc;
+}
+
+async function pvGeneratePDF() {
+  try {
+    await pvEnsureLibs();
+    const doc = await pvBuildDoc();
     const chantierRaw = document.getElementById('pv-chantier').value || 'chantier';
     const numRaw = document.getElementById('pv-num_reunion').value || '';
     const dateRaw = document.getElementById('pv-date_reunion').value || '';
     const filename = `PV_${pvSafeFilename(chantierRaw)}${numRaw ? '_' + pvSafeFilename(numRaw) : ''}${dateRaw ? '_' + dateRaw.replace(/-/g,'') : ''}.pdf`;
     doc.save(filename);
-    toast('✓ PDF généré : ' + filename);
-
+    toast('✓ PDF téléchargé : ' + filename);
   } catch(err) {
     console.error('Erreur PV PDF:', err);
     toast('Erreur : ' + (err.message || 'impossible de générer le PDF'));

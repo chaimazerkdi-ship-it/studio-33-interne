@@ -3911,28 +3911,23 @@ let currentUser = null;
 /* ── Photo helpers ─────────────────────────────────────────────── */
 function getUserPhoto(userId) {
   if (!db.userProfiles || !userId) return null;
-  // 1) Match direct par user_id (UUID Supabase — fonctionne pour l'utilisateur connecté)
-  let p = db.userProfiles.find(pr => String(pr.user_id) === String(userId));
-  if (p && p.photo) return p.photo;
-  // 2) Fallback : match par username via USERS[] (IDs numériques → username)
+  // Uniquement les profils qui ont réellement une photo
+  const withPhoto = db.userProfiles.filter(pr => pr.photo);
+  // 1) Match direct UUID
+  let p = withPhoto.find(pr => String(pr.user_id) === String(userId));
+  if (p) return p.photo;
+  // 2) Match par username (les anciens records ont des IDs numériques sans photo)
   const user = USERS.find(u => String(u.id) === String(userId));
-  if (user) {
-    if (user.username) {
-      p = db.userProfiles.find(pr => pr.username === user.username);
-      if (p && p.photo) return p.photo;
-    }
-    // 3) Fallback : match par nom complet
-    if (user.name) {
-      p = db.userProfiles.find(pr => pr.username && user.name.toLowerCase().startsWith(pr.username.toLowerCase()));
-      if (p && p.photo) return p.photo;
-    }
+  if (user && user.username) {
+    p = withPhoto.find(pr => pr.username === user.username);
+    if (p) return p.photo;
   }
-  // 4) Fallback via team_members : lien entre ID numérique et UUID Supabase
-  if (db.teamMembers) {
-    const tm = db.teamMembers.find(t => String(t.id) === String(userId) || (user && t.username === user?.username));
+  // 3) Match via team_members (UUID Supabase ↔ ID numérique)
+  if (db.teamMembers && user) {
+    const tm = db.teamMembers.find(t => t.username === user.username);
     if (tm && tm.user_id) {
-      p = db.userProfiles.find(pr => String(pr.user_id) === String(tm.user_id));
-      if (p && p.photo) return p.photo;
+      p = withPhoto.find(pr => String(pr.user_id) === String(tm.user_id));
+      if (p) return p.photo;
     }
   }
   return null;

@@ -9492,33 +9492,94 @@ function renderPhotoTab() {
   if (hint) hint.style.display = 'none';
 }
 
+// ── Outil recadrage photo (glisser pour centrer le visage) ───────────
+function showPhotoCropModal(dataUrl, onConfirm) {
+  const CIRCLE = 240;
+  const existing = document.getElementById('__photo-crop-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = '__photo-crop-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px;';
+  modal.innerHTML = `
+    <div style="color:#fff;font-size:15px;font-weight:700;letter-spacing:-.01em;">📷 Cadrez votre photo</div>
+    <div style="color:rgba(255,255,255,.55);font-size:12px;margin-top:-10px;">Glissez l'image pour centrer votre visage dans le cercle</div>
+    <div id="__crop-vp" style="position:relative;width:${CIRCLE}px;height:${CIRCLE}px;border-radius:50%;overflow:hidden;border:3px solid #fff;cursor:grab;user-select:none;box-shadow:0 0 0 9999px rgba(0,0,0,.55);">
+      <img id="__crop-img" src="${dataUrl}" style="position:absolute;max-width:none;user-select:none;pointer-events:none;" draggable="false">
+    </div>
+    <div style="display:flex;gap:12px;margin-top:4px;">
+      <button id="__crop-cancel" style="padding:11px 26px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:100px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Annuler</button>
+      <button id="__crop-ok" style="padding:11px 28px;background:var(--gold,#b5870a);color:#fff;border:none;border-radius:100px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">✓ Utiliser cette photo</button>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('__crop-cancel').onclick = () => modal.remove();
+
+  const vp = document.getElementById('__crop-vp');
+  const img = document.getElementById('__crop-img');
+  let imgX = 0, imgY = 0, dispW = 0, dispH = 0;
+
+  img.onload = function() {
+    const nat = img.naturalWidth / img.naturalHeight;
+    // Scale so smaller dimension = CIRCLE
+    if (nat >= 1) { dispH = CIRCLE; dispW = Math.round(dispH * nat); }
+    else          { dispW = CIRCLE; dispH = Math.round(dispW / nat); }
+    img.style.width  = dispW + 'px';
+    img.style.height = dispH + 'px';
+    // Default: center X, upper 20% Y (visages en haut sur portraits)
+    imgX = -Math.round((dispW - CIRCLE) / 2);
+    imgY = -Math.round((dispH - CIRCLE) * (nat < 1 ? 0.2 : 0.5));
+    img.style.left = imgX + 'px';
+    img.style.top  = imgY + 'px';
+
+    let drag = false, ox, oy, oix, oiy;
+    const clamp = () => {
+      imgX = Math.min(0, Math.max(-(dispW - CIRCLE), imgX));
+      imgY = Math.min(0, Math.max(-(dispH - CIRCLE), imgY));
+    };
+    const move = (cx, cy) => {
+      if (!drag) return;
+      imgX = oix + (cx - ox); imgY = oiy + (cy - oy);
+      clamp();
+      img.style.left = imgX + 'px'; img.style.top = imgY + 'px';
+    };
+    vp.addEventListener('mousedown',  e => { drag=true; ox=e.clientX; oy=e.clientY; oix=imgX; oiy=imgY; vp.style.cursor='grabbing'; e.preventDefault(); });
+    document.addEventListener('mousemove',  e => move(e.clientX, e.clientY));
+    document.addEventListener('mouseup',    () => { drag=false; vp.style.cursor='grab'; });
+    vp.addEventListener('touchstart', e => { const t=e.touches[0]; drag=true; ox=t.clientX; oy=t.clientY; oix=imgX; oiy=imgY; e.preventDefault(); }, {passive:false});
+    document.addEventListener('touchmove',  e => { if(drag){const t=e.touches[0]; move(t.clientX,t.clientY);} }, {passive:true});
+    document.addEventListener('touchend',   () => { drag=false; });
+
+    document.getElementById('__crop-ok').onclick = function() {
+      const scaleX = img.naturalWidth / dispW;
+      const scaleY = img.naturalHeight / dispH;
+      const cropX  = Math.max(0, -imgX * scaleX);
+      const cropY  = Math.max(0, -imgY * scaleY);
+      const cropW  = CIRCLE * scaleX;
+      const cropH  = CIRCLE * scaleY;
+      const c = document.createElement('canvas');
+      c.width = 300; c.height = 300;
+      c.getContext('2d').drawImage(img, cropX, cropY, cropW, cropH, 0, 0, 300, 300);
+      const result = c.toDataURL('image/jpeg', 0.85);
+      modal.remove();
+      onConfirm(result);
+    };
+  };
+}
+
 function previewMyPhoto(event) {
   const file = event.target.files[0];
-  if (!file) return;
+  if (!file || !file.type.startsWith('image/')) return;
   const reader = new FileReader();
   reader.onload = function(e) {
-    // Resize to max 300px using canvas
-    const img = new Image();
-    img.onload = function() {
-      const canvas = document.createElement('canvas');
-      const size = Math.min(img.width, img.height, 300);
-      canvas.width = size; canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      // Center-crop square
-      const sx = (img.width - size) / 2;
-      const sy = (img.height - size) / 2;
-      ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
-      _pendingPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+    showPhotoCropModal(e.target.result, function(cropped) {
+      _pendingPhotoDataUrl = cropped;
       const previewEl = document.getElementById('my-avatar-preview');
-      if (previewEl) {
-        previewEl.innerHTML = `<img src="${_pendingPhotoDataUrl}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`;
-      }
+      if (previewEl) previewEl.innerHTML = `<img src="${cropped}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`;
       const saveBtn = document.getElementById('save-photo-btn');
-      const hint = document.getElementById('photo-crop-hint');
+      const hint    = document.getElementById('photo-crop-hint');
       if (saveBtn) saveBtn.style.display = '';
-      if (hint) hint.style.display = '';
-    };
-    img.src = e.target.result;
+      if (hint)    hint.style.display    = '';
+    });
   };
   reader.readAsDataURL(file);
 }
@@ -10107,25 +10168,16 @@ async function ppTogglePush() {
 
 function ppPreviewPhoto(event) {
   const file = event.target.files[0];
-  if (!file) return;
+  if (!file || !file.type.startsWith('image/')) return;
   const reader = new FileReader();
   reader.onload = function(e) {
-    const img = new Image();
-    img.onload = function() {
-      const canvas = document.createElement('canvas');
-      const size = Math.min(img.width, img.height, 300);
-      canvas.width = size; canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const sx = (img.width - size) / 2;
-      const sy = (img.height - size) / 2;
-      ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
-      _pendingPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+    showPhotoCropModal(e.target.result, function(cropped) {
+      _pendingPhotoDataUrl = cropped;
       const previewEl = document.getElementById('pp-my-avatar-preview');
-      if (previewEl) previewEl.innerHTML = `<img src="${_pendingPhotoDataUrl}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`;
+      if (previewEl) previewEl.innerHTML = `<img src="${cropped}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">`;
       const hint = document.getElementById('pp-photo-hint');
       if (hint) hint.style.display = '';
-    };
-    img.src = e.target.result;
+    });
   };
   reader.readAsDataURL(file);
 }

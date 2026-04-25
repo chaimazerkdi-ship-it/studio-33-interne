@@ -3132,6 +3132,141 @@
       <div id="equipe-reports-list"></div>
     </div>
 
+
+    <!-- PV DE RÉUNION DE CHANTIER -->
+    <div class="page" id="page-pv">
+      <div class="page-header">
+        <div>
+          <div class="page-title">PV de réunion de chantier</div>
+          <div class="page-subtitle">Générateur de procès-verbaux — export PDF</div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn" onclick="pvReset()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);font-weight:600;cursor:pointer;padding:8px 16px;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;"><span class="mi">restart_alt</span> Nouveau PV</button>
+          <button class="btn btn-gold" onclick="pvGeneratePDF()"><span class="mi">picture_as_pdf</span> Générer le PDF</button>
+        </div>
+      </div>
+      <div class="pv-wrap">
+
+        <!-- Projet lié -->
+        <div class="pv-card">
+          <div class="pv-card-header"><div class="pv-icon">🔗</div> Projet lié (optionnel)</div>
+          <div class="pv-card-body">
+            <div class="pv-row">
+              <div class="pv-field">
+                <label>Sélectionner un projet pour pré-remplir</label>
+                <select id="pv-project-select" onchange="pvPrefillFromProject()">
+                  <option value="">— Aucun (remplissage manuel) —</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1. Informations générales -->
+        <div class="pv-card">
+          <div class="pv-card-header"><div class="pv-icon">1</div> Informations générales</div>
+          <div class="pv-card-body">
+            <div class="pv-row">
+              <div class="pv-field">
+                <label>Nom du chantier / Projet</label>
+                <input type="text" id="pv-chantier" placeholder="ex : Villa Bensoussan — Agadir" autocomplete="off" />
+              </div>
+              <div class="pv-field" style="max-width:160px;">
+                <label>N° de réunion</label>
+                <input type="text" id="pv-num_reunion" placeholder="ex : R-01" />
+              </div>
+            </div>
+            <div class="pv-row">
+              <div class="pv-field">
+                <label>Date</label>
+                <input type="date" id="pv-date_reunion" />
+              </div>
+              <div class="pv-field">
+                <label>Heure</label>
+                <input type="time" id="pv-heure_reunion" />
+              </div>
+              <div class="pv-field">
+                <label>Lieu</label>
+                <input type="text" id="pv-lieu" placeholder="ex : Zone industrielle Aït Melloul…" autocomplete="off" />
+              </div>
+            </div>
+            <div class="pv-row">
+              <div class="pv-field">
+                <label>Prochaine réunion</label>
+                <input type="date" id="pv-prochaine_reunion" />
+              </div>
+              <div class="pv-field">
+                <label>Rédacteur du PV</label>
+                <input type="text" id="pv-redacteur" placeholder="Nom Prénom — Studio 33" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Participants -->
+        <div class="pv-card">
+          <div class="pv-card-header"><div class="pv-icon">2</div> Participants</div>
+          <div class="pv-card-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 32px;gap:8px;margin-bottom:6px;">
+              <div class="pv-col-label">Nom Prénom</div>
+              <div class="pv-col-label">Société / Fonction</div>
+              <div class="pv-col-label">Présence</div>
+              <div></div>
+            </div>
+            <div id="pv-presents-list"></div>
+            <button class="pv-btn-add" onclick="pvAddPresent()">+ Ajouter un participant</button>
+          </div>
+        </div>
+
+        <!-- 3. Points par lot -->
+        <div class="pv-card">
+          <div class="pv-card-header"><div class="pv-icon">3</div> Points abordés par lot</div>
+          <div class="pv-card-body">
+            <div id="pv-lots-list"></div>
+            <button class="pv-btn-add" onclick="pvAddLot()">+ Ajouter un lot</button>
+          </div>
+        </div>
+
+        <!-- 4. Décisions -->
+        <div class="pv-card">
+          <div class="pv-card-header"><div class="pv-icon">4</div> Décisions de réunion</div>
+          <div class="pv-card-body">
+            <div id="pv-decisions-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+            <button class="pv-btn-add" onclick="pvAddDecision()">+ Ajouter une décision</button>
+          </div>
+        </div>
+
+        <!-- 5. Actions -->
+        <div class="pv-card">
+          <div class="pv-card-header"><div class="pv-icon">5</div> Actions & Délais</div>
+          <div class="pv-card-body">
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 32px;gap:8px;margin-bottom:6px;">
+              <div class="pv-col-label">Action à réaliser</div>
+              <div class="pv-col-label">Responsable</div>
+              <div class="pv-col-label">Délai / Date limite</div>
+              <div></div>
+            </div>
+            <div id="pv-actions-list"></div>
+            <button class="pv-btn-add" onclick="pvAddAction()">+ Ajouter une action</button>
+          </div>
+        </div>
+
+        <!-- 6. Observations générales -->
+        <div class="pv-card">
+          <div class="pv-card-header"><div class="pv-icon">6</div> Observations générales</div>
+          <div class="pv-card-body">
+            <textarea id="pv-observations" placeholder="Remarques diverses, conditions météo, état d'avancement global, incidents…" style="min-height:100px;"></textarea>
+          </div>
+        </div>
+
+        <!-- Générer -->
+        <button class="pv-btn-generate" onclick="pvGeneratePDF()">
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17a4 4 0 004 4h10a4 4 0 000-8 1 1 0 00-.088-1.979A6.001 6.001 0 006.042 9H6a6 6 0 00-3 11.196"/></svg>
+          Générer le PDF
+        </button>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /layout -->
 </div><!-- /app -->
@@ -3296,141 +3431,6 @@
     </div>
   </div>
 </div>
-
-    <!-- PV DE RÉUNION DE CHANTIER -->
-    <div class="page" id="page-pv">
-      <div class="page-header">
-        <div>
-          <div class="page-title">PV de réunion de chantier</div>
-          <div class="page-subtitle">Générateur de procès-verbaux — export PDF</div>
-        </div>
-        <div style="display:flex;gap:10px;">
-          <button class="btn" onclick="pvReset()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);font-weight:600;cursor:pointer;padding:8px 16px;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;"><span class="mi">restart_alt</span> Nouveau PV</button>
-          <button class="btn btn-gold" onclick="pvGeneratePDF()"><span class="mi">picture_as_pdf</span> Générer le PDF</button>
-        </div>
-      </div>
-      <div class="pv-wrap">
-
-        <!-- Projet lié -->
-        <div class="pv-card">
-          <div class="pv-card-header"><div class="pv-icon">🔗</div> Projet lié (optionnel)</div>
-          <div class="pv-card-body">
-            <div class="pv-row">
-              <div class="pv-field">
-                <label>Sélectionner un projet pour pré-remplir</label>
-                <select id="pv-project-select" onchange="pvPrefillFromProject()">
-                  <option value="">— Aucun (remplissage manuel) —</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 1. Informations générales -->
-        <div class="pv-card">
-          <div class="pv-card-header"><div class="pv-icon">1</div> Informations générales</div>
-          <div class="pv-card-body">
-            <div class="pv-row">
-              <div class="pv-field">
-                <label>Nom du chantier / Projet</label>
-                <input type="text" id="pv-chantier" placeholder="ex : Villa Bensoussan — Agadir" autocomplete="off" />
-              </div>
-              <div class="pv-field" style="max-width:160px;">
-                <label>N° de réunion</label>
-                <input type="text" id="pv-num_reunion" placeholder="ex : R-01" />
-              </div>
-            </div>
-            <div class="pv-row">
-              <div class="pv-field">
-                <label>Date</label>
-                <input type="date" id="pv-date_reunion" />
-              </div>
-              <div class="pv-field">
-                <label>Heure</label>
-                <input type="time" id="pv-heure_reunion" />
-              </div>
-              <div class="pv-field">
-                <label>Lieu</label>
-                <input type="text" id="pv-lieu" placeholder="ex : Zone industrielle Aït Melloul…" autocomplete="off" />
-              </div>
-            </div>
-            <div class="pv-row">
-              <div class="pv-field">
-                <label>Prochaine réunion</label>
-                <input type="date" id="pv-prochaine_reunion" />
-              </div>
-              <div class="pv-field">
-                <label>Rédacteur du PV</label>
-                <input type="text" id="pv-redacteur" placeholder="Nom Prénom — Studio 33" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2. Participants -->
-        <div class="pv-card">
-          <div class="pv-card-header"><div class="pv-icon">2</div> Participants</div>
-          <div class="pv-card-body">
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 32px;gap:8px;margin-bottom:6px;">
-              <div class="pv-col-label">Nom Prénom</div>
-              <div class="pv-col-label">Société / Fonction</div>
-              <div class="pv-col-label">Présence</div>
-              <div></div>
-            </div>
-            <div id="pv-presents-list"></div>
-            <button class="pv-btn-add" onclick="pvAddPresent()">+ Ajouter un participant</button>
-          </div>
-        </div>
-
-        <!-- 3. Points par lot -->
-        <div class="pv-card">
-          <div class="pv-card-header"><div class="pv-icon">3</div> Points abordés par lot</div>
-          <div class="pv-card-body">
-            <div id="pv-lots-list"></div>
-            <button class="pv-btn-add" onclick="pvAddLot()">+ Ajouter un lot</button>
-          </div>
-        </div>
-
-        <!-- 4. Décisions -->
-        <div class="pv-card">
-          <div class="pv-card-header"><div class="pv-icon">4</div> Décisions de réunion</div>
-          <div class="pv-card-body">
-            <div id="pv-decisions-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-            <button class="pv-btn-add" onclick="pvAddDecision()">+ Ajouter une décision</button>
-          </div>
-        </div>
-
-        <!-- 5. Actions -->
-        <div class="pv-card">
-          <div class="pv-card-header"><div class="pv-icon">5</div> Actions & Délais</div>
-          <div class="pv-card-body">
-            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 32px;gap:8px;margin-bottom:6px;">
-              <div class="pv-col-label">Action à réaliser</div>
-              <div class="pv-col-label">Responsable</div>
-              <div class="pv-col-label">Délai / Date limite</div>
-              <div></div>
-            </div>
-            <div id="pv-actions-list"></div>
-            <button class="pv-btn-add" onclick="pvAddAction()">+ Ajouter une action</button>
-          </div>
-        </div>
-
-        <!-- 6. Observations générales -->
-        <div class="pv-card">
-          <div class="pv-card-header"><div class="pv-icon">6</div> Observations générales</div>
-          <div class="pv-card-body">
-            <textarea id="pv-observations" placeholder="Remarques diverses, conditions météo, état d'avancement global, incidents…" style="min-height:100px;"></textarea>
-          </div>
-        </div>
-
-        <!-- Générer -->
-        <button class="pv-btn-generate" onclick="pvGeneratePDF()">
-          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17a4 4 0 004 4h10a4 4 0 000-8 1 1 0 00-.088-1.979A6.001 6.001 0 006.042 9H6a6 6 0 00-3 11.196"/></svg>
-          Générer le PDF
-        </button>
-      </div>
-    </div>
-
 <!-- ====== MODALS ====== -->
 
 <!-- PROJECT MODAL -->

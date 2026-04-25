@@ -5993,16 +5993,28 @@ function pvSafePdfText(str) {
     .replace(/[^\u0020-\u00FF]/g, '?');
 }
 
+function pvLoadScript(url) {
+  return new Promise(function(resolve, reject) {
+    if (document.querySelector('script[data-pv-cdn="' + url + '"]')) return resolve();
+    const s = document.createElement('script');
+    s.src = url;
+    s.setAttribute('data-pv-cdn', url);
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
 async function pvGeneratePDF() {
   try {
     // Load jsPDF + autotable on demand
     if (!window.jspdf || !window.jspdf.jsPDF) {
       toast('Chargement de jsPDF…');
-      await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+      await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
     }
     if (!window.jspdf || !window.jspdf.jsPDF) { toast('Erreur : jsPDF non disponible'); return; }
     if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) {
-      await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+      await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
     }
 
     const { jsPDF } = window.jspdf;

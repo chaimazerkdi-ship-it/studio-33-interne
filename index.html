@@ -7679,11 +7679,21 @@ async function openPDF(id) {
   toast('Chargement du PDF…');
   const data = await getMediaData(id);
   if (!data) { toast('Impossible de charger le fichier'); return; }
-  const w = window.open('', '_blank');
-  if (!w) { toast('Autorisez les pop-ups pour ouvrir le PDF'); return; }
-  w.document.write(`<html><head><title>${m.name}</title></head><body style="margin:0;background:#222;">
-    <embed src="${data}" type="application/pdf" width="100%" height="100%" style="height:100vh;">
-  </body></html>`);
+  try {
+    // Convert base64 data URL → Blob URL (browsers block large data URLs in new tabs)
+    const base64 = data.includes(',') ? data.split(',')[1] : data;
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const blobUrl = URL.createObjectURL(blob);
+    const w = window.open(blobUrl, '_blank');
+    if (!w) { toast('Autorisez les pop-ups pour ouvrir le PDF'); }
+    // Revoke after 60s to free memory
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch(e) {
+    toast('Erreur ouverture PDF : ' + e.message);
+  }
 }
 
 function openPanneauFromMedia(projectId) {
@@ -12446,12 +12456,26 @@ function escHTML(str) {
     toast('Chargement…');
     const data = await getMediaData(docId);
     if (!data) { toast('Fichier introuvable'); return; }
-    const w = window.open();
-    if (!w) { toast('Autorisez les pop-ups pour ouvrir le fichier'); return; }
-    if (d.is_pdf) {
-      w.document.write('<iframe src="' + data + '" style="position:fixed;inset:0;width:100vw;height:100vh;border:none;"></iframe><title>' + escHTML(d.name) + '</title>');
-    } else {
-      w.document.write('<img src="' + data + '" style="max-width:100vw;max-height:100vh;display:block;margin:auto;"><title>' + escHTML(d.name) + '</title>');
+    try {
+      if (d.is_pdf) {
+        // Convert base64 data URL → Blob URL (browsers block large data URLs in new tabs)
+        const base64 = data.includes(',') ? data.split(',')[1] : data;
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+        const w = window.open(blobUrl, '_blank');
+        if (!w) { toast('Autorisez les pop-ups pour ouvrir le fichier'); }
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      } else {
+        // Images: open data URL directly (much smaller than PDFs, works fine)
+        const w = window.open('', '_blank');
+        if (!w) { toast('Autorisez les pop-ups pour ouvrir le fichier'); return; }
+        w.document.write('<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="' + data + '" style="max-width:100vw;max-height:100vh;object-fit:contain;"></body></html>');
+      }
+    } catch(e) {
+      toast('Erreur ouverture : ' + e.message);
     }
   };
 

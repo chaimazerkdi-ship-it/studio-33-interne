@@ -14403,6 +14403,7 @@ function escHTML(str) {
           '<button class="btn btn-outline" style="flex:1;padding:4px 8px;font-size:11px;" onclick="duplicateTemplate(' + t.id + ')">Dupliquer</button>' +
           '<button class="btn btn-outline" style="flex:1;padding:4px 8px;font-size:11px;color:#ef4444;" onclick="deleteTemplate(' + t.id + ')"><span class="mi mi-sm">delete</span> Supprimer</button>' +
         '</div>' +
+        '<button class="btn" onclick="event.stopPropagation();applyTemplateToExistingProject(' + t.id + ')" style="width:100%;margin-top:6px;padding:6px;font-size:11px;font-weight:600;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit;"><span class="mi mi-sm">output</span> Appliquer à un projet existant</button>' +
       '</div>';
     }).join('');
     grid.innerHTML = '<div class="tpl-grid">' + cards + '</div>';
@@ -14548,6 +14549,102 @@ function escHTML(str) {
     persistLocalTpl();
     toast('Template "' + t.name + '" supprimé');
     renderTemplates();
+  };
+
+  // ── APPLY TEMPLATE TO EXISTING PROJECT ──────────────────────
+  window.applyTemplateToExistingProject = function(tplId) {
+    const tpl = (db.projectTemplates || []).find(function(x){ return x.id === tplId; });
+    if (!tpl) return;
+
+    // Build modal HTML
+    const projects = (db.projects || []).filter(function(p){ return !p.archived; }).sort(function(a,b){ return a.name.localeCompare(b.name,'fr'); });
+    if (!projects.length) { toast('Aucun projet actif disponible'); return; }
+
+    // Remove existing modal if any
+    const existing = document.getElementById('tpl-apply-modal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'tpl-apply-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML =
+      '<div style="background:var(--surface);border-radius:var(--radius);padding:28px;width:420px;max-width:95vw;box-shadow:var(--shadow-lg);">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">Appliquer le template</div>' +
+        '<div style="font-size:12px;color:var(--text-faint);margin-bottom:20px;">Template : <strong style="color:var(--gold);">' + escHTML(tpl.name) + '</strong></div>' +
+
+        '<div style="margin-bottom:14px;">' +
+          '<label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);display:block;margin-bottom:6px;">Projet cible</label>' +
+          '<select id="tpl-apply-project" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;">' +
+            projects.map(function(p){ return '<option value="' + p.id + '">' + escHTML(p.name) + '</option>'; }).join('') +
+          '</select>' +
+        '</div>' +
+
+        '<div style="margin-bottom:20px;">' +
+          '<label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);display:block;margin-bottom:8px;">Appliquer</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:8px;cursor:pointer;">' +
+            '<input type="checkbox" id="tpl-apply-tasks" checked style="accent-color:var(--gold);width:15px;height:15px;">' +
+            '📋 Tâches <span style="color:var(--text-faint);font-size:11px;">(' + (tpl.tasks||[]).length + ' tâches — ajoutées aux existantes)</span>' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;">' +
+            '<input type="checkbox" id="tpl-apply-folders" checked style="accent-color:var(--gold);width:15px;height:15px;">' +
+            '📁 Dossiers <span style="color:var(--text-faint);font-size:11px;">(' + (tpl.folders||[]).length + ' dossiers — ajoutés aux existants)</span>' +
+          '</label>' +
+        '</div>' +
+
+        '<div style="display:flex;gap:10px;">' +
+          '<button onclick="document.getElementById(\'tpl-apply-modal\').remove()" style="flex:1;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">Annuler</button>' +
+          '<button onclick="confirmApplyTemplate(' + tplId + ')" style="flex:2;padding:10px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">⚡ Appliquer</button>' +
+        '</div>' +
+      '</div>';
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  };
+
+  window.confirmApplyTemplate = async function(tplId) {
+    const tpl = (db.projectTemplates || []).find(function(x){ return x.id === tplId; });
+    const projId = parseInt(document.getElementById('tpl-apply-project').value);
+    const applyTasks = document.getElementById('tpl-apply-tasks').checked;
+    const applyFolders = document.getElementById('tpl-apply-folders').checked;
+    if (!tpl || !projId) return;
+    if (!applyTasks && !applyFolders) { toast('Sélectionnez au moins une option'); return; }
+
+    const proj = (db.projects || []).find(function(p){ return p.id === projId; });
+    if (!proj) return;
+
+    document.getElementById('tpl-apply-modal').remove();
+
+    const update = {};
+    let msg = [];
+
+    if (applyTasks) {
+      const existingTasks = Array.isArray(proj.tasks) ? proj.tasks : [];
+      const now = new Date();
+      const newTasks = (tpl.tasks || []).map(function(tk, idx) {
+        const due = new Date(now.getTime() + (tk.offset_days || 0) * 86400000);
+        return { id: Date.now() + idx, name: tk.name, phase: tk.phase || null, priority: tk.priority || 'normal', deadline: due.toISOString().slice(0,10), done: false, status: 'todo' };
+      });
+      update.tasks = existingTasks.concat(newTasks);
+      proj.tasks = update.tasks;
+      msg.push(newTasks.length + ' tâches ajoutées');
+    }
+
+    if (applyFolders && Array.isArray(tpl.folders) && tpl.folders.length) {
+      const existingFolders = Array.isArray(proj.document_folders) ? proj.document_folders : [];
+      const existingNames = existingFolders.map(function(f){ return typeof f === 'string' ? f : f.name; });
+      const newFolders = tpl.folders.filter(function(f){ const n = typeof f==='string'?f:f.name; return !existingNames.includes(n); });
+      update.document_folders = existingFolders.concat(newFolders);
+      proj.document_folders = update.document_folders;
+      msg.push(newFolders.length + ' dossiers ajoutés');
+    }
+
+    try {
+      await sbUpdate('projects', projId, update);
+      toast('⚡ Template appliqué sur "' + proj.name + '" — ' + msg.join(', '));
+      if (typeof renderProjects === 'function') renderProjects();
+    } catch(e) {
+      toast('Erreur lors de l\'application du template');
+      console.error(e);
+    }
   };
 
   // ── INTEGRATION: project-modal picker ───────────────────────

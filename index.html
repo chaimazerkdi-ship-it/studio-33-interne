@@ -7489,8 +7489,8 @@ function renderMediatheque() {
     `).join('');
   }
 
-  // Filter media
-  let items = db.media || [];
+  // Filter media (exclude internal panneau state JSON — not displayable as image)
+  let items = (db.media || []).filter(m => m.doc_type !== 'panneau_state');
   if (projectFilter === 'general') items = items.filter(m => m.isGeneral || !m.projectId);
   else if (projectFilter !== 'all') items = items.filter(m => m.projectId === parseInt(projectFilter));
   if (mediaTypeFilter !== 'Tout') items = items.filter(m => m.type === mediaTypeFilter);

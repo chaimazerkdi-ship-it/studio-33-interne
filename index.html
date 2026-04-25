@@ -2202,7 +2202,8 @@
           <div class="page-title">Projets</div>
           <div class="page-subtitle" id="projects-count-sub">—</div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center;">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input class="search-input" id="proj-search" placeholder="Rechercher un projet…" oninput="projSearchQuery=this.value;renderProjects()" style="width:200px;">
           <div class="view-toggle">
             <button class="view-btn active" id="view-cards-btn" onclick="setProjectView('cards')">Cartes</button>
             <button class="view-btn" id="view-kanban-btn" onclick="setProjectView('kanban')">Kanban</button>
@@ -2849,6 +2850,11 @@
             <button class="view-btn active" id="media-view-grid-btn" onclick="setMediaView('grid')">Grille</button>
             <button class="view-btn" id="media-view-list-btn" onclick="setMediaView('list')">Liste</button>
           </div>
+          <select id="media-upload-type" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:12px;border-radius:var(--radius);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;">
+            <option value="3D / Rendu">3D / Rendu</option>
+            <option value="Photo chantier">Photo chantier</option>
+            <option value="Plan PDF">Plan / Document</option>
+          </select>
           <label class="btn btn-gold" style="cursor:pointer;">
             + Ajouter
             <input type="file" id="media-file-input" multiple accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none;" onchange="handleMediaUpload(this)">
@@ -4580,6 +4586,7 @@ function renderDashboard() {
 // ===== PROJECTS =====
 let projectView = 'cards';
 let projPhaseFilter = 'Tout';
+let projSearchQuery = '';
 let ganttStartMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
 function navigateGantt(delta) {
@@ -4753,6 +4760,18 @@ function getFilteredProjects() {
   list = list.filter(p => showArchivedProjects ? p.archived : !p.archived);
   if (projPhaseFilter !== 'Tout') list = list.filter(p => p.phase === projPhaseFilter);
   if (projTypeFilter !== 'Tout') list = list.filter(p => (p.type || 'Autre') === projTypeFilter);
+  // Keyword search
+  if (projSearchQuery && projSearchQuery.trim()) {
+    const q = projSearchQuery.toLowerCase().trim();
+    list = list.filter(p => {
+      const client = db.clients.find(c => c.id === p.clientId);
+      return (p.name || '').toLowerCase().includes(q)
+        || (p.phase || '').toLowerCase().includes(q)
+        || (p.type || '').toLowerCase().includes(q)
+        || (client && client.name.toLowerCase().includes(q))
+        || (p.notes || '').toLowerCase().includes(q);
+    });
+  }
   // Sort: pinned first, then alphabetical
   list.sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
@@ -7443,7 +7462,8 @@ function handleMediaUpload(input) {
     const reader = new FileReader();
     reader.onload = async e => {
       const isPDF = file.type === 'application/pdf';
-      const type = isPDF ? 'Plan PDF' : file.name.toLowerCase().includes('chantier') ? 'Photo chantier' : '3D / Rendu';
+      const chosenType = document.getElementById('media-upload-type')?.value || '3D / Rendu';
+      const type = isPDF ? 'Plan PDF' : chosenType;
       const newId = db.media.length > 0 ? Math.max(...db.media.map(m => m.id)) + 1 : 1;
       const mediaObj = {
         name: file.name.replace(/\.[^.]+$/, ''),

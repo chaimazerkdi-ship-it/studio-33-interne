@@ -9497,6 +9497,21 @@ function renderMesTaches() {
   let html = '';
   let totalDone = 0, totalAll = 0;
 
+  // ── État accordéon par projet (persisté en localStorage) ──
+  const _colKey = 's33_taches_open_' + currentUser.id;
+  let _openProjs;
+  try { _openProjs = new Set(JSON.parse(localStorage.getItem(_colKey) || '[]')); }
+  catch(e) { _openProjs = new Set(); }
+
+  window._toggleTacheProject = function(pid) {
+    const k = 's33_taches_open_' + currentUser.id;
+    let set;
+    try { set = new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch(e) { set = new Set(); }
+    if (set.has(pid)) set.delete(pid); else set.add(pid);
+    localStorage.setItem(k, JSON.stringify([...set]));
+    renderMesTaches();
+  };
+
   // ── Tâches projet ──
   if (!filterAdmin) {
     const allProjects = filterPid ? db.projects.filter(p => p.id === filterPid) : db.projects;
@@ -9510,17 +9525,35 @@ function renderMesTaches() {
       const donePids = p.tasks.filter(t => savedDone[p.id + '_' + t.id] || isTaskDone(t));
       totalDone += donePids.length;
       totalAll  += p.tasks.length;
-      const label = getProjectLabel(p);
+      const isOpen = _openProjs.has(p.id);
+      const pct = p.tasks.length > 0 ? Math.round(donePids.length / p.tasks.length * 100) : 0;
+      const client = db.clients && db.clients.find(c => c.id === p.clientId);
+      const hasUrgent = p.tasks.some(t => t.priority === 'urgent' && !(savedDone[p.id+'_'+t.id] || isTaskDone(t)));
 
-      html += `<div class="card" style="margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);">${p.name}</div>
-            ${db.clients && db.clients.find(c=>c.id===p.clientId) ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${db.clients.find(c=>c.id===p.clientId).name}</div>` : ''}
+      html += `<div class="card" style="margin-bottom:10px;overflow:hidden;">
+        <!-- En-tête accordéon -->
+        <div onclick="_toggleTacheProject(${p.id})" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:2px 0;user-select:none;" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
+          <span class="mi" style="color:var(--gold);transition:transform .22s ease;transform:rotate(${isOpen?'90':'0'}deg);font-size:20px;">chevron_right</span>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:14px;font-weight:700;color:var(--text);">${p.name}</span>
+              ${hasUrgent ? '<span class="badge badge-red" style="font-size:9px;">Urgent</span>' : ''}
+              ${p.phase ? `<span class="badge badge-dim" style="font-size:10px;">${p.phase}</span>` : ''}
+            </div>
+            ${client ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${client.name}</div>` : ''}
           </div>
-          <span class="badge badge-dim">${donePids.length}/${p.tasks.length}</span>
+          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+            <!-- Mini barre de progression -->
+            <div style="width:60px;height:5px;background:var(--surface3);border-radius:99px;overflow:hidden;">
+              <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:99px;"></div>
+            </div>
+            <span class="badge badge-dim" style="font-size:11px;">${donePids.length}/${p.tasks.length}</span>
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
+
+        <!-- Corps (liste de tâches) -->
+        ${isOpen ? `
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding-top:14px;">
           ${p.tasks.map(t => {
             const key = p.id + '_' + t.id;
             const isDone = savedDone[key] || isTaskDone(t);
@@ -9529,7 +9562,7 @@ function renderMesTaches() {
               <div style="display:flex;align-items:center;gap:12px;">
                 <div style="flex:1;min-width:0;">
                   <div style="font-size:13px;font-weight:${isDone?'400':'500'};color:var(--text);text-decoration:${isDone?'line-through':'none'};">${t.name}</div>
-                  ${t.assignedTo && currentUser.role === 'admin' ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">${(()=>{const u=USERS.find(x=>x.name===t.assignedTo||x.username===t.assignedTo);return u?avatarHTML(u.id,18):'';})()}<span style="font-size:11px;color:var(--text-dim);">${t.assignedTo}</span></div>` : ''}
+                  ${t.assignedTo && isAdmin ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">${(()=>{const u=USERS.find(x=>x.name===t.assignedTo||x.username===t.assignedTo);return u?avatarHTML(u.id,18):'';})()}<span style="font-size:11px;color:var(--text-dim);">${t.assignedTo}</span></div>` : ''}
                 </div>
                 ${taskDeadlineBadge(t.deadline, isDone)}
                 ${t.priority==='urgent' && !isDone ? '<span class="badge badge-red" style="flex-shrink:0;">Urgent</span>' : ''}
@@ -9539,7 +9572,7 @@ function renderMesTaches() {
               ${taskExtraPanelsHTML(p.id, t)}
             </div>`;
           }).join('')}
-        </div>
+        </div>` : ''}
       </div>`;
     });
   }
@@ -9549,16 +9582,33 @@ function renderMesTaches() {
     const doneAdmin = adminTasks.filter(t => isTaskDone(t));
     totalDone += doneAdmin.length;
     totalAll  += adminTasks.length;
+    const isAdminOpen = _openProjs.has('admin');
+    const pctAdmin = adminTasks.length > 0 ? Math.round(doneAdmin.length / adminTasks.length * 100) : 0;
 
-    html += `<div class="card" style="margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <div>
+    window._toggleTacheProject = window._toggleTacheProject || function(pid) {
+      const k = 's33_taches_open_' + currentUser.id;
+      let set; try { set = new Set(JSON.parse(localStorage.getItem(k)||'[]')); } catch(e){ set=new Set(); }
+      if (set.has(pid)) set.delete(pid); else set.add(pid);
+      localStorage.setItem(k, JSON.stringify([...set]));
+      renderMesTaches();
+    };
+
+    html += `<div class="card" style="margin-bottom:10px;overflow:hidden;">
+      <div onclick="_toggleTacheProject('admin')" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:2px 0;user-select:none;" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
+        <span class="mi" style="color:var(--text-dim);transition:transform .22s ease;transform:rotate(${isAdminOpen?'90':'0'}deg);font-size:20px;">chevron_right</span>
+        <div style="flex:1;min-width:0;">
           <div style="font-size:14px;font-weight:700;color:var(--text);">Administratif</div>
           <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">Tâches sans projet</div>
         </div>
-        <span class="badge badge-dim">${doneAdmin.length}/${adminTasks.length}</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          <div style="width:60px;height:5px;background:var(--surface3);border-radius:99px;overflow:hidden;">
+            <div style="height:100%;width:${pctAdmin}%;background:var(--text-dim);border-radius:99px;"></div>
+          </div>
+          <span class="badge badge-dim" style="font-size:11px;">${doneAdmin.length}/${adminTasks.length}</span>
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
+      ${isAdminOpen ? `
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding-top:14px;">
         ${adminTasks.map(t => {
           const isDone = isTaskDone(t);
           return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);transition:opacity .2s;opacity:${isDone?'.5':'1'}">
@@ -9573,6 +9623,7 @@ function renderMesTaches() {
             <button onclick="if(confirm('Supprimer cette tâche ?'))deleteAdminTask(${t.id})" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:none;background:#fff0f0;color:#c0392b;cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;">×</button>
           </div>`;
         }).join('')}
+      </div>` : ''}
       </div>
     </div>`;
   }

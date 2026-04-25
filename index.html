@@ -4409,6 +4409,7 @@ function renderProjectDetailPage() {
       <span class="badge ${phaseColors[p.phase]||'badge-dim'}">${p.phase}</span>
       ${p.archived ? `<span style="padding:6px 14px;background:#f0f4ff;color:#4a6fa5;border-radius:var(--radius-pill);font-size:11px;font-weight:700;letter-spacing:.05em;"><span class="mi mi-sm">inventory_2</span> ARCHIVÉ</span>` : ''}
       ${isAdmin ? `
+        <button onclick="applyTemplateFromProject(${p.id})" style="padding:9px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">bolt</span> Template</button>
         <button onclick="editProject(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">edit</span> Éditer</button>
         <button onclick="archiveProject(${p.id})" style="padding:9px 16px;background:${p.archived?'#f0fff4':'#f5f0ff'};color:${p.archived?'#27ae60':'#7c5cbf'};border:1px solid ${p.archived?'#a8d5b5':'#c9b8e8'};border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">${p.archived ? '<span class="mi">undo</span> Restaurer' : '<span class="mi">inventory_2</span> Archiver'}</button>
         <button onclick="deleteProject(${p.id})" style="padding:9px 16px;background:#fff0f0;color:#c0392b;border:1px solid #f5c6cb;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">delete</span> Supprimer</button>
@@ -14641,6 +14642,107 @@ function escHTML(str) {
       await sbUpdate('projects', projId, update);
       toast('⚡ Template appliqué sur "' + proj.name + '" — ' + msg.join(', '));
       if (typeof renderProjects === 'function') renderProjects();
+    } catch(e) {
+      toast('Erreur lors de l\'application du template');
+      console.error(e);
+    }
+  };
+
+  // ── Appliquer un template DEPUIS la fiche projet ────────────
+  window.applyTemplateFromProject = function(projId) {
+    const proj = (db.projects || []).find(function(p){ return p.id === projId; });
+    if (!proj) return;
+
+    const templates = (db.projectTemplates || []);
+    if (!templates.length) { toast('Aucun template disponible. Créez-en un dans l\'onglet Templates.'); return; }
+
+    // Remove existing modal if any
+    const existing = document.getElementById('tpl-from-proj-modal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'tpl-from-proj-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML =
+      '<div style="background:var(--surface);border-radius:var(--radius);padding:28px;width:440px;max-width:95vw;box-shadow:var(--shadow-lg);">' +
+        '<div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">Appliquer un template</div>' +
+        '<div style="font-size:12px;color:var(--text-faint);margin-bottom:20px;">Projet : <strong style="color:var(--gold);">' + escHTML(proj.name) + '</strong></div>' +
+
+        '<div style="margin-bottom:14px;">' +
+          '<label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);display:block;margin-bottom:6px;">Choisir un template</label>' +
+          '<select id="tpl-from-proj-select" style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font-family:inherit;font-size:13px;">' +
+            templates.map(function(t){
+              var info = [];
+              if (t.tasks && t.tasks.length) info.push(t.tasks.length + ' tâches');
+              if (t.folders && t.folders.length) info.push(t.folders.length + ' dossiers');
+              return '<option value="' + t.id + '">' + escHTML(t.name) + (info.length ? ' (' + info.join(', ') + ')' : '') + '</option>';
+            }).join('') +
+          '</select>' +
+        '</div>' +
+
+        '<div style="margin-bottom:20px;">' +
+          '<label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);display:block;margin-bottom:8px;">Appliquer</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:8px;cursor:pointer;">' +
+            '<input type="checkbox" id="tpl-fp-tasks" checked style="accent-color:var(--gold);width:15px;height:15px;">' +
+            '📋 Tâches <span style="color:var(--text-faint);font-size:11px;">(ajoutées aux tâches existantes)</span>' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;">' +
+            '<input type="checkbox" id="tpl-fp-folders" checked style="accent-color:var(--gold);width:15px;height:15px;">' +
+            '📁 Dossiers <span style="color:var(--text-faint);font-size:11px;">(ajoutés aux dossiers existants)</span>' +
+          '</label>' +
+        '</div>' +
+
+        '<div style="display:flex;gap:10px;">' +
+          '<button onclick="document.getElementById(\'tpl-from-proj-modal\').remove()" style="flex:1;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">Annuler</button>' +
+          '<button onclick="confirmApplyTemplateFromProject(' + projId + ')" style="flex:2;padding:10px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;"><span class="mi mi-sm">bolt</span> Appliquer</button>' +
+        '</div>' +
+      '</div>';
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  };
+
+  window.confirmApplyTemplateFromProject = async function(projId) {
+    const tplId = parseInt(document.getElementById('tpl-from-proj-select').value);
+    const applyTasks = document.getElementById('tpl-fp-tasks').checked;
+    const applyFolders = document.getElementById('tpl-fp-folders').checked;
+
+    const tpl = (db.projectTemplates || []).find(function(x){ return x.id === tplId; });
+    const proj = (db.projects || []).find(function(p){ return p.id === projId; });
+    if (!tpl || !proj) return;
+    if (!applyTasks && !applyFolders) { toast('Sélectionnez au moins une option'); return; }
+
+    document.getElementById('tpl-from-proj-modal').remove();
+
+    const update = {};
+    var msg = [];
+
+    if (applyTasks) {
+      const existingTasks = Array.isArray(proj.tasks) ? proj.tasks : [];
+      const now = new Date();
+      const newTasks = (tpl.tasks || []).map(function(tk, idx) {
+        const due = new Date(now.getTime() + (tk.offset_days || 0) * 86400000);
+        return { id: Date.now() + idx, name: tk.name, phase: tk.phase || null, priority: tk.priority || 'normal', deadline: due.toISOString().slice(0,10), done: false, status: 'todo' };
+      });
+      update.tasks = existingTasks.concat(newTasks);
+      proj.tasks = update.tasks;
+      msg.push(newTasks.length + ' tâche' + (newTasks.length > 1 ? 's' : '') + ' ajoutée' + (newTasks.length > 1 ? 's' : ''));
+    }
+
+    if (applyFolders && Array.isArray(tpl.folders) && tpl.folders.length) {
+      const existingFolders = Array.isArray(proj.document_folders) ? proj.document_folders : [];
+      const existingNames = existingFolders.map(function(f){ return typeof f === 'string' ? f : f.name; });
+      const newFolders = tpl.folders.filter(function(f){ const n = typeof f==='string'?f:f.name; return !existingNames.includes(n); });
+      update.document_folders = existingFolders.concat(newFolders);
+      proj.document_folders = update.document_folders;
+      msg.push(newFolders.length + ' dossier' + (newFolders.length > 1 ? 's' : '') + ' ajouté' + (newFolders.length > 1 ? 's' : ''));
+    }
+
+    if (!Object.keys(update).length) { toast('Rien à ajouter (doublons évités)'); return; }
+
+    try {
+      await sbUpdate('projects', projId, update);
+      toast('⚡ Template "' + tpl.name + '" appliqué — ' + msg.join(', '));
+      renderProjectDetailPage();
     } catch(e) {
       toast('Erreur lors de l\'application du template');
       console.error(e);

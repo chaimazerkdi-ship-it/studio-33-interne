@@ -2435,6 +2435,26 @@
 
           <fieldset class="pc-fieldset">
             <legend>En-tête administratif</legend>
+            <div class="pc-row2" style="margin-bottom:10px;">
+              <div>
+                <label>Type de maître d'ouvrage</label>
+                <select id="pc-moa-type">
+                  <option value="prive">Privé</option>
+                  <option value="public">Public (institution)</option>
+                </select>
+              </div>
+            </div>
+            <!-- Champs visibles uniquement pour MO public -->
+            <div id="pc-public-fields" style="display:none; padding:10px; background:#f0f6ff; border:1px solid #c0d8f0; border-radius:6px; margin-bottom:10px;">
+              <div style="font-size:11px;font-weight:700;color:#3a6ea5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">⚙ Configuration panneau public</div>
+              <label>Ministère / Tutelle (affiché sous l'emblème gauche)</label>
+              <input type="text" id="pc-ministere" placeholder="ex: Ministère de l'Enseignement Supérieur" />
+              <label style="margin-top:8px;">Nom de l'institution (côté droit)</label>
+              <input type="text" id="pc-institution-nom" placeholder="ex: Université Ibn Zohr — Agadir" />
+              <label style="margin-top:8px;">Logo de l'institution (côté droit)</label>
+              <input type="file" id="pc-institution-logo" accept="image/*" />
+              <div class="pc-hint" style="margin-top:4px;">Le centre de l'en-tête sera laissé vide.</div>
+            </div>
             <label>Région</label>
             <select id="pc-region"></select>
             <div class="pc-row2">
@@ -2515,6 +2535,10 @@
                 <label>Référence dossier</label>
                 <input type="text" id="pc-ref" placeholder="ex: T/F. 2959/C" />
               </div>
+            </div>
+            <div id="pc-budget-row" style="display:none;margin-top:8px;">
+              <label>Budget du projet</label>
+              <input type="text" id="pc-budget" placeholder="ex: 12 500 000,00 DHS" />
             </div>
           </fieldset>
 
@@ -17245,6 +17269,60 @@ window.addEventListener('appinstalled', () => {
   }
   #page-panneau .pc-admin-lines span { display: block; }
 
+  /* ── En-tête PUBLIC : 3 colonnes (emblème | vide | logo institution) ── */
+  #page-panneau .pc-entete-public {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: center;
+    padding: calc(24px * var(--pc-scale, 1)) calc(40px * var(--pc-scale, 1));
+    border-bottom: calc(4px * var(--pc-scale, 1)) solid #111;
+    background: #fff;
+    flex: 0 0 auto;
+    min-height: calc(220px * var(--pc-scale, 1));
+    gap: calc(16px * var(--pc-scale, 1));
+  }
+  #page-panneau .pc-pub-left {
+    display: flex; flex-direction: column; align-items: center;
+    gap: calc(8px * var(--pc-scale, 1));
+    text-align: center;
+  }
+  #page-panneau .pc-pub-left .pc-emb-inline {
+    width: calc(150px * var(--pc-scale, 1));
+    height: calc(150px * var(--pc-scale, 1));
+    display: flex; align-items: center; justify-content: center;
+  }
+  #page-panneau .pc-pub-left .pc-emb-inline img,
+  #page-panneau .pc-pub-left .pc-emb-inline svg { max-width:100%; max-height:100%; }
+  #page-panneau .pc-pub-left .pc-admin { text-align: center; }
+  #page-panneau .pc-pub-center { /* vide intentionnellement */ }
+  #page-panneau .pc-pub-right {
+    display: flex; flex-direction: column; align-items: center;
+    gap: calc(10px * var(--pc-scale, 1)); text-align: center;
+  }
+  #page-panneau .pc-pub-right .pc-institution-logo {
+    max-width: calc(180px * var(--pc-scale, 1));
+    max-height: calc(150px * var(--pc-scale, 1));
+    width: auto; height: auto; object-fit: contain;
+  }
+  #page-panneau .pc-pub-right .pc-institution-placeholder {
+    width: calc(150px * var(--pc-scale, 1));
+    height: calc(130px * var(--pc-scale, 1));
+    background: #f0f4f8; border: calc(2px * var(--pc-scale,1)) dashed #bcc;
+    display: flex; align-items: center; justify-content: center;
+    font-size: calc(22px * var(--pc-scale, 1)); color: #999; border-radius: 4px;
+  }
+  #page-panneau .pc-institution-nom {
+    font-weight: 800; font-size: calc(36px * var(--pc-scale, 1));
+    color: #111; text-align: center; line-height: 1.2;
+  }
+  /* Paysage : réduire légèrement les tailles dans l'entête public */
+  #page-panneau .pc-panneau.pc-orient-paysage .pc-pub-left .pc-emb-inline {
+    width: calc(110px * var(--pc-scale, 1)); height: calc(110px * var(--pc-scale, 1));
+  }
+  #page-panneau .pc-panneau.pc-orient-paysage .pc-institution-logo {
+    max-width: calc(120px * var(--pc-scale, 1)); max-height: calc(100px * var(--pc-scale, 1));
+  }
+
   /* Image projet : rendu via background-image pour compatibilité parfaite html2canvas
      (les <img> + transform: scale() posent problème aux hauts DPI d'export) */
   #page-panneau .pc-image {
@@ -17470,8 +17548,9 @@ window.addEventListener('appinstalled', () => {
   const LIB_KEY = "s33_pc_lib";
   let lib = [];
   let intervenants = [];
-  let logoEmblemeUpload = null;
-  let imageProjet = null;
+  let logoEmblemeUpload    = null;
+  let imageProjet          = null;
+  let logoInstitutionUpload = null;
   let initialized = false;
 
   function $(id){ return document.getElementById(id); }
@@ -17685,14 +17764,16 @@ window.addEventListener('appinstalled', () => {
       .filter(Boolean).map(t => `<span>${escapeHtml(t)}</span>`).join("");
   }
   function ligneAuth(){
-    const type = $("pc-auth-type").value;
-    const num  = $("pc-auth-num").value || "—";
-    const date = fmtDate($("pc-auth-date").value);
-    const ref  = $("pc-ref").value;
+    const type   = $("pc-auth-type").value;
+    const num    = $("pc-auth-num").value || "—";
+    const date   = fmtDate($("pc-auth-date").value);
+    const ref    = $("pc-ref").value;
+    const budget = $("pc-budget") ? $("pc-budget").value : "";
     return [
       ref ? `Réf. ${ref}` : "",
       `${type.toUpperCase()} N° ${num}`,
-      date ? `DU ${date}` : ""
+      date ? `DU ${date}` : "",
+      budget ? `BUDGET : ${budget}` : ""
     ].filter(Boolean).join(" — ");
   }
   // ── EMBLÈME OFFICIEL DU ROYAUME DU MAROC ───────────────────────────────
@@ -17833,7 +17914,30 @@ window.addEventListener('appinstalled', () => {
     };
     const cardsHtml = intervenants.map(makeCard).join("");
 
-    const enteteBlock = `
+    const isPublicMOA = $("pc-moa-type") && $("pc-moa-type").value === "public";
+    const ministere     = $("pc-ministere") ? $("pc-ministere").value : "";
+    const institutionNom = $("pc-institution-nom") ? $("pc-institution-nom").value : "";
+    const institutionLogoHtml = logoInstitutionUpload
+      ? `<img class="pc-institution-logo" src="${logoInstitutionUpload}" alt="Logo institution" />`
+      : `<div class="pc-institution-placeholder">LOGO</div>`;
+
+    const enteteBlock = isPublicMOA ? `
+      <div class="pc-entete pc-entete-public">
+        <div class="pc-pub-left">
+          <div class="pc-emb-inline">${logoEmblemeHtml()}</div>
+          <div class="pc-admin">
+            <div class="pc-royaume-fr">ROYAUME DU MAROC</div>
+            <div class="pc-royaume-ar">المملكة المغربية</div>
+            ${ministere ? `<div class="pc-admin-lines"><span>${escapeHtml(ministere)}</span></div>` : ""}
+            <div class="pc-admin-lines">${ligneAdmin()}</div>
+          </div>
+        </div>
+        <div class="pc-pub-center"></div>
+        <div class="pc-pub-right">
+          ${institutionLogoHtml}
+          ${institutionNom ? `<div class="pc-institution-nom">${escapeHtml(institutionNom)}</div>` : ""}
+        </div>
+      </div>` : `
       <div class="pc-entete">
         <div class="pc-emb">${logoEmblemeHtml()}</div>
         <div class="pc-admin">
@@ -18044,7 +18148,8 @@ window.addEventListener('appinstalled', () => {
     "pc-template","pc-orientation","pc-size","pc-custom-w","pc-custom-h",
     "pc-type","pc-auth-type","pc-auth-num","pc-auth-date","pc-ref",
     "pc-region","pc-prefecture","pc-commune","pc-wilaya","pc-projet","pc-sous",
-    "pc-img-fit","pc-img-x","pc-img-y","pc-img-zoom"
+    "pc-img-fit","pc-img-x","pc-img-y","pc-img-zoom",
+    "pc-moa-type","pc-ministere","pc-institution-nom","pc-budget"
   ];
   let currentStateRecordId = null; // id of existing panneau_state record for the selected project
 
@@ -18056,7 +18161,8 @@ window.addEventListener('appinstalled', () => {
     state.champs["pc-logo-auto"] = $("pc-logo-auto").checked;
     state.intervenants = intervenants.map(x => ({ ...x }));
     state.imageProjet = imageProjet;
-    state.logoEmblemeUpload = logoEmblemeUpload;
+    state.logoEmblemeUpload    = logoEmblemeUpload;
+    state.logoInstitutionUpload = logoInstitutionUpload;
     return state;
   }
 
@@ -18069,8 +18175,11 @@ window.addEventListener('appinstalled', () => {
     });
     if (c["pc-logo-auto"] !== undefined) $("pc-logo-auto").checked = !!c["pc-logo-auto"];
     if (Array.isArray(state.intervenants)) intervenants = state.intervenants.map(x => ({ ...x }));
-    imageProjet        = state.imageProjet || null;
-    logoEmblemeUpload  = state.logoEmblemeUpload || null;
+    imageProjet           = state.imageProjet || null;
+    logoEmblemeUpload     = state.logoEmblemeUpload || null;
+    logoInstitutionUpload = state.logoInstitutionUpload || null;
+    // Afficher/masquer les champs publics selon le type restauré
+    if (typeof toggleMoaPublic === "function") toggleMoaPublic();
     // sync slider labels
     const sl = $("pc-img-x-v"); if (sl) sl.textContent = $("pc-img-x").value + "%";
     const sl2 = $("pc-img-y-v"); if (sl2) sl2.textContent = $("pc-img-y").value + "%";
@@ -18565,12 +18674,37 @@ window.addEventListener('appinstalled', () => {
       el.addEventListener("change", renderPanneau);
     });
 
+    // Afficher/masquer les champs publics selon le type MO
+    function toggleMoaPublic() {
+      const isPublic = $("pc-moa-type") && $("pc-moa-type").value === "public";
+      if ($("pc-public-fields")) $("pc-public-fields").style.display = isPublic ? "block" : "none";
+      if ($("pc-budget-row"))    $("pc-budget-row").style.display    = isPublic ? "block" : "none";
+      renderPanneau();
+    }
+    if ($("pc-moa-type")) $("pc-moa-type").addEventListener("change", toggleMoaPublic);
+
     $("pc-logo-file").addEventListener("change", (e) => {
       const f = e.target.files[0]; if (!f) return;
       const r = new FileReader();
       r.onload = () => { logoEmblemeUpload = r.result; renderPanneau(); };
       r.readAsDataURL(f);
     });
+
+    // Logo institution (panneau public, côté droit)
+    if ($("pc-institution-logo")) {
+      $("pc-institution-logo").addEventListener("change", (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = () => { logoInstitutionUpload = r.result; renderPanneau(); };
+        r.readAsDataURL(f);
+      });
+    }
+
+    // Champs texte publics → re-render en live
+    ["pc-ministere","pc-institution-nom","pc-budget"].forEach(id => {
+      const el = $(id); if (el) el.addEventListener("input", renderPanneau);
+    });
+
     $("pc-projet-img").addEventListener("change", (e) => {
       const f = e.target.files[0]; if (!f) return;
       const r = new FileReader();

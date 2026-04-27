@@ -2455,6 +2455,10 @@
                 <div style="font-size:11px;color:#555;margin-bottom:7px;">Uploadez l'image officielle du ministère (contient déjà ROYAUME DU MAROC + emblème + arabe). Le côté gauche affichera uniquement cette image.</div>
                 <input type="file" id="pc-moa-logo-complet-file" accept="image/*" />
                 <button id="pc-moa-logo-complet-clear" style="margin-top:5px;padding:3px 10px;font-size:11px;background:#c9e8b8;border:1px solid #9ecb82;border-radius:4px;cursor:pointer;display:none;">✕ Effacer le logo complet</button>
+                <div style="margin-top:8px;">
+                  <label style="font-size:11px;color:#444;">Largeur sur le panneau — <span id="pc-pub-moa-w-v" style="font-weight:700;color:#2e6b10;">380</span> px</label>
+                  <input type="range" id="pc-pub-moa-w" min="80" max="700" step="5" value="380" />
+                </div>
                 <div id="pc-moa-logo-complet-preview" style="margin-top:6px;display:none;">
                   <img id="pc-moa-logo-complet-img" style="max-width:100%;max-height:80px;object-fit:contain;border-radius:4px;border:1px solid #ccc;" />
                 </div>
@@ -2488,6 +2492,10 @@
                 <div style="font-size:11px;color:#555;margin-bottom:7px;">Uploadez le logo officiel de l'institution (contient déjà les noms FR + AR + TF). Le côté droit affichera uniquement cette image — pas besoin de remplir les champs ci-dessous.</div>
                 <input type="file" id="pc-inst-logo-complet-file" accept="image/*" />
                 <button id="pc-inst-logo-complet-clear" style="margin-top:5px;padding:3px 10px;font-size:11px;background:#c9e8b8;border:1px solid #9ecb82;border-radius:4px;cursor:pointer;display:none;">✕ Effacer le logo complet</button>
+                <div style="margin-top:8px;">
+                  <label style="font-size:11px;color:#444;">Largeur sur le panneau — <span id="pc-pub-inst-complet-w-v" style="font-weight:700;color:#2e6b10;">280</span> px</label>
+                  <input type="range" id="pc-pub-inst-complet-w" min="80" max="700" step="5" value="280" />
+                </div>
                 <div id="pc-inst-logo-complet-preview" style="margin-top:6px;display:none;">
                   <img id="pc-inst-logo-complet-img" style="max-width:100%;max-height:80px;object-fit:contain;border-radius:4px;border:1px solid #ccc;" />
                 </div>
@@ -17552,10 +17560,9 @@ window.addEventListener('appinstalled', () => {
   /* ─ Logos complets (image unique remplaçant toute la colonne) ─ */
   #page-panneau .pc-moa-logo-complet,
   #page-panneau .pc-inst-logo-complet {
-    max-width: 100%;
-    max-height: calc(160px * var(--pc-scale, 1));
     object-fit: contain;
     display: block;
+    /* largeur et height:auto appliqués dynamiquement par updatePubTextScale */
   }
 
   /* ─ Colonne centrale (vide) ─ */
@@ -18468,6 +18475,7 @@ window.addEventListener('appinstalled', () => {
     "pc-region","pc-prefecture","pc-commune","pc-wilaya","pc-projet","pc-sous",
     "pc-img-fit","pc-img-x","pc-img-y","pc-img-zoom",
     "pc-moa-type","pc-ministere","pc-ministere-ar","pc-institution-nom","pc-institution-nom-ar","pc-institution-nom-tf","pc-budget",
+    "pc-pub-moa-w","pc-pub-inst-complet-w",
     "pc-pub-pos-l","pc-pub-emb","pc-pub-gap","pc-pub-maxw-l",
     "pc-pub-fr","pc-pub-ls-fr",
     "pc-pub-ar","pc-pub-ws-ar",
@@ -19238,6 +19246,8 @@ window.addEventListener('appinstalled', () => {
 
     // ── Sliders de typographie — liste complète ──────────────────────
     const PUB_SLIDERS = [
+      { id: "pc-pub-moa-w",         labelId: "pc-pub-moa-w-v",         unit: " px", def: 380 },
+      { id: "pc-pub-inst-complet-w", labelId: "pc-pub-inst-complet-w-v", unit: " px", def: 280 },
       { id: "pc-pub-emb",      labelId: "pc-pub-emb-v",      unit: " px", def: 130 },
       { id: "pc-pub-gap",      labelId: "pc-pub-gap-v",      unit: " px", def: 8   },
       { id: "pc-pub-maxw-l",   labelId: "pc-pub-maxw-l-v",   unit: " px", def: 220 },
@@ -19359,6 +19369,14 @@ window.addEventListener('appinstalled', () => {
         instNomTfEl.style.letterSpacing = lsInstTf + "px";
         instNomTfEl.style.textAlign     = nomTextAlign;
       }
+
+      // ── Logos complets : appliquer la largeur avec scale ──
+      const moaW        = getSliderVal("pc-pub-moa-w",         380);
+      const instCompletW = getSliderVal("pc-pub-inst-complet-w", 280);
+      const moaLogoEl   = panneau.querySelector(".pc-moa-logo-complet");
+      const instLogoEl  = panneau.querySelector(".pc-inst-logo-complet");
+      if (moaLogoEl)  { moaLogoEl.style.width  = (moaW  * scale) + "px"; moaLogoEl.style.maxWidth  = "100%"; moaLogoEl.style.height = "auto"; }
+      if (instLogoEl) { instLogoEl.style.width  = (instCompletW * scale) + "px"; instLogoEl.style.maxWidth = "100%"; instLogoEl.style.height = "auto"; }
     }
     // Expose à la portée IIFE pour que renderPanneau() puisse l'appeler après chaque rebuild
     _pcPubScale = updatePubTextScale;

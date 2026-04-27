@@ -17311,16 +17311,8 @@ window.addEventListener('appinstalled', () => {
      Chaque slider du formulaire pilote une variable.
      Defaults calibrés pour un panneau 2×3m.                          */
   #page-panneau .pc-entete-public {
-    /* ── Gauche ── */
-    --pc-pub-emb:      130;   /* taille emblème (px) */
-    --pc-pub-fr:        40;   /* "ROYAUME DU MAROC" (px) */
-    --pc-pub-ar:        32;   /* "المملكة المغربية" (px) */
-    --pc-pub-admin:     18;   /* lignes admin/ministère (px) */
-    --pc-pub-gap:        8;   /* espacement entre éléments (px) */
-    /* ── Droite ── */
-    --pc-pub-inst:     140;   /* logo institution (px) */
-    --pc-pub-inst-nom:  22;   /* nom institution (px) */
-
+    /* Les variables --pc-pub-* sont injectées sur .pc-panneau via JS (inline style).
+       Les fallbacks dans chaque var() servent de valeur par défaut si le slider n'a pas encore tourné. */
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     align-items: center;
@@ -17905,9 +17897,6 @@ window.addEventListener('appinstalled', () => {
   function renderPanneau(){
     if (!$("pc-panneau")) return;
 
-    // Appliquer les variables CSS de taille des textes publics avant le rendu
-    if (typeof updatePubTextScale === "function") updatePubTextScale();
-
     const { wM, hM, wPx, hPx } = resolveDimensions();
     const template = $("pc-template").value || "classique";
     const orient   = $("pc-orientation").value || "portrait";
@@ -18060,6 +18049,9 @@ window.addEventListener('appinstalled', () => {
     } else {
       panneau.innerHTML = enteteBlock + imageBlock + titreBlock + authBlock + intvBlock;
     }
+
+    // Appliquer les variables CSS APRÈS que le HTML est en place
+    if (typeof updatePubTextScale === "function") updatePubTextScale();
   }
 
   /* ---------- Impression & export ---------- */

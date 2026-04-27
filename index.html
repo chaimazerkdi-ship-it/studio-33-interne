@@ -2453,17 +2453,44 @@
               <input type="text" id="pc-institution-nom" placeholder="ex: Université Ibn Zohr — Agadir" />
               <label style="margin-top:8px;">Logo de l'institution (côté droit)</label>
               <input type="file" id="pc-institution-logo" accept="image/*" />
-              <div class="pc-row2" style="margin-top:10px;">
-                <div>
-                  <label>Taille texte gauche <span id="pc-pub-txt-l-v" style="color:#3a6ea5;font-weight:700;">55%</span></label>
-                  <input type="range" id="pc-pub-txt-l" min="25" max="100" step="5" value="55" />
+
+              <!-- ── Réglages fins par élément ── -->
+              <div style="margin-top:12px;padding:10px;background:#e8f0f8;border-radius:6px;border:1px solid #b8d0ea;">
+                <div style="font-size:10px;font-weight:700;color:#2a5a8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">⬅ Côté gauche</div>
+                <div class="pc-row2">
+                  <div>
+                    <label>Emblème — taille &nbsp;<span id="pc-pub-emb-v" style="color:#2a5a8a;font-weight:700;">130</span> px</label>
+                    <input type="range" id="pc-pub-emb" min="40" max="300" step="5" value="130" />
+                  </div>
+                  <div>
+                    <label>Espacement — &nbsp;<span id="pc-pub-gap-v" style="color:#2a5a8a;font-weight:700;">8</span> px</label>
+                    <input type="range" id="pc-pub-gap" min="0" max="60" step="2" value="8" />
+                  </div>
                 </div>
                 <div>
-                  <label>Taille texte droite <span id="pc-pub-txt-r-v" style="color:#3a6ea5;font-weight:700;">65%</span></label>
-                  <input type="range" id="pc-pub-txt-r" min="25" max="100" step="5" value="65" />
+                  <label>« ROYAUME DU MAROC » — <span id="pc-pub-fr-v" style="color:#2a5a8a;font-weight:700;">40</span> px</label>
+                  <input type="range" id="pc-pub-fr" min="10" max="120" step="2" value="40" />
+                </div>
+                <div style="margin-top:6px;">
+                  <label>« المملكة المغربية » — <span id="pc-pub-ar-v" style="color:#2a5a8a;font-weight:700;">32</span> px</label>
+                  <input type="range" id="pc-pub-ar" min="10" max="100" step="2" value="32" />
+                </div>
+                <div style="margin-top:6px;">
+                  <label>Ministère / lignes admin — <span id="pc-pub-admin-v" style="color:#2a5a8a;font-weight:700;">18</span> px</label>
+                  <input type="range" id="pc-pub-admin" min="8" max="80" step="1" value="18" />
+                </div>
+
+                <div style="font-size:10px;font-weight:700;color:#2a5a8a;text-transform:uppercase;letter-spacing:.08em;margin-top:12px;margin-bottom:8px;">➡ Côté droit</div>
+                <div>
+                  <label>Logo institution — <span id="pc-pub-inst-v" style="color:#2a5a8a;font-weight:700;">140</span> px</label>
+                  <input type="range" id="pc-pub-inst" min="40" max="350" step="5" value="140" />
+                </div>
+                <div style="margin-top:6px;">
+                  <label>Nom institution — <span id="pc-pub-inst-nom-v" style="color:#2a5a8a;font-weight:700;">22</span> px</label>
+                  <input type="range" id="pc-pub-inst-nom" min="8" max="80" step="1" value="22" />
                 </div>
               </div>
-              <div class="pc-hint" style="margin-top:4px;">Le centre de l'en-tête sera laissé vide. Les logos se redimensionnent proportionnellement au texte.</div>
+              <div class="pc-hint" style="margin-top:4px;">Le centre de l'en-tête reste vide. Tous les réglages sont sauvegardés avec le panneau.</div>
             </div>
             <label>Région</label>
             <select id="pc-region"></select>
@@ -17279,80 +17306,93 @@ window.addEventListener('appinstalled', () => {
   }
   #page-panneau .pc-admin-lines span { display: block; }
 
-  /* ── En-tête PUBLIC : 3 colonnes (emblème | vide | logo institution) ── */
-  /* Variables de contrôle : --pc-pub-txt-l (gauche) et --pc-pub-txt-r (droite)
-     Valeurs entre 0.25 et 1.0  •  Par défaut : 0.55 et 0.65 (bien proportionné en 1/3 colonne) */
+  /* ══ En-tête PUBLIC — variables indépendantes par élément ══
+     Toutes les valeurs sont en px "logiques" multipliés par --pc-scale.
+     Chaque slider du formulaire pilote une variable.
+     Defaults calibrés pour un panneau 2×3m.                          */
   #page-panneau .pc-entete-public {
-    --pc-pub-txt-l: 0.55;
-    --pc-pub-txt-r: 0.65;
+    /* ── Gauche ── */
+    --pc-pub-emb:      130;   /* taille emblème (px) */
+    --pc-pub-fr:        40;   /* "ROYAUME DU MAROC" (px) */
+    --pc-pub-ar:        32;   /* "المملكة المغربية" (px) */
+    --pc-pub-admin:     18;   /* lignes admin/ministère (px) */
+    --pc-pub-gap:        8;   /* espacement entre éléments (px) */
+    /* ── Droite ── */
+    --pc-pub-inst:     140;   /* logo institution (px) */
+    --pc-pub-inst-nom:  22;   /* nom institution (px) */
+
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     align-items: center;
-    padding: calc(24px * var(--pc-scale, 1)) calc(32px * var(--pc-scale, 1));
+    padding: calc(20px * var(--pc-scale, 1)) calc(28px * var(--pc-scale, 1));
     border-bottom: calc(4px * var(--pc-scale, 1)) solid #111;
-    background: #fff;
-    flex: 0 0 auto;
-    min-height: calc(200px * var(--pc-scale, 1));
-    gap: calc(12px * var(--pc-scale, 1));
+    background: #fff; flex: 0 0 auto;
+    min-height: calc(180px * var(--pc-scale, 1));
+    gap: calc(10px * var(--pc-scale, 1));
   }
+
   /* ─ Colonne gauche ─ */
   #page-panneau .pc-pub-left {
     display: flex; flex-direction: column; align-items: center;
-    gap: calc(6px * var(--pc-scale, 1));
+    gap: calc(var(--pc-pub-gap, 8) * 1px * var(--pc-scale, 1));
     text-align: center;
   }
   #page-panneau .pc-pub-left .pc-emb-inline {
-    width:  calc(130px * var(--pc-scale, 1) * var(--pc-pub-txt-l, 0.55) / 0.55);
-    height: calc(130px * var(--pc-scale, 1) * var(--pc-pub-txt-l, 0.55) / 0.55);
+    width:  calc(var(--pc-pub-emb, 130) * 1px * var(--pc-scale, 1));
+    height: calc(var(--pc-pub-emb, 130) * 1px * var(--pc-scale, 1));
+    flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
   }
   #page-panneau .pc-pub-left .pc-emb-inline img,
   #page-panneau .pc-pub-left .pc-emb-inline svg { max-width:100%; max-height:100%; }
   #page-panneau .pc-pub-left .pc-admin { text-align: center; }
-  /* Textes gauche — taille ajustée par --pc-pub-txt-l */
+
+  /* Chaque ligne de texte avec sa propre variable */
   #page-panneau .pc-entete-public .pc-royaume-fr {
-    font-size: calc(72px * var(--pc-scale, 1) * var(--pc-pub-txt-l, 0.55));
-    line-height: 1;
+    font-size: calc(var(--pc-pub-fr, 40) * 1px * var(--pc-scale, 1));
+    font-weight: 800; color: #111; letter-spacing: 1px; line-height: 1;
   }
   #page-panneau .pc-entete-public .pc-royaume-ar {
-    font-size: calc(56px * var(--pc-scale, 1) * var(--pc-pub-txt-l, 0.55));
-    line-height: 1.1;
-    margin-top: calc(4px * var(--pc-scale, 1));
+    font-size: calc(var(--pc-pub-ar, 32) * 1px * var(--pc-scale, 1));
+    font-weight: 800; color: #111; direction: rtl; line-height: 1.1;
+    margin-top: 0;
   }
   #page-panneau .pc-entete-public .pc-admin-lines {
-    margin-top: calc(6px * var(--pc-scale, 1));
-    font-size: calc(28px * var(--pc-scale, 1) * var(--pc-pub-txt-l, 0.55));
-    font-weight: 600; line-height: 1.35;
+    font-size: calc(var(--pc-pub-admin, 18) * 1px * var(--pc-scale, 1));
+    font-weight: 600; color: #333; line-height: 1.4;
+    margin-top: 0;
   }
+  #page-panneau .pc-entete-public .pc-admin-lines span { display: block; }
+
   /* ─ Colonne centrale (vide) ─ */
-  #page-panneau .pc-pub-center { /* vide intentionnellement */ }
+  #page-panneau .pc-pub-center { /* intentionnellement vide */ }
+
   /* ─ Colonne droite ─ */
   #page-panneau .pc-pub-right {
     display: flex; flex-direction: column; align-items: center;
-    gap: calc(8px * var(--pc-scale, 1)); text-align: center;
+    gap: calc(var(--pc-pub-gap, 8) * 1px * var(--pc-scale, 1));
+    text-align: center;
   }
   #page-panneau .pc-pub-right .pc-institution-logo {
-    max-width:  calc(160px * var(--pc-scale, 1) * var(--pc-pub-txt-r, 0.65) / 0.65);
-    max-height: calc(140px * var(--pc-scale, 1) * var(--pc-pub-txt-r, 0.65) / 0.65);
+    max-width:  calc(var(--pc-pub-inst, 140) * 1px * var(--pc-scale, 1));
+    max-height: calc(var(--pc-pub-inst, 140) * 1px * var(--pc-scale, 1));
     width: auto; height: auto; object-fit: contain;
   }
   #page-panneau .pc-pub-right .pc-institution-placeholder {
-    width:  calc(130px * var(--pc-scale, 1) * var(--pc-pub-txt-r, 0.65) / 0.65);
-    height: calc(110px * var(--pc-scale, 1) * var(--pc-pub-txt-r, 0.65) / 0.65);
+    width:  calc(var(--pc-pub-inst, 140) * 1px * var(--pc-scale, 1));
+    height: calc(var(--pc-pub-inst, 140) * 0.85px * var(--pc-scale, 1));
     background: #f0f4f8; border: calc(2px * var(--pc-scale,1)) dashed #bcc;
     display: flex; align-items: center; justify-content: center;
     font-size: calc(20px * var(--pc-scale, 1)); color: #999; border-radius: 4px;
   }
-  /* Texte droite — nom institution — taille ajustée par --pc-pub-txt-r */
   #page-panneau .pc-institution-nom {
-    font-weight: 800;
-    font-size: calc(34px * var(--pc-scale, 1) * var(--pc-pub-txt-r, 0.65));
-    color: #111; text-align: center; line-height: 1.25;
-    max-width: calc(250px * var(--pc-scale, 1));
+    font-size: calc(var(--pc-pub-inst-nom, 22) * 1px * var(--pc-scale, 1));
+    font-weight: 800; color: #111; line-height: 1.25;
+    max-width: calc(240px * var(--pc-scale, 1));
   }
-  /* ─ Paysage : légèrement compacté ─ */
+  /* ─ Paysage ─ */
   #page-panneau .pc-panneau.pc-orient-paysage .pc-entete-public {
-    min-height: calc(150px * var(--pc-scale, 1));
+    min-height: calc(140px * var(--pc-scale, 1));
   }
 
   /* Image projet : rendu via background-image pour compatibilité parfaite html2canvas
@@ -18185,7 +18225,8 @@ window.addEventListener('appinstalled', () => {
     "pc-region","pc-prefecture","pc-commune","pc-wilaya","pc-projet","pc-sous",
     "pc-img-fit","pc-img-x","pc-img-y","pc-img-zoom",
     "pc-moa-type","pc-ministere","pc-institution-nom","pc-budget",
-    "pc-pub-txt-l","pc-pub-txt-r"
+    "pc-pub-emb","pc-pub-fr","pc-pub-ar","pc-pub-admin","pc-pub-gap",
+    "pc-pub-inst","pc-pub-inst-nom"
   ];
   let currentStateRecordId = null; // id of existing panneau_state record for the selected project
 
@@ -18711,20 +18752,29 @@ window.addEventListener('appinstalled', () => {
       el.addEventListener("change", renderPanneau);
     });
 
-    // ── Mise à l'échelle textes entête public (CSS variables) ──
+    // ── Variables CSS individuelles par élément de l'en-tête public ──
+    const PUB_SLIDERS = [
+      { id: "pc-pub-emb",      css: "--pc-pub-emb",      labelId: "pc-pub-emb-v",      unit: " px", def: 130 },
+      { id: "pc-pub-fr",       css: "--pc-pub-fr",        labelId: "pc-pub-fr-v",        unit: " px", def: 40  },
+      { id: "pc-pub-ar",       css: "--pc-pub-ar",        labelId: "pc-pub-ar-v",        unit: " px", def: 32  },
+      { id: "pc-pub-admin",    css: "--pc-pub-admin",     labelId: "pc-pub-admin-v",     unit: " px", def: 18  },
+      { id: "pc-pub-gap",      css: "--pc-pub-gap",       labelId: "pc-pub-gap-v",       unit: " px", def: 8   },
+      { id: "pc-pub-inst",     css: "--pc-pub-inst",      labelId: "pc-pub-inst-v",      unit: " px", def: 140 },
+      { id: "pc-pub-inst-nom", css: "--pc-pub-inst-nom",  labelId: "pc-pub-inst-nom-v",  unit: " px", def: 22  },
+    ];
     function updatePubTextScale() {
       const panneau = $("pc-panneau"); if (!panneau) return;
-      const l = $("pc-pub-txt-l") ? parseFloat($("pc-pub-txt-l").value) / 100 : 0.55;
-      const r = $("pc-pub-txt-r") ? parseFloat($("pc-pub-txt-r").value) / 100 : 0.65;
-      panneau.style.setProperty("--pc-pub-txt-l", l.toFixed(2));
-      panneau.style.setProperty("--pc-pub-txt-r", r.toFixed(2));
-      if ($("pc-pub-txt-l-v")) $("pc-pub-txt-l-v").textContent = Math.round(l * 100) + "%";
-      if ($("pc-pub-txt-r-v")) $("pc-pub-txt-r-v").textContent = Math.round(r * 100) + "%";
+      PUB_SLIDERS.forEach(s => {
+        const el = $(s.id);
+        const val = el ? parseFloat(el.value) : s.def;
+        panneau.style.setProperty(s.css, val);
+        const lbl = $(s.labelId); if (lbl) lbl.textContent = Math.round(val) + s.unit;
+      });
     }
-    // Listeners sur les sliders de taille
-    ["pc-pub-txt-l","pc-pub-txt-r"].forEach(id => {
-      const el = $(id);
-      if (el) el.addEventListener("input", () => { updatePubTextScale(); });
+    // Listeners sur tous les sliders
+    PUB_SLIDERS.forEach(s => {
+      const el = $(s.id);
+      if (el) el.addEventListener("input", updatePubTextScale);
     });
 
     // Afficher/masquer les champs publics selon le type MO

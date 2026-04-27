@@ -18,6 +18,7 @@
 <title>Studio 33 — Espace de Travail</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Tifinagh&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     /* Light theme — Apple Human Interface */
@@ -2459,7 +2460,13 @@
               <select id="pc-institution-select" style="margin-bottom:6px;">
                 <option value="">— Choisir dans la liste —</option>
               </select>
-              <input type="text" id="pc-institution-nom" placeholder="Ou saisir librement le nom de l'institution…" />
+              <input type="text" id="pc-institution-nom" placeholder="Nom en français (ex: Université Ibn Zohr)…" />
+              <input type="text" id="pc-institution-nom-ar" dir="rtl"
+                placeholder="الاسم بالعربية (اختياري)…"
+                style="margin-top:5px;font-family:'Noto Naskh Arabic',serif;text-align:right;" />
+              <input type="text" id="pc-institution-nom-tf"
+                placeholder="ⴰⵙⴰⴳⵡ ⵙ ⵜⵉⴼⵉⵏⴰⵖ (facultatif)…"
+                style="margin-top:5px;font-family:'Noto Sans Tifinagh',sans-serif;" />
 
               <!-- Logo institution -->
               <label style="margin-top:10px;">Logo de l'institution (côté droit)</label>
@@ -2568,7 +2575,7 @@
                 </div>
 
                 <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.55);border-radius:4px;">
-                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">Nom de l'institution</div>
+                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">Nom de l'institution — Français</div>
                   <div class="pc-row2">
                     <div>
                       <label>Taille <span id="pc-pub-inst-nom-v" style="color:#1a4a7a;font-weight:700;">22</span> px</label>
@@ -2577,6 +2584,34 @@
                     <div>
                       <label>Esp. lettres <span id="pc-pub-ls-inst-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
                       <input type="range" id="pc-pub-ls-inst" min="-2" max="20" step="0.5" value="0" />
+                    </div>
+                  </div>
+                </div>
+
+                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.55);border-radius:4px;">
+                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">Nom en arabe — العربية</div>
+                  <div class="pc-row2">
+                    <div>
+                      <label>Taille <span id="pc-pub-inst-nom-ar-v" style="color:#1a4a7a;font-weight:700;">22</span> px</label>
+                      <input type="range" id="pc-pub-inst-nom-ar" min="8" max="80" step="1" value="22" />
+                    </div>
+                    <div>
+                      <label>Esp. mots <span id="pc-pub-ws-inst-ar-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
+                      <input type="range" id="pc-pub-ws-inst-ar" min="-2" max="20" step="0.5" value="0" />
+                    </div>
+                  </div>
+                </div>
+
+                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.55);border-radius:4px;">
+                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">Nom en Tifinagh — ⵜⵉⴼⵉⵏⴰⵖ</div>
+                  <div class="pc-row2">
+                    <div>
+                      <label>Taille <span id="pc-pub-inst-nom-tf-v" style="color:#1a4a7a;font-weight:700;">20</span> px</label>
+                      <input type="range" id="pc-pub-inst-nom-tf" min="8" max="80" step="1" value="20" />
+                    </div>
+                    <div>
+                      <label>Esp. lettres <span id="pc-pub-ls-inst-tf-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
+                      <input type="range" id="pc-pub-ls-inst-tf" min="-2" max="20" step="0.5" value="0" />
                     </div>
                   </div>
                 </div>
@@ -17504,9 +17539,25 @@ window.addEventListener('appinstalled', () => {
     display: flex; align-items: center; justify-content: center;
     font-size: calc(20px * var(--pc-scale, 1)); color: #999; border-radius: 4px;
   }
+  #page-panneau .pc-institution-noms {
+    display: flex; flex-direction: column; gap: calc(3px * var(--pc-scale, 1));
+  }
   #page-panneau .pc-institution-nom {
     font-size: calc(var(--pc-pub-inst-nom, 22) * 1px * var(--pc-scale, 1));
     font-weight: 800; color: #111; line-height: 1.25;
+    max-width: calc(240px * var(--pc-scale, 1));
+  }
+  #page-panneau .pc-institution-nom-ar {
+    font-family: "Noto Naskh Arabic", "Arabic Typesetting", serif;
+    direction: rtl; text-align: right;
+    font-size: calc(var(--pc-pub-inst-nom, 22) * 1px * var(--pc-scale, 1));
+    font-weight: 600; color: #111; line-height: 1.5;
+    max-width: calc(240px * var(--pc-scale, 1));
+  }
+  #page-panneau .pc-institution-nom-tf {
+    font-family: "Noto Sans Tifinagh", "Tifinagh", sans-serif;
+    font-size: calc(var(--pc-pub-inst-nom, 22) * 1px * var(--pc-scale, 1));
+    font-weight: 500; color: #111; line-height: 1.4;
     max-width: calc(240px * var(--pc-scale, 1));
   }
   /* ─ Paysage ─ */
@@ -18123,7 +18174,9 @@ window.addEventListener('appinstalled', () => {
 
     const isPublicMOA = $("pc-moa-type") && $("pc-moa-type").value === "public";
     const ministere     = $("pc-ministere") ? $("pc-ministere").value : "";
-    const institutionNom = $("pc-institution-nom") ? $("pc-institution-nom").value : "";
+    const institutionNom   = $("pc-institution-nom")    ? $("pc-institution-nom").value    : "";
+    const institutionNomAr = $("pc-institution-nom-ar") ? $("pc-institution-nom-ar").value : "";
+    const institutionNomTf = $("pc-institution-nom-tf") ? $("pc-institution-nom-tf").value : "";
     const institutionLogoHtml = logoInstitutionUpload
       ? `<img class="pc-institution-logo" src="${logoInstitutionUpload}" alt="Logo institution" />`
       : `<div class="pc-institution-placeholder">LOGO</div>`;
@@ -18142,7 +18195,11 @@ window.addEventListener('appinstalled', () => {
         <div class="pc-pub-center"></div>
         <div class="pc-pub-right">
           ${institutionLogoHtml}
-          ${institutionNom ? `<div class="pc-institution-nom">${escapeHtml(institutionNom)}</div>` : ""}
+          <div class="pc-institution-noms">
+            ${institutionNom   ? `<div class="pc-institution-nom">${escapeHtml(institutionNom)}</div>`       : ""}
+            ${institutionNomAr ? `<div class="pc-institution-nom-ar">${escapeHtml(institutionNomAr)}</div>` : ""}
+            ${institutionNomTf ? `<div class="pc-institution-nom-tf">${escapeHtml(institutionNomTf)}</div>` : ""}
+          </div>
         </div>
       </div>` : `
       <div class="pc-entete">
@@ -18360,12 +18417,15 @@ window.addEventListener('appinstalled', () => {
     "pc-type","pc-auth-type","pc-auth-num","pc-auth-date","pc-ref",
     "pc-region","pc-prefecture","pc-commune","pc-wilaya","pc-projet","pc-sous",
     "pc-img-fit","pc-img-x","pc-img-y","pc-img-zoom",
-    "pc-moa-type","pc-ministere","pc-institution-nom","pc-budget",
+    "pc-moa-type","pc-ministere","pc-institution-nom","pc-institution-nom-ar","pc-institution-nom-tf","pc-budget",
     "pc-pub-pos-l","pc-pub-emb","pc-pub-gap","pc-pub-maxw-l",
     "pc-pub-fr","pc-pub-ls-fr",
     "pc-pub-ar","pc-pub-ws-ar",
     "pc-pub-admin","pc-pub-ls-admin",
-    "pc-pub-pos-r","pc-pub-inst","pc-pub-maxw-r","pc-pub-inst-nom","pc-pub-ls-inst"
+    "pc-pub-pos-r","pc-pub-inst","pc-pub-maxw-r",
+    "pc-pub-inst-nom","pc-pub-ls-inst",
+    "pc-pub-inst-nom-ar","pc-pub-ws-inst-ar",
+    "pc-pub-inst-nom-tf","pc-pub-ls-inst-tf"
   ];
   let currentStateRecordId = null; // id of existing panneau_state record for the selected project
 
@@ -19020,8 +19080,12 @@ window.addEventListener('appinstalled', () => {
       { id: "pc-pub-ls-admin", labelId: "pc-pub-ls-admin-v", unit: " px", def: 0   },
       { id: "pc-pub-inst",     labelId: "pc-pub-inst-v",     unit: " px", def: 140 },
       { id: "pc-pub-maxw-r",   labelId: "pc-pub-maxw-r-v",   unit: " px", def: 220 },
-      { id: "pc-pub-inst-nom", labelId: "pc-pub-inst-nom-v", unit: " px", def: 22  },
-      { id: "pc-pub-ls-inst",  labelId: "pc-pub-ls-inst-v",  unit: " px", def: 0   },
+      { id: "pc-pub-inst-nom",    labelId: "pc-pub-inst-nom-v",    unit: " px", def: 22  },
+      { id: "pc-pub-ls-inst",     labelId: "pc-pub-ls-inst-v",     unit: " px", def: 0   },
+      { id: "pc-pub-inst-nom-ar", labelId: "pc-pub-inst-nom-ar-v", unit: " px", def: 22  },
+      { id: "pc-pub-ws-inst-ar",  labelId: "pc-pub-ws-inst-ar-v",  unit: " px", def: 0   },
+      { id: "pc-pub-inst-nom-tf", labelId: "pc-pub-inst-nom-tf-v", unit: " px", def: 20  },
+      { id: "pc-pub-ls-inst-tf",  labelId: "pc-pub-ls-inst-tf-v",  unit: " px", def: 0   },
     ];
 
     function getSliderVal(id, def) {
@@ -19053,8 +19117,12 @@ window.addEventListener('appinstalled', () => {
       const maxWL   = getSliderVal("pc-pub-maxw-l",   220);
       const maxWR   = getSliderVal("pc-pub-maxw-r",   220);
       const inst    = getSliderVal("pc-pub-inst",     140);
-      const instNom = getSliderVal("pc-pub-inst-nom", 22);
-      const lsInst  = getSliderVal("pc-pub-ls-inst",  0);
+      const instNom    = getSliderVal("pc-pub-inst-nom",    22);
+      const lsInst     = getSliderVal("pc-pub-ls-inst",     0);
+      const instNomAr  = getSliderVal("pc-pub-inst-nom-ar", 22);
+      const wsInstAr   = getSliderVal("pc-pub-ws-inst-ar",  0);
+      const instNomTf  = getSliderVal("pc-pub-inst-nom-tf", 20);
+      const lsInstTf   = getSliderVal("pc-pub-ls-inst-tf",  0);
       const posL    = $("pc-pub-pos-l") ? $("pc-pub-pos-l").value : "top";
       const posR    = $("pc-pub-pos-r") ? $("pc-pub-pos-r").value : "left";
 
@@ -19067,7 +19135,10 @@ window.addEventListener('appinstalled', () => {
       const pubLeft   = panneau.querySelector(".pc-pub-left");
       const pubRight  = panneau.querySelector(".pc-pub-right");
       const instLogo  = panneau.querySelector(".pc-institution-logo, .pc-institution-placeholder");
-      const instNomEl = panneau.querySelector(".pc-institution-nom");
+      const instNomEl   = panneau.querySelector(".pc-institution-nom");
+      const instNomArEl = panneau.querySelector(".pc-institution-nom-ar");
+      const instNomTfEl = panneau.querySelector(".pc-institution-nom-tf");
+      const nomsWrap    = panneau.querySelector(".pc-institution-noms");
 
       // ── Typographie gauche ──
       if (frEl)  { frEl.style.fontSize = (fr * scale) + "px"; frEl.style.letterSpacing = lsFr + "px"; }
@@ -19098,12 +19169,26 @@ window.addEventListener('appinstalled', () => {
         pubRight.style.gap           = (gap * scale) + "px";
       }
       if (instLogo)  { instLogo.style.maxWidth = (inst * scale) + "px"; instLogo.style.maxHeight = (inst * scale) + "px"; instLogo.style.flexShrink = "0"; }
+      const isRowR = posR === "left" || posR === "right";
+      const nomTextAlign = isRowR ? (posR === "left" ? "left" : "right") : "center";
+      // Wrapper des noms (flex-col) hérite l'alignement de pubRight
+      if (nomsWrap) nomsWrap.style.maxWidth = (maxWR * scale) + "px";
       if (instNomEl) {
-        instNomEl.style.fontSize     = (instNom * scale) + "px";
+        instNomEl.style.fontSize      = (instNom * scale) + "px";
         instNomEl.style.letterSpacing = lsInst + "px";
-        instNomEl.style.maxWidth     = (maxWR * scale) + "px";
-        const isRowR = posR === "left" || posR === "right";
-        instNomEl.style.textAlign    = isRowR ? (posR === "left" ? "left" : "right") : "center";
+        instNomEl.style.textAlign     = nomTextAlign;
+      }
+      if (instNomArEl) {
+        instNomArEl.style.fontSize    = (instNomAr * scale) + "px";
+        instNomArEl.style.wordSpacing = wsInstAr + "px";
+        instNomArEl.style.letterSpacing = "normal";  // inutile en arabe cursif
+        // En arabe on garde toujours text-align:right (sens naturel de l'écriture)
+        instNomArEl.style.textAlign   = "right";
+      }
+      if (instNomTfEl) {
+        instNomTfEl.style.fontSize      = (instNomTf * scale) + "px";
+        instNomTfEl.style.letterSpacing = lsInstTf + "px";
+        instNomTfEl.style.textAlign     = nomTextAlign;
       }
     }
     // Expose à la portée IIFE pour que renderPanneau() puisse l'appeler après chaque rebuild
@@ -19143,7 +19228,7 @@ window.addEventListener('appinstalled', () => {
     }
 
     // Champs texte publics → re-render en live
-    ["pc-ministere","pc-institution-nom","pc-budget"].forEach(id => {
+    ["pc-ministere","pc-institution-nom","pc-institution-nom-ar","pc-institution-nom-tf","pc-budget"].forEach(id => {
       const el = $(id); if (el) el.addEventListener("input", renderPanneau);
     });
 

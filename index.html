@@ -2467,22 +2467,38 @@
 
               <!-- ── Réglages typographiques par élément ── -->
               <div style="margin-top:14px;padding:10px;background:#dce8f5;border-radius:6px;border:1px solid #a8c8e8;">
+
+                <!-- ═══ CÔTÉ GAUCHE ═══ -->
                 <div style="font-size:10px;font-weight:700;color:#1a4a7a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">⬅ Réglages côté gauche</div>
 
-                <!-- Emblème + espacement -->
+                <!-- Position emblème + taille + espacement -->
                 <div class="pc-row2">
                   <div>
-                    <label>Emblème — taille <span id="pc-pub-emb-v" style="color:#1a4a7a;font-weight:700;">130</span> px</label>
-                    <input type="range" id="pc-pub-emb" min="40" max="300" step="5" value="130" />
+                    <label>Position emblème</label>
+                    <select id="pc-pub-pos-l">
+                      <option value="top">Au-dessus du texte</option>
+                      <option value="left">À gauche du texte</option>
+                      <option value="right">À droite du texte</option>
+                    </select>
                   </div>
                   <div>
-                    <label>Espacement éléments <span id="pc-pub-gap-v" style="color:#1a4a7a;font-weight:700;">8</span> px</label>
-                    <input type="range" id="pc-pub-gap" min="0" max="80" step="2" value="8" />
+                    <label>Taille emblème <span id="pc-pub-emb-v" style="color:#1a4a7a;font-weight:700;">130</span> px</label>
+                    <input type="range" id="pc-pub-emb" min="40" max="300" step="5" value="130" />
                   </div>
+                </div>
+                <div style="margin-top:6px;">
+                  <label>Espacement entre emblème et texte <span id="pc-pub-gap-v" style="color:#1a4a7a;font-weight:700;">8</span> px</label>
+                  <input type="range" id="pc-pub-gap" min="0" max="100" step="2" value="8" />
+                </div>
+
+                <!-- Largeur max texte gauche -->
+                <div style="margin-top:6px;">
+                  <label>Largeur max du texte gauche <span id="pc-pub-maxw-l-v" style="color:#1a4a7a;font-weight:700;">220</span> px <span style="color:#888;font-weight:400;">(coupe les longs titres)</span></label>
+                  <input type="range" id="pc-pub-maxw-l" min="60" max="500" step="10" value="220" />
                 </div>
 
                 <!-- ROYAUME DU MAROC -->
-                <div style="margin-top:8px;padding:7px;background:rgba(255,255,255,.5);border-radius:4px;">
+                <div style="margin-top:8px;padding:7px;background:rgba(255,255,255,.55);border-radius:4px;">
                   <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">ROYAUME DU MAROC</div>
                   <div class="pc-row2">
                     <div>
@@ -2490,29 +2506,30 @@
                       <input type="range" id="pc-pub-fr" min="10" max="140" step="2" value="40" />
                     </div>
                     <div>
-                      <label>Espacement lettres <span id="pc-pub-ls-fr-v" style="color:#1a4a7a;font-weight:700;">1</span> px</label>
+                      <label>Esp. lettres <span id="pc-pub-ls-fr-v" style="color:#1a4a7a;font-weight:700;">1</span> px</label>
                       <input type="range" id="pc-pub-ls-fr" min="-2" max="20" step="0.5" value="1" />
                     </div>
                   </div>
                 </div>
 
-                <!-- المملكة المغربية -->
-                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.5);border-radius:4px;">
-                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">المملكة المغربية</div>
+                <!-- المملكة المغربية — word-spacing (letter-spacing non applicable en arabe) -->
+                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.55);border-radius:4px;">
+                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:2px;">المملكة المغربية</div>
+                  <div style="font-size:9px;color:#888;margin-bottom:4px;font-style:italic;">Note : l'arabe est un script cursif — espacement entre mots uniquement</div>
                   <div class="pc-row2">
                     <div>
                       <label>Taille <span id="pc-pub-ar-v" style="color:#1a4a7a;font-weight:700;">32</span> px</label>
                       <input type="range" id="pc-pub-ar" min="10" max="120" step="2" value="32" />
                     </div>
                     <div>
-                      <label>Espacement lettres <span id="pc-pub-ls-ar-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
-                      <input type="range" id="pc-pub-ls-ar" min="-2" max="20" step="0.5" value="0" />
+                      <label>Esp. mots <span id="pc-pub-ws-ar-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
+                      <input type="range" id="pc-pub-ws-ar" min="-5" max="40" step="1" value="0" />
                     </div>
                   </div>
                 </div>
 
-                <!-- Lignes admin -->
-                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.5);border-radius:4px;">
+                <!-- Lignes admin / ministère -->
+                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.55);border-radius:4px;">
                   <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">Ministère / Région / Commune…</div>
                   <div class="pc-row2">
                     <div>
@@ -2520,18 +2537,37 @@
                       <input type="range" id="pc-pub-admin" min="6" max="80" step="1" value="18" />
                     </div>
                     <div>
-                      <label>Espacement lettres <span id="pc-pub-ls-admin-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
+                      <label>Esp. lettres <span id="pc-pub-ls-admin-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
                       <input type="range" id="pc-pub-ls-admin" min="-2" max="20" step="0.5" value="0" />
                     </div>
                   </div>
                 </div>
 
-                <div style="font-size:10px;font-weight:700;color:#1a4a7a;text-transform:uppercase;letter-spacing:.08em;margin-top:12px;margin-bottom:8px;">➡ Réglages côté droit</div>
-                <div>
-                  <label>Logo institution — <span id="pc-pub-inst-v" style="color:#1a4a7a;font-weight:700;">140</span> px</label>
-                  <input type="range" id="pc-pub-inst" min="40" max="350" step="5" value="140" />
+                <!-- ═══ CÔTÉ DROIT ═══ -->
+                <div style="font-size:10px;font-weight:700;color:#1a4a7a;text-transform:uppercase;letter-spacing:.08em;margin-top:14px;margin-bottom:8px;">➡ Réglages côté droit</div>
+
+                <div class="pc-row2">
+                  <div>
+                    <label>Position logo institution</label>
+                    <select id="pc-pub-pos-r">
+                      <option value="top">Au-dessus du texte</option>
+                      <option value="left" selected>À gauche du texte</option>
+                      <option value="right">À droite du texte</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>Taille logo <span id="pc-pub-inst-v" style="color:#1a4a7a;font-weight:700;">140</span> px</label>
+                    <input type="range" id="pc-pub-inst" min="40" max="350" step="5" value="140" />
+                  </div>
                 </div>
-                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.5);border-radius:4px;">
+
+                <!-- Largeur max texte droit -->
+                <div style="margin-top:6px;">
+                  <label>Largeur max du texte droit <span id="pc-pub-maxw-r-v" style="color:#1a4a7a;font-weight:700;">220</span> px</label>
+                  <input type="range" id="pc-pub-maxw-r" min="60" max="500" step="10" value="220" />
+                </div>
+
+                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.55);border-radius:4px;">
                   <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">Nom de l'institution</div>
                   <div class="pc-row2">
                     <div>
@@ -2539,7 +2575,7 @@
                       <input type="range" id="pc-pub-inst-nom" min="8" max="80" step="1" value="22" />
                     </div>
                     <div>
-                      <label>Espacement lettres <span id="pc-pub-ls-inst-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
+                      <label>Esp. lettres <span id="pc-pub-ls-inst-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
                       <input type="range" id="pc-pub-ls-inst" min="-2" max="20" step="0.5" value="0" />
                     </div>
                   </div>
@@ -2695,16 +2731,26 @@
         </div>
 
         <!-- APERÇU -->
-        <div class="pc-panel">
+        <div class="pc-panel" id="pc-preview-panel">
           <div class="pc-preview-toolbar">
             <div>
               <label style="font-size:12px;color:var(--text-dim);">Échelle :</label>
               <select id="pc-zoom">
+                <option value="auto" selected>Auto (adapter)</option>
                 <option value="0.1">10 %</option>
                 <option value="0.15">15 %</option>
-                <option value="0.2" selected>20 %</option>
+                <option value="0.2">20 %</option>
                 <option value="0.25">25 %</option>
                 <option value="0.3">30 %</option>
+                <option value="0.35">35 %</option>
+                <option value="0.4">40 %</option>
+                <option value="0.45">45 %</option>
+                <option value="0.5">50 %</option>
+                <option value="0.6">60 %</option>
+                <option value="0.7">70 %</option>
+                <option value="0.8">80 %</option>
+                <option value="0.9">90 %</option>
+                <option value="1.0">100 %</option>
               </select>
             </div>
             <span class="pc-chip" id="pc-dim-chip">2,00 m × 3,00 m</span>
@@ -17232,14 +17278,39 @@ window.addEventListener('appinstalled', () => {
     display: grid;
     grid-template-columns: 440px 1fr;
     gap: 20px;
+    align-items: start; /* indispensable pour que sticky fonctionne */
   }
-  @media (max-width: 1200px) { #page-panneau .pc-layout { grid-template-columns: 1fr; } }
+  @media (max-width: 1200px) {
+    #page-panneau .pc-layout { grid-template-columns: 1fr; }
+    #page-panneau #pc-preview-panel { position: static; max-height: none; }
+  }
 
   #page-panneau .pc-panel {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 18px;
+  }
+
+  /* ── Aperçu sticky : reste visible pendant le scroll du formulaire ── */
+  #page-panneau #pc-preview-panel {
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Wrapper de l'aperçu : centré, fond quadrillé pour bien voir les bords */
+  #page-panneau #pc-preview-host {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    background: repeating-conic-gradient(#e8eaed 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-top: 10px;
+    overflow: auto;
   }
   #page-panneau .pc-fieldset {
     border: 1px solid var(--border);
@@ -17970,7 +18041,19 @@ window.addEventListener('appinstalled', () => {
     const scale = Math.min(wM, hM) / 2;
     panneau.style.setProperty("--pc-scale", scale.toFixed(3));
 
-    const zoom = parseFloat($("pc-zoom").value) || 0.2;
+    // Zoom : "auto" = s'adapte à la largeur du panneau d'aperçu
+    let zoom;
+    const zoomVal = $("pc-zoom").value;
+    if (zoomVal === "auto") {
+      const host = document.getElementById("pc-preview-host");
+      const availW = host ? (host.clientWidth - 24) : 600; // 24 = padding×2
+      zoom = Math.min(availW / wPx, 1.0);
+      zoom = Math.max(zoom, 0.05); // minimum 5%
+    } else {
+      zoom = parseFloat(zoomVal) || 0.2;
+    }
+    // Afficher le % effectif dans le chip
+    $("pc-dim-chip").textContent = `${fmtM(wM)} × ${fmtM(hM)} — ${orient} — ${Math.round(zoom*100)}%`;
     panneau.style.transform = `scale(${zoom})`;
     const wrap = $("pc-panneau-wrapper");
     wrap.style.width  = (wPx * zoom) + "px";
@@ -18272,10 +18355,11 @@ window.addEventListener('appinstalled', () => {
     "pc-region","pc-prefecture","pc-commune","pc-wilaya","pc-projet","pc-sous",
     "pc-img-fit","pc-img-x","pc-img-y","pc-img-zoom",
     "pc-moa-type","pc-ministere","pc-institution-nom","pc-budget",
-    "pc-pub-emb","pc-pub-gap",
-    "pc-pub-fr","pc-pub-ls-fr","pc-pub-ar","pc-pub-ls-ar",
+    "pc-pub-pos-l","pc-pub-emb","pc-pub-gap","pc-pub-maxw-l",
+    "pc-pub-fr","pc-pub-ls-fr",
+    "pc-pub-ar","pc-pub-ws-ar",
     "pc-pub-admin","pc-pub-ls-admin",
-    "pc-pub-inst","pc-pub-inst-nom","pc-pub-ls-inst"
+    "pc-pub-pos-r","pc-pub-inst","pc-pub-maxw-r","pc-pub-inst-nom","pc-pub-ls-inst"
   ];
   let currentStateRecordId = null; // id of existing panneau_state record for the selected project
 
@@ -18919,17 +19003,19 @@ window.addEventListener('appinstalled', () => {
 
     // ── Sliders de typographie — liste complète ──────────────────────
     const PUB_SLIDERS = [
-      { id: "pc-pub-emb",       labelId: "pc-pub-emb-v",       unit: " px", def: 130 },
-      { id: "pc-pub-gap",       labelId: "pc-pub-gap-v",       unit: " px", def: 8   },
-      { id: "pc-pub-fr",        labelId: "pc-pub-fr-v",        unit: " px", def: 40  },
-      { id: "pc-pub-ls-fr",     labelId: "pc-pub-ls-fr-v",     unit: " px", def: 1   },
-      { id: "pc-pub-ar",        labelId: "pc-pub-ar-v",        unit: " px", def: 32  },
-      { id: "pc-pub-ls-ar",     labelId: "pc-pub-ls-ar-v",     unit: " px", def: 0   },
-      { id: "pc-pub-admin",     labelId: "pc-pub-admin-v",     unit: " px", def: 18  },
-      { id: "pc-pub-ls-admin",  labelId: "pc-pub-ls-admin-v",  unit: " px", def: 0   },
-      { id: "pc-pub-inst",      labelId: "pc-pub-inst-v",      unit: " px", def: 140 },
-      { id: "pc-pub-inst-nom",  labelId: "pc-pub-inst-nom-v",  unit: " px", def: 22  },
-      { id: "pc-pub-ls-inst",   labelId: "pc-pub-ls-inst-v",   unit: " px", def: 0   },
+      { id: "pc-pub-emb",      labelId: "pc-pub-emb-v",      unit: " px", def: 130 },
+      { id: "pc-pub-gap",      labelId: "pc-pub-gap-v",      unit: " px", def: 8   },
+      { id: "pc-pub-maxw-l",   labelId: "pc-pub-maxw-l-v",   unit: " px", def: 220 },
+      { id: "pc-pub-fr",       labelId: "pc-pub-fr-v",       unit: " px", def: 40  },
+      { id: "pc-pub-ls-fr",    labelId: "pc-pub-ls-fr-v",    unit: " px", def: 1   },
+      { id: "pc-pub-ar",       labelId: "pc-pub-ar-v",       unit: " px", def: 32  },
+      { id: "pc-pub-ws-ar",    labelId: "pc-pub-ws-ar-v",    unit: " px", def: 0   },
+      { id: "pc-pub-admin",    labelId: "pc-pub-admin-v",    unit: " px", def: 18  },
+      { id: "pc-pub-ls-admin", labelId: "pc-pub-ls-admin-v", unit: " px", def: 0   },
+      { id: "pc-pub-inst",     labelId: "pc-pub-inst-v",     unit: " px", def: 140 },
+      { id: "pc-pub-maxw-r",   labelId: "pc-pub-maxw-r-v",   unit: " px", def: 220 },
+      { id: "pc-pub-inst-nom", labelId: "pc-pub-inst-nom-v", unit: " px", def: 22  },
+      { id: "pc-pub-ls-inst",  labelId: "pc-pub-ls-inst-v",  unit: " px", def: 0   },
     ];
 
     function getSliderVal(id, def) {
@@ -18937,7 +19023,6 @@ window.addEventListener('appinstalled', () => {
     }
 
     // ── updatePubTextScale : applique DIRECTEMENT le style sur les éléments DOM ──
-    // (plus fiable que les CSS custom properties pour font-size en temps réel)
     function updatePubTextScale() {
       const panneau = $("pc-panneau"); if (!panneau) return;
 
@@ -18949,44 +19034,77 @@ window.addEventListener('appinstalled', () => {
 
       // Récupérer --pc-scale depuis le style inline du panneau
       const scaleStr = panneau.style.getPropertyValue("--pc-scale");
-      const scale = scaleStr ? parseFloat(scaleStr) : 1;
+      const scale    = scaleStr ? parseFloat(scaleStr) : 1;
 
       const fr      = getSliderVal("pc-pub-fr",       40);
       const lsFr    = getSliderVal("pc-pub-ls-fr",    1);
       const ar      = getSliderVal("pc-pub-ar",       32);
-      const lsAr    = getSliderVal("pc-pub-ls-ar",    0);
+      const wsAr    = getSliderVal("pc-pub-ws-ar",    0);  // word-spacing arabe
       const admin   = getSliderVal("pc-pub-admin",    18);
       const lsAdmin = getSliderVal("pc-pub-ls-admin", 0);
       const emb     = getSliderVal("pc-pub-emb",      130);
       const gap     = getSliderVal("pc-pub-gap",      8);
+      const maxWL   = getSliderVal("pc-pub-maxw-l",   220);
+      const maxWR   = getSliderVal("pc-pub-maxw-r",   220);
       const inst    = getSliderVal("pc-pub-inst",     140);
       const instNom = getSliderVal("pc-pub-inst-nom", 22);
       const lsInst  = getSliderVal("pc-pub-ls-inst",  0);
+      const posL    = $("pc-pub-pos-l") ? $("pc-pub-pos-l").value : "top";
+      const posR    = $("pc-pub-pos-r") ? $("pc-pub-pos-r").value : "left";
 
-      // Cibler les éléments DANS le panneau public uniquement
-      const frEl     = panneau.querySelector(".pc-entete-public .pc-royaume-fr");
-      const arEl     = panneau.querySelector(".pc-entete-public .pc-royaume-ar");
-      const adminEls = panneau.querySelectorAll(".pc-entete-public .pc-admin-lines");
-      const embEl    = panneau.querySelector(".pc-pub-left .pc-emb-inline");
-      const pubLeft  = panneau.querySelector(".pc-pub-left");
-      const pubRight = panneau.querySelector(".pc-pub-right");
-      const instLogo = panneau.querySelector(".pc-institution-logo, .pc-institution-placeholder");
+      // Sélectionner les éléments du panneau public
+      const frEl      = panneau.querySelector(".pc-entete-public .pc-royaume-fr");
+      const arEl      = panneau.querySelector(".pc-entete-public .pc-royaume-ar");
+      const adminEls  = panneau.querySelectorAll(".pc-entete-public .pc-admin-lines");
+      const adminDiv  = panneau.querySelector(".pc-entete-public .pc-pub-left .pc-admin");
+      const embEl     = panneau.querySelector(".pc-pub-left .pc-emb-inline");
+      const pubLeft   = panneau.querySelector(".pc-pub-left");
+      const pubRight  = panneau.querySelector(".pc-pub-right");
+      const instLogo  = panneau.querySelector(".pc-institution-logo, .pc-institution-placeholder");
       const instNomEl = panneau.querySelector(".pc-institution-nom");
 
-      if (frEl)  { frEl.style.fontSize  = (fr  * scale) + "px"; frEl.style.letterSpacing  = lsFr    + "px"; }
-      if (arEl)  { arEl.style.fontSize  = (ar  * scale) + "px"; arEl.style.letterSpacing  = lsAr    + "px"; }
+      // ── Typographie gauche ──
+      if (frEl)  { frEl.style.fontSize = (fr * scale) + "px"; frEl.style.letterSpacing = lsFr + "px"; }
+      if (arEl)  {
+        arEl.style.fontSize    = (ar * scale) + "px";
+        arEl.style.wordSpacing = wsAr + "px";          // word-spacing (fonctionne en arabe)
+        arEl.style.letterSpacing = "normal";            // reset letter-spacing (inutile en arabe cursif)
+      }
       adminEls.forEach(el => { el.style.fontSize = (admin * scale) + "px"; el.style.letterSpacing = lsAdmin + "px"; });
-      if (embEl)    { embEl.style.width  = (emb  * scale) + "px"; embEl.style.height = (emb  * scale) + "px"; }
-      if (pubLeft)  pubLeft.style.gap   = (gap  * scale) + "px";
-      if (pubRight) pubRight.style.gap  = (gap  * scale) + "px";
-      if (instLogo) { instLogo.style.maxWidth = (inst * scale) + "px"; instLogo.style.maxHeight = (inst * scale) + "px"; }
-      if (instNomEl){ instNomEl.style.fontSize = (instNom * scale) + "px"; instNomEl.style.letterSpacing = lsInst + "px"; }
+
+      // ── Largeur max texte gauche ──
+      if (adminDiv) adminDiv.style.maxWidth = (maxWL * scale) + "px";
+
+      // ── Position emblème gauche ──
+      if (pubLeft) {
+        const isRow = posL === "left" || posL === "right";
+        pubLeft.style.flexDirection  = posL === "right" ? "row-reverse" : (posL === "left" ? "row" : "column");
+        pubLeft.style.alignItems     = "center";
+        pubLeft.style.gap            = (gap * scale) + "px";
+        if (adminDiv) adminDiv.style.textAlign = isRow ? (posL === "left" ? "left" : "right") : "center";
+      }
+      if (embEl) { embEl.style.width = (emb * scale) + "px"; embEl.style.height = (emb * scale) + "px"; embEl.style.flexShrink = "0"; }
+
+      // ── Position logo institution droite ──
+      if (pubRight) {
+        pubRight.style.flexDirection = posR === "right" ? "row-reverse" : (posR === "left" ? "row" : "column");
+        pubRight.style.alignItems    = "center";
+        pubRight.style.gap           = (gap * scale) + "px";
+      }
+      if (instLogo)  { instLogo.style.maxWidth = (inst * scale) + "px"; instLogo.style.maxHeight = (inst * scale) + "px"; instLogo.style.flexShrink = "0"; }
+      if (instNomEl) {
+        instNomEl.style.fontSize     = (instNom * scale) + "px";
+        instNomEl.style.letterSpacing = lsInst + "px";
+        instNomEl.style.maxWidth     = (maxWR * scale) + "px";
+        const isRowR = posR === "left" || posR === "right";
+        instNomEl.style.textAlign    = isRowR ? (posR === "left" ? "left" : "right") : "center";
+      }
     }
 
-    // Listeners sur tous les sliders
-    PUB_SLIDERS.forEach(s => {
-      const el = $(s.id);
-      if (el) el.addEventListener("input", updatePubTextScale);
+    // Listeners sur tous les sliders + selects de position
+    PUB_SLIDERS.forEach(s => { const el = $(s.id); if (el) el.addEventListener("input", updatePubTextScale); });
+    ["pc-pub-pos-l", "pc-pub-pos-r"].forEach(id => {
+      const el = $(id); if (el) el.addEventListener("change", updatePubTextScale);
     });
 
     // Afficher/masquer les champs publics selon le type MO
@@ -19070,6 +19188,11 @@ window.addEventListener('appinstalled', () => {
     intervenants = INTERVENANTS_DEFAUT.map(x => ({ ...x }));
     renderIntervenantsForm();
     renderPanneau();
+
+    // Recalculer le zoom "auto" si la fenêtre change de taille
+    window.addEventListener("resize", () => {
+      if ($("pc-zoom") && $("pc-zoom").value === "auto") renderPanneau();
+    });
 
     initialized = true;
   };

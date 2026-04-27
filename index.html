@@ -17376,6 +17376,7 @@ window.addEventListener('appinstalled', () => {
     margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
   }
   #page-panneau #pc-preview-host {
+    display: block; /* remplace flex → margin:auto sur wrapper centre ; overflow scroll vers la droite fonctionne */
     overflow: auto; background: var(--surface2); border-radius: 8px;
     padding: 12px; max-height: calc(100vh - 260px);
   }
@@ -17690,6 +17691,10 @@ window.addEventListener('appinstalled', () => {
 <script>
 (function(){
   "use strict";
+
+  // Référence vers updatePubTextScale (définie dans initPanneauChantier).
+  // Initialisée à null ici et assignée dès que initPanneauChantier est appelé.
+  let _pcPubScale = null;
 
   const REGIONS = [
     "Tanger-Tétouan-Al Hoceïma","L'Oriental","Fès-Meknès","Rabat-Salé-Kénitra",
@@ -18188,8 +18193,9 @@ window.addEventListener('appinstalled', () => {
       panneau.innerHTML = enteteBlock + imageBlock + titreBlock + authBlock + intvBlock;
     }
 
-    // Appliquer les variables CSS APRÈS que le HTML est en place
-    if (typeof updatePubTextScale === "function") updatePubTextScale();
+    // Appliquer les styles pub APRÈS que le HTML est en place
+    // (_pcPubScale est assigné dans initPanneauChantier ; null avant init)
+    if (_pcPubScale) _pcPubScale();
   }
 
   /* ---------- Impression & export ---------- */
@@ -18389,7 +18395,7 @@ window.addEventListener('appinstalled', () => {
     logoEmblemeUpload     = state.logoEmblemeUpload || null;
     logoInstitutionUpload = state.logoInstitutionUpload || null;
     // Afficher/masquer les champs publics + sync sliders selon le type restauré
-    if (typeof updatePubTextScale === "function") updatePubTextScale();
+    if (_pcPubScale) _pcPubScale();
     if (typeof toggleMoaPublic === "function") toggleMoaPublic();
     // sync slider labels
     const sl = $("pc-img-x-v"); if (sl) sl.textContent = $("pc-img-x").value + "%";
@@ -19100,6 +19106,8 @@ window.addEventListener('appinstalled', () => {
         instNomEl.style.textAlign    = isRowR ? (posR === "left" ? "left" : "right") : "center";
       }
     }
+    // Expose à la portée IIFE pour que renderPanneau() puisse l'appeler après chaque rebuild
+    _pcPubScale = updatePubTextScale;
 
     // Listeners sur tous les sliders + selects de position
     PUB_SLIDERS.forEach(s => { const el = $(s.id); if (el) el.addEventListener("input", updatePubTextScale); });

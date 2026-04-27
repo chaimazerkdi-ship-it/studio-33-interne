@@ -2446,51 +2446,106 @@
             </div>
             <!-- Champs visibles uniquement pour MO public -->
             <div id="pc-public-fields" style="display:none; padding:10px; background:#f0f6ff; border:1px solid #c0d8f0; border-radius:6px; margin-bottom:10px;">
-              <div style="font-size:11px;font-weight:700;color:#3a6ea5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">⚙ Configuration panneau public</div>
-              <label>Ministère / Tutelle (affiché sous l'emblème gauche)</label>
-              <input type="text" id="pc-ministere" placeholder="ex: Ministère de l'Enseignement Supérieur" />
-              <label style="margin-top:8px;">Nom de l'institution (côté droit)</label>
-              <input type="text" id="pc-institution-nom" placeholder="ex: Université Ibn Zohr — Agadir" />
-              <label style="margin-top:8px;">Logo de l'institution (côté droit)</label>
+              <div style="font-size:11px;font-weight:700;color:#3a6ea5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">⚙ Configuration panneau public</div>
+
+              <!-- Ministère (gauche) avec datalist -->
+              <label>Ministère / Tutelle <span style="font-weight:400;color:#888;">(côté gauche, sous l'emblème)</span></label>
+              <input type="text" id="pc-ministere" list="pc-ministere-list" autocomplete="off"
+                placeholder="Tapez ou choisissez un ministère…" />
+              <datalist id="pc-ministere-list"></datalist>
+
+              <!-- Institution (droite) avec select + saisie libre -->
+              <label style="margin-top:10px;">Institution publique <span style="font-weight:400;color:#888;">(côté droit)</span></label>
+              <select id="pc-institution-select" style="margin-bottom:6px;">
+                <option value="">— Choisir dans la liste —</option>
+              </select>
+              <input type="text" id="pc-institution-nom" placeholder="Ou saisir librement le nom de l'institution…" />
+
+              <!-- Logo institution -->
+              <label style="margin-top:10px;">Logo de l'institution (côté droit)</label>
               <input type="file" id="pc-institution-logo" accept="image/*" />
 
-              <!-- ── Réglages fins par élément ── -->
-              <div style="margin-top:12px;padding:10px;background:#e8f0f8;border-radius:6px;border:1px solid #b8d0ea;">
-                <div style="font-size:10px;font-weight:700;color:#2a5a8a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">⬅ Côté gauche</div>
+              <!-- ── Réglages typographiques par élément ── -->
+              <div style="margin-top:14px;padding:10px;background:#dce8f5;border-radius:6px;border:1px solid #a8c8e8;">
+                <div style="font-size:10px;font-weight:700;color:#1a4a7a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">⬅ Réglages côté gauche</div>
+
+                <!-- Emblème + espacement -->
                 <div class="pc-row2">
                   <div>
-                    <label>Emblème — taille &nbsp;<span id="pc-pub-emb-v" style="color:#2a5a8a;font-weight:700;">130</span> px</label>
+                    <label>Emblème — taille <span id="pc-pub-emb-v" style="color:#1a4a7a;font-weight:700;">130</span> px</label>
                     <input type="range" id="pc-pub-emb" min="40" max="300" step="5" value="130" />
                   </div>
                   <div>
-                    <label>Espacement — &nbsp;<span id="pc-pub-gap-v" style="color:#2a5a8a;font-weight:700;">8</span> px</label>
-                    <input type="range" id="pc-pub-gap" min="0" max="60" step="2" value="8" />
+                    <label>Espacement éléments <span id="pc-pub-gap-v" style="color:#1a4a7a;font-weight:700;">8</span> px</label>
+                    <input type="range" id="pc-pub-gap" min="0" max="80" step="2" value="8" />
                   </div>
                 </div>
-                <div>
-                  <label>« ROYAUME DU MAROC » — <span id="pc-pub-fr-v" style="color:#2a5a8a;font-weight:700;">40</span> px</label>
-                  <input type="range" id="pc-pub-fr" min="10" max="120" step="2" value="40" />
-                </div>
-                <div style="margin-top:6px;">
-                  <label>« المملكة المغربية » — <span id="pc-pub-ar-v" style="color:#2a5a8a;font-weight:700;">32</span> px</label>
-                  <input type="range" id="pc-pub-ar" min="10" max="100" step="2" value="32" />
-                </div>
-                <div style="margin-top:6px;">
-                  <label>Ministère / lignes admin — <span id="pc-pub-admin-v" style="color:#2a5a8a;font-weight:700;">18</span> px</label>
-                  <input type="range" id="pc-pub-admin" min="8" max="80" step="1" value="18" />
+
+                <!-- ROYAUME DU MAROC -->
+                <div style="margin-top:8px;padding:7px;background:rgba(255,255,255,.5);border-radius:4px;">
+                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">ROYAUME DU MAROC</div>
+                  <div class="pc-row2">
+                    <div>
+                      <label>Taille <span id="pc-pub-fr-v" style="color:#1a4a7a;font-weight:700;">40</span> px</label>
+                      <input type="range" id="pc-pub-fr" min="10" max="140" step="2" value="40" />
+                    </div>
+                    <div>
+                      <label>Espacement lettres <span id="pc-pub-ls-fr-v" style="color:#1a4a7a;font-weight:700;">1</span> px</label>
+                      <input type="range" id="pc-pub-ls-fr" min="-2" max="20" step="0.5" value="1" />
+                    </div>
+                  </div>
                 </div>
 
-                <div style="font-size:10px;font-weight:700;color:#2a5a8a;text-transform:uppercase;letter-spacing:.08em;margin-top:12px;margin-bottom:8px;">➡ Côté droit</div>
+                <!-- المملكة المغربية -->
+                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.5);border-radius:4px;">
+                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">المملكة المغربية</div>
+                  <div class="pc-row2">
+                    <div>
+                      <label>Taille <span id="pc-pub-ar-v" style="color:#1a4a7a;font-weight:700;">32</span> px</label>
+                      <input type="range" id="pc-pub-ar" min="10" max="120" step="2" value="32" />
+                    </div>
+                    <div>
+                      <label>Espacement lettres <span id="pc-pub-ls-ar-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
+                      <input type="range" id="pc-pub-ls-ar" min="-2" max="20" step="0.5" value="0" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Lignes admin -->
+                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.5);border-radius:4px;">
+                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">Ministère / Région / Commune…</div>
+                  <div class="pc-row2">
+                    <div>
+                      <label>Taille <span id="pc-pub-admin-v" style="color:#1a4a7a;font-weight:700;">18</span> px</label>
+                      <input type="range" id="pc-pub-admin" min="6" max="80" step="1" value="18" />
+                    </div>
+                    <div>
+                      <label>Espacement lettres <span id="pc-pub-ls-admin-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
+                      <input type="range" id="pc-pub-ls-admin" min="-2" max="20" step="0.5" value="0" />
+                    </div>
+                  </div>
+                </div>
+
+                <div style="font-size:10px;font-weight:700;color:#1a4a7a;text-transform:uppercase;letter-spacing:.08em;margin-top:12px;margin-bottom:8px;">➡ Réglages côté droit</div>
                 <div>
-                  <label>Logo institution — <span id="pc-pub-inst-v" style="color:#2a5a8a;font-weight:700;">140</span> px</label>
+                  <label>Logo institution — <span id="pc-pub-inst-v" style="color:#1a4a7a;font-weight:700;">140</span> px</label>
                   <input type="range" id="pc-pub-inst" min="40" max="350" step="5" value="140" />
                 </div>
-                <div style="margin-top:6px;">
-                  <label>Nom institution — <span id="pc-pub-inst-nom-v" style="color:#2a5a8a;font-weight:700;">22</span> px</label>
-                  <input type="range" id="pc-pub-inst-nom" min="8" max="80" step="1" value="22" />
+                <div style="margin-top:6px;padding:7px;background:rgba(255,255,255,.5);border-radius:4px;">
+                  <div style="font-size:10px;color:#444;font-weight:600;margin-bottom:4px;">Nom de l'institution</div>
+                  <div class="pc-row2">
+                    <div>
+                      <label>Taille <span id="pc-pub-inst-nom-v" style="color:#1a4a7a;font-weight:700;">22</span> px</label>
+                      <input type="range" id="pc-pub-inst-nom" min="8" max="80" step="1" value="22" />
+                    </div>
+                    <div>
+                      <label>Espacement lettres <span id="pc-pub-ls-inst-v" style="color:#1a4a7a;font-weight:700;">0</span> px</label>
+                      <input type="range" id="pc-pub-ls-inst" min="-2" max="20" step="0.5" value="0" />
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div class="pc-hint" style="margin-top:4px;">Le centre de l'en-tête reste vide. Tous les réglages sont sauvegardés avec le panneau.</div>
+              <div class="pc-hint" style="margin-top:6px;">Tous les réglages sont sauvegardés avec le panneau.</div>
             </div>
             <label>Région</label>
             <select id="pc-region"></select>
@@ -18217,8 +18272,10 @@ window.addEventListener('appinstalled', () => {
     "pc-region","pc-prefecture","pc-commune","pc-wilaya","pc-projet","pc-sous",
     "pc-img-fit","pc-img-x","pc-img-y","pc-img-zoom",
     "pc-moa-type","pc-ministere","pc-institution-nom","pc-budget",
-    "pc-pub-emb","pc-pub-fr","pc-pub-ar","pc-pub-admin","pc-pub-gap",
-    "pc-pub-inst","pc-pub-inst-nom"
+    "pc-pub-emb","pc-pub-gap",
+    "pc-pub-fr","pc-pub-ls-fr","pc-pub-ar","pc-pub-ls-ar",
+    "pc-pub-admin","pc-pub-ls-admin",
+    "pc-pub-inst","pc-pub-inst-nom","pc-pub-ls-inst"
   ];
   let currentStateRecordId = null; // id of existing panneau_state record for the selected project
 
@@ -18744,25 +18801,188 @@ window.addEventListener('appinstalled', () => {
       el.addEventListener("change", renderPanneau);
     });
 
-    // ── Variables CSS individuelles par élément de l'en-tête public ──
-    const PUB_SLIDERS = [
-      { id: "pc-pub-emb",      css: "--pc-pub-emb",      labelId: "pc-pub-emb-v",      unit: " px", def: 130 },
-      { id: "pc-pub-fr",       css: "--pc-pub-fr",        labelId: "pc-pub-fr-v",        unit: " px", def: 40  },
-      { id: "pc-pub-ar",       css: "--pc-pub-ar",        labelId: "pc-pub-ar-v",        unit: " px", def: 32  },
-      { id: "pc-pub-admin",    css: "--pc-pub-admin",     labelId: "pc-pub-admin-v",     unit: " px", def: 18  },
-      { id: "pc-pub-gap",      css: "--pc-pub-gap",       labelId: "pc-pub-gap-v",       unit: " px", def: 8   },
-      { id: "pc-pub-inst",     css: "--pc-pub-inst",      labelId: "pc-pub-inst-v",      unit: " px", def: 140 },
-      { id: "pc-pub-inst-nom", css: "--pc-pub-inst-nom",  labelId: "pc-pub-inst-nom-v",  unit: " px", def: 22  },
+    // ── Données : ministères et institutions du Maroc ──────────────────
+    const PC_MINISTERES = [
+      "Ministère de l'Intérieur",
+      "Ministère des Affaires Étrangères, de la Coopération Africaine et des Marocains Résidant à l'Étranger",
+      "Ministère de la Justice",
+      "Ministère de l'Économie et des Finances",
+      "Ministère délégué chargé du Budget",
+      "Ministère de l'Éducation Nationale, du Préscolaire et des Sports",
+      "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation",
+      "Ministère de la Santé et de la Protection Sociale",
+      "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville",
+      "Ministère de l'Agriculture, de la Pêche Maritime, du Développement Rural et des Eaux et Forêts",
+      "Ministère de l'Industrie et du Commerce",
+      "Ministère de la Transition Énergétique et du Développement Durable",
+      "Ministère du Tourisme, de l'Artisanat et de l'Économie Sociale et Solidaire",
+      "Ministère de l'Équipement et de l'Eau",
+      "Ministère des Transports et de la Logistique",
+      "Ministère de la Jeunesse, de la Culture et de la Communication",
+      "Ministère de la Solidarité, de l'Insertion Sociale et de la Famille",
+      "Ministère de l'Investissement, de la Convergence et de l'Évaluation des Politiques Publiques",
+      "Ministère de la Transition Numérique et de la Réforme de l'Administration",
+      "Ministère de l'Inclusion Économique, de la Petite Entreprise, de l'Emploi et des Compétences",
+      "Ministère des Habous et des Affaires Islamiques",
+      "Haut-Commissariat au Plan",
     ];
-    function updatePubTextScale() {
-      const panneau = $("pc-panneau"); if (!panneau) return;
-      PUB_SLIDERS.forEach(s => {
-        const el = $(s.id);
-        const val = el ? parseFloat(el.value) : s.def;
-        panneau.style.setProperty(s.css, val);
-        const lbl = $(s.labelId); if (lbl) lbl.textContent = Math.round(val) + s.unit;
+    const PC_INSTITUTIONS = [
+      { groupe: "Universités", items: [
+        { nom: "Université Mohammed V — Rabat",                          min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Mohammed VI Polytechnique — Ben Guerir",      min: "" },
+        { nom: "Université Hassan II — Casablanca",                      min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Sidi Mohamed Ben Abdellah — Fès",             min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Cadi Ayyad — Marrakech",                      min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Ibn Zohr — Agadir",                           min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Abdelmalek Essaâdi — Tétouan",                min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Mohamed I — Oujda",                           min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Moulay Ismail — Meknès",                      min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Sultan Moulay Slimane — Béni Mellal",         min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Hassan I — Settat",                           min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Ibn Tofail — Kénitra",                        min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+      ]},
+      { groupe: "Écoles Nationales d'Architecture (ENSA)", items: [
+        { nom: "École Nationale Supérieure d'Architecture — Rabat",      min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
+        { nom: "École Nationale Supérieure d'Architecture — Casablanca", min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
+        { nom: "École Nationale Supérieure d'Architecture — Marrakech",  min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
+        { nom: "École Nationale Supérieure d'Architecture — Fès",        min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
+        { nom: "École Nationale Supérieure d'Architecture — Agadir",     min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
+        { nom: "École Nationale Supérieure d'Architecture — Tétouan",    min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
+      ]},
+      { groupe: "CHU & Hôpitaux", items: [
+        { nom: "CHU Ibn Rochd — Casablanca",                             min: "Ministère de la Santé et de la Protection Sociale" },
+        { nom: "CHU Mohammed VI — Marrakech",                            min: "Ministère de la Santé et de la Protection Sociale" },
+        { nom: "CHU Hassan II — Fès",                                    min: "Ministère de la Santé et de la Protection Sociale" },
+        { nom: "CHU Ibn Sina — Rabat",                                   min: "Ministère de la Santé et de la Protection Sociale" },
+        { nom: "CHU Souss-Massa — Agadir",                               min: "Ministère de la Santé et de la Protection Sociale" },
+        { nom: "CHU Mohamed VI — Oujda",                                 min: "Ministère de la Santé et de la Protection Sociale" },
+      ]},
+      { groupe: "Communes & Collectivités", items: [
+        { nom: "Commune de Casablanca",   min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Rabat",        min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Marrakech",    min: "Ministère de l'Intérieur" },
+        { nom: "Commune d'Agadir",        min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Fès",          min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Meknès",       min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Tanger",       min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Tétouan",      min: "Ministère de l'Intérieur" },
+        { nom: "Commune d'Oujda",         min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Kénitra",      min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Laâyoune",     min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Dakhla",       min: "Ministère de l'Intérieur" },
+      ]},
+      { groupe: "Régions & Wilayas", items: [
+        { nom: "Wilaya de la Région Souss-Massa",                  min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Casablanca-Settat",            min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Rabat-Salé-Kénitra",           min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Marrakech-Safi",               min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Fès-Meknès",                   min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Tanger-Tétouan-Al Hoceïma",    min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région l'Oriental",                   min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Béni Mellal-Khénifra",         min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Drâa-Tafilalet",               min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Guelmim-Oued Noun",            min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Laâyoune-Sakia El Hamra",      min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Dakhla-Oued Ed-Dahab",         min: "Ministère de l'Intérieur" },
+      ]},
+    ];
+
+    // Remplir datalist ministères
+    (function() {
+      const dl = $("pc-ministere-list"); if (!dl) return;
+      PC_MINISTERES.forEach(m => { const o = document.createElement("option"); o.value = m; dl.appendChild(o); });
+    })();
+
+    // Remplir select institutions par groupe
+    (function() {
+      const sel = $("pc-institution-select"); if (!sel) return;
+      PC_INSTITUTIONS.forEach(g => {
+        const grp = document.createElement("optgroup"); grp.label = g.groupe;
+        g.items.forEach(it => {
+          const o = document.createElement("option");
+          o.value = it.nom; o.dataset.ministere = it.min || ""; o.textContent = it.nom;
+          grp.appendChild(o);
+        });
+        sel.appendChild(grp);
+      });
+    })();
+
+    // Quand on choisit dans le select → remplir le champ texte + ministère si connu
+    if ($("pc-institution-select")) {
+      $("pc-institution-select").addEventListener("change", function() {
+        const opt = this.options[this.selectedIndex];
+        if (!opt || !opt.value) return;
+        if ($("pc-institution-nom")) { $("pc-institution-nom").value = opt.value; renderPanneau(); }
+        if ($("pc-ministere") && opt.dataset.ministere) { $("pc-ministere").value = opt.dataset.ministere; renderPanneau(); }
       });
     }
+
+    // ── Sliders de typographie — liste complète ──────────────────────
+    const PUB_SLIDERS = [
+      { id: "pc-pub-emb",       labelId: "pc-pub-emb-v",       unit: " px", def: 130 },
+      { id: "pc-pub-gap",       labelId: "pc-pub-gap-v",       unit: " px", def: 8   },
+      { id: "pc-pub-fr",        labelId: "pc-pub-fr-v",        unit: " px", def: 40  },
+      { id: "pc-pub-ls-fr",     labelId: "pc-pub-ls-fr-v",     unit: " px", def: 1   },
+      { id: "pc-pub-ar",        labelId: "pc-pub-ar-v",        unit: " px", def: 32  },
+      { id: "pc-pub-ls-ar",     labelId: "pc-pub-ls-ar-v",     unit: " px", def: 0   },
+      { id: "pc-pub-admin",     labelId: "pc-pub-admin-v",     unit: " px", def: 18  },
+      { id: "pc-pub-ls-admin",  labelId: "pc-pub-ls-admin-v",  unit: " px", def: 0   },
+      { id: "pc-pub-inst",      labelId: "pc-pub-inst-v",      unit: " px", def: 140 },
+      { id: "pc-pub-inst-nom",  labelId: "pc-pub-inst-nom-v",  unit: " px", def: 22  },
+      { id: "pc-pub-ls-inst",   labelId: "pc-pub-ls-inst-v",   unit: " px", def: 0   },
+    ];
+
+    function getSliderVal(id, def) {
+      const el = $(id); return el ? parseFloat(el.value) : def;
+    }
+
+    // ── updatePubTextScale : applique DIRECTEMENT le style sur les éléments DOM ──
+    // (plus fiable que les CSS custom properties pour font-size en temps réel)
+    function updatePubTextScale() {
+      const panneau = $("pc-panneau"); if (!panneau) return;
+
+      // Sync labels des sliders
+      PUB_SLIDERS.forEach(s => {
+        const lbl = $(s.labelId);
+        if (lbl) lbl.textContent = Math.round(getSliderVal(s.id, s.def)) + s.unit;
+      });
+
+      // Récupérer --pc-scale depuis le style inline du panneau
+      const scaleStr = panneau.style.getPropertyValue("--pc-scale");
+      const scale = scaleStr ? parseFloat(scaleStr) : 1;
+
+      const fr      = getSliderVal("pc-pub-fr",       40);
+      const lsFr    = getSliderVal("pc-pub-ls-fr",    1);
+      const ar      = getSliderVal("pc-pub-ar",       32);
+      const lsAr    = getSliderVal("pc-pub-ls-ar",    0);
+      const admin   = getSliderVal("pc-pub-admin",    18);
+      const lsAdmin = getSliderVal("pc-pub-ls-admin", 0);
+      const emb     = getSliderVal("pc-pub-emb",      130);
+      const gap     = getSliderVal("pc-pub-gap",      8);
+      const inst    = getSliderVal("pc-pub-inst",     140);
+      const instNom = getSliderVal("pc-pub-inst-nom", 22);
+      const lsInst  = getSliderVal("pc-pub-ls-inst",  0);
+
+      // Cibler les éléments DANS le panneau public uniquement
+      const frEl     = panneau.querySelector(".pc-entete-public .pc-royaume-fr");
+      const arEl     = panneau.querySelector(".pc-entete-public .pc-royaume-ar");
+      const adminEls = panneau.querySelectorAll(".pc-entete-public .pc-admin-lines");
+      const embEl    = panneau.querySelector(".pc-pub-left .pc-emb-inline");
+      const pubLeft  = panneau.querySelector(".pc-pub-left");
+      const pubRight = panneau.querySelector(".pc-pub-right");
+      const instLogo = panneau.querySelector(".pc-institution-logo, .pc-institution-placeholder");
+      const instNomEl = panneau.querySelector(".pc-institution-nom");
+
+      if (frEl)  { frEl.style.fontSize  = (fr  * scale) + "px"; frEl.style.letterSpacing  = lsFr    + "px"; }
+      if (arEl)  { arEl.style.fontSize  = (ar  * scale) + "px"; arEl.style.letterSpacing  = lsAr    + "px"; }
+      adminEls.forEach(el => { el.style.fontSize = (admin * scale) + "px"; el.style.letterSpacing = lsAdmin + "px"; });
+      if (embEl)    { embEl.style.width  = (emb  * scale) + "px"; embEl.style.height = (emb  * scale) + "px"; }
+      if (pubLeft)  pubLeft.style.gap   = (gap  * scale) + "px";
+      if (pubRight) pubRight.style.gap  = (gap  * scale) + "px";
+      if (instLogo) { instLogo.style.maxWidth = (inst * scale) + "px"; instLogo.style.maxHeight = (inst * scale) + "px"; }
+      if (instNomEl){ instNomEl.style.fontSize = (instNom * scale) + "px"; instNomEl.style.letterSpacing = lsInst + "px"; }
+    }
+
     // Listeners sur tous les sliders
     PUB_SLIDERS.forEach(s => {
       const el = $(s.id);

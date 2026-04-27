@@ -2449,11 +2449,14 @@
             <div id="pc-public-fields" style="display:none; padding:10px; background:#f0f6ff; border:1px solid #c0d8f0; border-radius:6px; margin-bottom:10px;">
               <div style="font-size:11px;font-weight:700;color:#3a6ea5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">⚙ Configuration panneau public</div>
 
-              <!-- Ministère (gauche) avec datalist -->
+              <!-- Ministère (gauche) avec datalist FR + AR -->
               <label>Ministère / Tutelle <span style="font-weight:400;color:#888;">(côté gauche, sous l'emblème)</span></label>
               <input type="text" id="pc-ministere" list="pc-ministere-list" autocomplete="off"
                 placeholder="Tapez ou choisissez un ministère…" />
               <datalist id="pc-ministere-list"></datalist>
+              <input type="text" id="pc-ministere-ar" dir="rtl"
+                placeholder="الوزارة بالعربية — auto-rempli à la sélection…"
+                style="margin-top:5px;font-family:'Noto Naskh Arabic',serif;text-align:right;" />
 
               <!-- Institution (droite) avec select + saisie libre -->
               <label style="margin-top:10px;">Institution publique <span style="font-weight:400;color:#888;">(côté droit)</span></label>
@@ -17517,6 +17520,12 @@ window.addEventListener('appinstalled', () => {
     margin-top: 0;
   }
   #page-panneau .pc-entete-public .pc-admin-lines span { display: block; }
+  /* Ligne ministère en arabe (RTL) */
+  #page-panneau .pc-admin-ar {
+    direction: rtl; text-align: right;
+    font-family: "Noto Naskh Arabic", "Arabic Typesetting", serif;
+    font-weight: 600;
+  }
 
   /* ─ Colonne centrale (vide) ─ */
   #page-panneau .pc-pub-center { /* intentionnellement vide */ }
@@ -18173,7 +18182,8 @@ window.addEventListener('appinstalled', () => {
     const cardsHtml = intervenants.map(makeCard).join("");
 
     const isPublicMOA = $("pc-moa-type") && $("pc-moa-type").value === "public";
-    const ministere     = $("pc-ministere") ? $("pc-ministere").value : "";
+    const ministere     = $("pc-ministere")    ? $("pc-ministere").value    : "";
+    const ministereAr   = $("pc-ministere-ar") ? $("pc-ministere-ar").value : "";
     const institutionNom   = $("pc-institution-nom")    ? $("pc-institution-nom").value    : "";
     const institutionNomAr = $("pc-institution-nom-ar") ? $("pc-institution-nom-ar").value : "";
     const institutionNomTf = $("pc-institution-nom-tf") ? $("pc-institution-nom-tf").value : "";
@@ -18188,7 +18198,8 @@ window.addEventListener('appinstalled', () => {
           <div class="pc-admin">
             <div class="pc-royaume-fr">ROYAUME DU MAROC</div>
             <div class="pc-royaume-ar">المملكة المغربية</div>
-            ${ministere ? `<div class="pc-admin-lines"><span>${escapeHtml(ministere)}</span></div>` : ""}
+            ${ministere   ? `<div class="pc-admin-lines"><span>${escapeHtml(ministere)}</span></div>`            : ""}
+            ${ministereAr ? `<div class="pc-admin-lines pc-admin-ar"><span>${escapeHtml(ministereAr)}</span></div>` : ""}
             <div class="pc-admin-lines">${ligneAdmin()}</div>
           </div>
         </div>
@@ -18417,7 +18428,7 @@ window.addEventListener('appinstalled', () => {
     "pc-type","pc-auth-type","pc-auth-num","pc-auth-date","pc-ref",
     "pc-region","pc-prefecture","pc-commune","pc-wilaya","pc-projet","pc-sous",
     "pc-img-fit","pc-img-x","pc-img-y","pc-img-zoom",
-    "pc-moa-type","pc-ministere","pc-institution-nom","pc-institution-nom-ar","pc-institution-nom-tf","pc-budget",
+    "pc-moa-type","pc-ministere","pc-ministere-ar","pc-institution-nom","pc-institution-nom-ar","pc-institution-nom-tf","pc-budget",
     "pc-pub-pos-l","pc-pub-emb","pc-pub-gap","pc-pub-maxw-l",
     "pc-pub-fr","pc-pub-ls-fr",
     "pc-pub-ar","pc-pub-ws-ar",
@@ -18953,28 +18964,50 @@ window.addEventListener('appinstalled', () => {
 
     // ── Données : ministères et institutions du Maroc ──────────────────
     const PC_MINISTERES = [
-      "Ministère de l'Intérieur",
-      "Ministère des Affaires Étrangères, de la Coopération Africaine et des Marocains Résidant à l'Étranger",
-      "Ministère de la Justice",
-      "Ministère de l'Économie et des Finances",
-      "Ministère délégué chargé du Budget",
-      "Ministère de l'Éducation Nationale, du Préscolaire et des Sports",
-      "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation",
-      "Ministère de la Santé et de la Protection Sociale",
-      "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville",
-      "Ministère de l'Agriculture, de la Pêche Maritime, du Développement Rural et des Eaux et Forêts",
-      "Ministère de l'Industrie et du Commerce",
-      "Ministère de la Transition Énergétique et du Développement Durable",
-      "Ministère du Tourisme, de l'Artisanat et de l'Économie Sociale et Solidaire",
-      "Ministère de l'Équipement et de l'Eau",
-      "Ministère des Transports et de la Logistique",
-      "Ministère de la Jeunesse, de la Culture et de la Communication",
-      "Ministère de la Solidarité, de l'Insertion Sociale et de la Famille",
-      "Ministère de l'Investissement, de la Convergence et de l'Évaluation des Politiques Publiques",
-      "Ministère de la Transition Numérique et de la Réforme de l'Administration",
-      "Ministère de l'Inclusion Économique, de la Petite Entreprise, de l'Emploi et des Compétences",
-      "Ministère des Habous et des Affaires Islamiques",
-      "Haut-Commissariat au Plan",
+      { fr: "Ministère de l'Intérieur",
+        ar: "وزارة الداخلية" },
+      { fr: "Ministère des Affaires Étrangères, de la Coopération Africaine et des Marocains Résidant à l'Étranger",
+        ar: "وزارة الشؤون الخارجية والتعاون الأفريقي والمغاربة المقيمين بالخارج" },
+      { fr: "Ministère de la Justice",
+        ar: "وزارة العدل" },
+      { fr: "Ministère de l'Économie et des Finances",
+        ar: "وزارة الاقتصاد والمالية" },
+      { fr: "Ministère délégué chargé du Budget",
+        ar: "الوزارة المنتدبة المكلفة بالميزانية" },
+      { fr: "Ministère de l'Éducation Nationale, du Préscolaire et des Sports",
+        ar: "وزارة التربية الوطنية والتعليم الأولي والرياضة" },
+      { fr: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation",
+        ar: "وزارة التعليم العالي والبحث العلمي والابتكار" },
+      { fr: "Ministère de la Santé et de la Protection Sociale",
+        ar: "وزارة الصحة والحماية الاجتماعية" },
+      { fr: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville",
+        ar: "وزارة إعداد التراب الوطني والتعمير والإسكان وسياسة المدينة" },
+      { fr: "Ministère de l'Agriculture, de la Pêche Maritime, du Développement Rural et des Eaux et Forêts",
+        ar: "وزارة الفلاحة والصيد البحري والتنمية القروية والمياه والغابات" },
+      { fr: "Ministère de l'Industrie et du Commerce",
+        ar: "وزارة الصناعة والتجارة" },
+      { fr: "Ministère de la Transition Énergétique et du Développement Durable",
+        ar: "وزارة الانتقال الطاقي والتنمية المستدامة" },
+      { fr: "Ministère du Tourisme, de l'Artisanat et de l'Économie Sociale et Solidaire",
+        ar: "وزارة السياحة والصناعة التقليدية والاقتصاد الاجتماعي والتضامني" },
+      { fr: "Ministère de l'Équipement et de l'Eau",
+        ar: "وزارة التجهيز والماء" },
+      { fr: "Ministère des Transports et de la Logistique",
+        ar: "وزارة النقل واللوجستيك" },
+      { fr: "Ministère de la Jeunesse, de la Culture et de la Communication",
+        ar: "وزارة الشباب والثقافة والتواصل" },
+      { fr: "Ministère de la Solidarité, de l'Insertion Sociale et de la Famille",
+        ar: "وزارة التضامن والإدماج الاجتماعي والأسرة" },
+      { fr: "Ministère de l'Investissement, de la Convergence et de l'Évaluation des Politiques Publiques",
+        ar: "وزارة الاستثمار والتقائية وتقييم السياسات العمومية" },
+      { fr: "Ministère de la Transition Numérique et de la Réforme de l'Administration",
+        ar: "وزارة الانتقال الرقمي وإصلاح الإدارة" },
+      { fr: "Ministère de l'Inclusion Économique, de la Petite Entreprise, de l'Emploi et des Compétences",
+        ar: "وزارة الإدماج الاقتصادي والمقاولة الصغيرة والشغل والكفاءات" },
+      { fr: "Ministère des Habous et des Affaires Islamiques",
+        ar: "وزارة الأوقاف والشؤون الإسلامية" },
+      { fr: "Haut-Commissariat au Plan",
+        ar: "المندوبية السامية للتخطيط" },
     ];
     const PC_INSTITUTIONS = [
       { groupe: "Universités", items: [

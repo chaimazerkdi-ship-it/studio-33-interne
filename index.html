@@ -2449,6 +2449,17 @@
             <div id="pc-public-fields" style="display:none; padding:10px; background:#f0f6ff; border:1px solid #c0d8f0; border-radius:6px; margin-bottom:10px;">
               <div style="font-size:11px;font-weight:700;color:#3a6ea5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">⚙ Configuration panneau public</div>
 
+              <!-- ── Logo complet gauche (ministère + royaume en une seule image) ── -->
+              <div style="padding:10px;background:#e6f4e0;border:1px solid #9ecb82;border-radius:7px;margin-bottom:10px;">
+                <div style="font-size:11px;font-weight:700;color:#2e6b10;margin-bottom:3px;">🖼 Logo complet côté gauche <span style="font-weight:400;color:#666;">(optionnel — remplace tout le côté gauche)</span></div>
+                <div style="font-size:11px;color:#555;margin-bottom:7px;">Uploadez l'image officielle du ministère (contient déjà ROYAUME DU MAROC + emblème + arabe). Le côté gauche affichera uniquement cette image.</div>
+                <input type="file" id="pc-moa-logo-complet-file" accept="image/*" />
+                <button id="pc-moa-logo-complet-clear" style="margin-top:5px;padding:3px 10px;font-size:11px;background:#c9e8b8;border:1px solid #9ecb82;border-radius:4px;cursor:pointer;display:none;">✕ Effacer le logo complet</button>
+                <div id="pc-moa-logo-complet-preview" style="margin-top:6px;display:none;">
+                  <img id="pc-moa-logo-complet-img" style="max-width:100%;max-height:80px;object-fit:contain;border-radius:4px;border:1px solid #ccc;" />
+                </div>
+              </div>
+
               <!-- Ministère (gauche) avec datalist FR + AR -->
               <label>Ministère / Tutelle <span style="font-weight:400;color:#888;">(côté gauche, sous l'emblème)</span></label>
               <input type="text" id="pc-ministere" list="pc-ministere-list" autocomplete="off"
@@ -2471,8 +2482,19 @@
                 placeholder="ⴰⵙⴰⴳⵡ ⵙ ⵜⵉⴼⵉⵏⴰⵖ (facultatif)…"
                 style="margin-top:5px;font-family:'Noto Sans Tifinagh',sans-serif;" />
 
-              <!-- Logo institution -->
-              <label style="margin-top:10px;">Logo de l'institution (côté droit)</label>
+              <!-- ── Logo complet droit (institution avec tous les noms en une image) ── -->
+              <div style="padding:10px;background:#e6f4e0;border:1px solid #9ecb82;border-radius:7px;margin-top:10px;">
+                <div style="font-size:11px;font-weight:700;color:#2e6b10;margin-bottom:3px;">🖼 Logo complet côté droit <span style="font-weight:400;color:#666;">(optionnel — remplace tout le côté droit)</span></div>
+                <div style="font-size:11px;color:#555;margin-bottom:7px;">Uploadez le logo officiel de l'institution (contient déjà les noms FR + AR + TF). Le côté droit affichera uniquement cette image — pas besoin de remplir les champs ci-dessous.</div>
+                <input type="file" id="pc-inst-logo-complet-file" accept="image/*" />
+                <button id="pc-inst-logo-complet-clear" style="margin-top:5px;padding:3px 10px;font-size:11px;background:#c9e8b8;border:1px solid #9ecb82;border-radius:4px;cursor:pointer;display:none;">✕ Effacer le logo complet</button>
+                <div id="pc-inst-logo-complet-preview" style="margin-top:6px;display:none;">
+                  <img id="pc-inst-logo-complet-img" style="max-width:100%;max-height:80px;object-fit:contain;border-radius:4px;border:1px solid #ccc;" />
+                </div>
+              </div>
+
+              <!-- Logo institution (petite icône uniquement, si pas de logo complet) -->
+              <label style="margin-top:10px;">Logo de l'institution seul <span style="font-weight:400;color:#888;">(si pas de logo complet)</span></label>
               <input type="file" id="pc-institution-logo" accept="image/*" />
 
               <!-- ── Réglages typographiques par élément ── -->
@@ -17527,6 +17549,15 @@ window.addEventListener('appinstalled', () => {
     font-weight: 600;
   }
 
+  /* ─ Logos complets (image unique remplaçant toute la colonne) ─ */
+  #page-panneau .pc-moa-logo-complet,
+  #page-panneau .pc-inst-logo-complet {
+    max-width: 100%;
+    max-height: calc(160px * var(--pc-scale, 1));
+    object-fit: contain;
+    display: block;
+  }
+
   /* ─ Colonne centrale (vide) ─ */
   #page-panneau .pc-pub-center { /* intentionnellement vide */ }
 
@@ -17806,6 +17837,8 @@ window.addEventListener('appinstalled', () => {
   let logoEmblemeUpload    = null;
   let imageProjet          = null;
   let logoInstitutionUpload = null;
+  let logoMoaComplet       = null; // image complète côté gauche (ministère + royaume)
+  let logoInstComplet      = null; // image complète côté droit  (institution avec noms)
   let initialized = false;
 
   function $(id){ return document.getElementById(id); }
@@ -18191,27 +18224,33 @@ window.addEventListener('appinstalled', () => {
       ? `<img class="pc-institution-logo" src="${logoInstitutionUpload}" alt="Logo institution" />`
       : `<div class="pc-institution-placeholder">LOGO</div>`;
 
-    const enteteBlock = isPublicMOA ? `
-      <div class="pc-entete pc-entete-public">
-        <div class="pc-pub-left">
-          <div class="pc-emb-inline">${logoEmblemeHtml()}</div>
+    // Contenu colonne gauche : logo complet OU emblème + texte
+    const pubLeftContent = logoMoaComplet
+      ? `<img class="pc-moa-logo-complet" src="${logoMoaComplet}" alt="Logo ministère" />`
+      : `<div class="pc-emb-inline">${logoEmblemeHtml()}</div>
           <div class="pc-admin">
             <div class="pc-royaume-fr">ROYAUME DU MAROC</div>
             <div class="pc-royaume-ar">المملكة المغربية</div>
             ${ministere   ? `<div class="pc-admin-lines"><span>${escapeHtml(ministere)}</span></div>`            : ""}
             ${ministereAr ? `<div class="pc-admin-lines pc-admin-ar"><span>${escapeHtml(ministereAr)}</span></div>` : ""}
             <div class="pc-admin-lines">${ligneAdmin()}</div>
-          </div>
-        </div>
-        <div class="pc-pub-center"></div>
-        <div class="pc-pub-right">
-          ${institutionLogoHtml}
+          </div>`;
+
+    // Contenu colonne droite : logo complet OU logo + noms séparés
+    const pubRightContent = logoInstComplet
+      ? `<img class="pc-inst-logo-complet" src="${logoInstComplet}" alt="Logo institution" />`
+      : `${institutionLogoHtml}
           <div class="pc-institution-noms">
             ${institutionNom   ? `<div class="pc-institution-nom">${escapeHtml(institutionNom)}</div>`       : ""}
             ${institutionNomAr ? `<div class="pc-institution-nom-ar">${escapeHtml(institutionNomAr)}</div>` : ""}
             ${institutionNomTf ? `<div class="pc-institution-nom-tf">${escapeHtml(institutionNomTf)}</div>` : ""}
-          </div>
-        </div>
+          </div>`;
+
+    const enteteBlock = isPublicMOA ? `
+      <div class="pc-entete pc-entete-public">
+        <div class="pc-pub-left">${pubLeftContent}</div>
+        <div class="pc-pub-center"></div>
+        <div class="pc-pub-right">${pubRightContent}</div>
       </div>` : `
       <div class="pc-entete">
         <div class="pc-emb">${logoEmblemeHtml()}</div>
@@ -18448,8 +18487,10 @@ window.addEventListener('appinstalled', () => {
     state.champs["pc-logo-auto"] = $("pc-logo-auto").checked;
     state.intervenants = intervenants.map(x => ({ ...x }));
     state.imageProjet = imageProjet;
-    state.logoEmblemeUpload    = logoEmblemeUpload;
+    state.logoEmblemeUpload     = logoEmblemeUpload;
     state.logoInstitutionUpload = logoInstitutionUpload;
+    state.logoMoaComplet        = logoMoaComplet;
+    state.logoInstComplet       = logoInstComplet;
     return state;
   }
 
@@ -18463,8 +18504,11 @@ window.addEventListener('appinstalled', () => {
     if (c["pc-logo-auto"] !== undefined) $("pc-logo-auto").checked = !!c["pc-logo-auto"];
     if (Array.isArray(state.intervenants)) intervenants = state.intervenants.map(x => ({ ...x }));
     imageProjet           = state.imageProjet || null;
-    logoEmblemeUpload     = state.logoEmblemeUpload || null;
+    logoEmblemeUpload     = state.logoEmblemeUpload     || null;
     logoInstitutionUpload = state.logoInstitutionUpload || null;
+    logoMoaComplet        = state.logoMoaComplet        || null;
+    logoInstComplet       = state.logoInstComplet       || null;
+    _syncLogoCompletUI(); // sync les previews dans le formulaire
     // Afficher/masquer les champs publics + sync sliders selon le type restauré
     if (_pcPubScale) _pcPubScale();
     if (typeof toggleMoaPublic === "function") toggleMoaPublic();
@@ -19009,94 +19053,186 @@ window.addEventListener('appinstalled', () => {
       { fr: "Haut-Commissariat au Plan",
         ar: "المندوبية السامية للتخطيط" },
     ];
+    const _SUP = "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation";
+    const _URB = "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville";
+    const _SAN = "Ministère de la Santé et de la Protection Sociale";
+    const _INT = "Ministère de l'Intérieur";
     const PC_INSTITUTIONS = [
       { groupe: "Universités", items: [
-        { nom: "Université Mohammed V — Rabat",                          min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Mohammed VI Polytechnique — Ben Guerir",      min: "" },
-        { nom: "Université Hassan II — Casablanca",                      min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Sidi Mohamed Ben Abdellah — Fès",             min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Cadi Ayyad — Marrakech",                      min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Ibn Zohr — Agadir",                           min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Abdelmalek Essaâdi — Tétouan",                min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Mohamed I — Oujda",                           min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Moulay Ismail — Meknès",                      min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Sultan Moulay Slimane — Béni Mellal",         min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Hassan I — Settat",                           min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
-        { nom: "Université Ibn Tofail — Kénitra",                        min: "Ministère de l'Enseignement Supérieur, de la Recherche Scientifique et de l'Innovation" },
+        { nom: "Université Mohammed V — Rabat",
+          ar:  "جامعة محمد الخامس — الرباط",
+          tf:  "",            min: _SUP },
+        { nom: "Université Mohammed VI Polytechnique — Ben Guerir",
+          ar:  "جامعة محمد السادس متعددة التخصصات — بن جرير",
+          tf:  "",            min: "" },
+        { nom: "Université Hassan II — Casablanca",
+          ar:  "جامعة الحسن الثاني — الدار البيضاء",
+          tf:  "",            min: _SUP },
+        { nom: "Université Sidi Mohamed Ben Abdellah — Fès",
+          ar:  "جامعة سيدي محمد بن عبد الله — فاس",
+          tf:  "",            min: _SUP },
+        { nom: "Université Cadi Ayyad — Marrakech",
+          ar:  "جامعة القاضي عياض — مراكش",
+          tf:  "",            min: _SUP },
+        { nom: "Université Ibn Zohr — Agadir",
+          ar:  "جامعة ابن زهر — أكادير",
+          tf:  "ⵜⴰⵙⴷⴰⵡⵉⵜ ⵏ ⵉⴱⵏ ⵣⵓⵀⵔ — ⴰⴳⴰⴷⵉⵔ",
+          min: _SUP },
+        { nom: "Université Abdelmalek Essaâdi — Tétouan",
+          ar:  "جامعة عبد المالك السعدي — تطوان",
+          tf:  "",            min: _SUP },
+        { nom: "Université Mohamed I — Oujda",
+          ar:  "جامعة محمد الأول — وجدة",
+          tf:  "",            min: _SUP },
+        { nom: "Université Moulay Ismail — Meknès",
+          ar:  "جامعة مولاي إسماعيل — مكناس",
+          tf:  "",            min: _SUP },
+        { nom: "Université Sultan Moulay Slimane — Béni Mellal",
+          ar:  "جامعة السلطان مولاي سليمان — بني ملال",
+          tf:  "",            min: _SUP },
+        { nom: "Université Hassan I — Settat",
+          ar:  "جامعة الحسن الأول — سطات",
+          tf:  "",            min: _SUP },
+        { nom: "Université Ibn Tofail — Kénitra",
+          ar:  "جامعة ابن طفيل — القنيطرة",
+          tf:  "",            min: _SUP },
       ]},
       { groupe: "Écoles Nationales d'Architecture (ENSA)", items: [
-        { nom: "École Nationale Supérieure d'Architecture — Rabat",      min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
-        { nom: "École Nationale Supérieure d'Architecture — Casablanca", min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
-        { nom: "École Nationale Supérieure d'Architecture — Marrakech",  min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
-        { nom: "École Nationale Supérieure d'Architecture — Fès",        min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
-        { nom: "École Nationale Supérieure d'Architecture — Agadir",     min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
-        { nom: "École Nationale Supérieure d'Architecture — Tétouan",    min: "Ministère de l'Aménagement du Territoire National, de l'Urbanisme, de l'Habitat et de la Politique de la Ville" },
+        { nom: "École Nationale Supérieure d'Architecture — Rabat",
+          ar:  "المدرسة الوطنية العليا للعمارة — الرباط",
+          tf:  "",            min: _URB },
+        { nom: "École Nationale Supérieure d'Architecture — Casablanca",
+          ar:  "المدرسة الوطنية العليا للعمارة — الدار البيضاء",
+          tf:  "",            min: _URB },
+        { nom: "École Nationale Supérieure d'Architecture — Marrakech",
+          ar:  "المدرسة الوطنية العليا للعمارة — مراكش",
+          tf:  "",            min: _URB },
+        { nom: "École Nationale Supérieure d'Architecture — Fès",
+          ar:  "المدرسة الوطنية العليا للعمارة — فاس",
+          tf:  "",            min: _URB },
+        { nom: "École Nationale Supérieure d'Architecture — Agadir",
+          ar:  "المدرسة الوطنية العليا للعمارة — أكادير",
+          tf:  "ⵜⴰⵎⴷⵔⴰⵙⵜ ⵜⴰⵏⵙⵍⵎⵜ ⵜⴰⵎⵇⵔⴰⵏⵜ ⵏ ⵓⵎⵔⴽⵓⵙ — ⴰⴳⴰⴷⵉⵔ",
+          min: _URB },
+        { nom: "École Nationale Supérieure d'Architecture — Tétouan",
+          ar:  "المدرسة الوطنية العليا للعمارة — تطوان",
+          tf:  "",            min: _URB },
       ]},
       { groupe: "CHU & Hôpitaux", items: [
-        { nom: "CHU Ibn Rochd — Casablanca",                             min: "Ministère de la Santé et de la Protection Sociale" },
-        { nom: "CHU Mohammed VI — Marrakech",                            min: "Ministère de la Santé et de la Protection Sociale" },
-        { nom: "CHU Hassan II — Fès",                                    min: "Ministère de la Santé et de la Protection Sociale" },
-        { nom: "CHU Ibn Sina — Rabat",                                   min: "Ministère de la Santé et de la Protection Sociale" },
-        { nom: "CHU Souss-Massa — Agadir",                               min: "Ministère de la Santé et de la Protection Sociale" },
-        { nom: "CHU Mohamed VI — Oujda",                                 min: "Ministère de la Santé et de la Protection Sociale" },
+        { nom: "CHU Ibn Rochd — Casablanca",
+          ar:  "المركز الاستشفائي الجامعي ابن رشد — الدار البيضاء",
+          tf:  "",            min: _SAN },
+        { nom: "CHU Mohammed VI — Marrakech",
+          ar:  "المركز الاستشفائي الجامعي محمد السادس — مراكش",
+          tf:  "",            min: _SAN },
+        { nom: "CHU Hassan II — Fès",
+          ar:  "المركز الاستشفائي الجامعي الحسن الثاني — فاس",
+          tf:  "",            min: _SAN },
+        { nom: "CHU Ibn Sina — Rabat",
+          ar:  "المركز الاستشفائي الجامعي ابن سينا — الرباط",
+          tf:  "",            min: _SAN },
+        { nom: "CHU Souss-Massa — Agadir",
+          ar:  "المركز الاستشفائي الجامعي سوس ماسة — أكادير",
+          tf:  "ⴰⵙⵇⴷⵓ ⴰⵙⵇⵇⵉⵎⴰⵏ ⴰⵙⵍⵎⴰⵏ ⵏ ⵙⵓⵙ ⵎⴰⵙⵙⴰ — ⴰⴳⴰⴷⵉⵔ",
+          min: _SAN },
+        { nom: "CHU Mohamed VI — Oujda",
+          ar:  "المركز الاستشفائي الجامعي محمد السادس — وجدة",
+          tf:  "",            min: _SAN },
       ]},
       { groupe: "Communes & Collectivités", items: [
-        { nom: "Commune de Casablanca",   min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Rabat",        min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Marrakech",    min: "Ministère de l'Intérieur" },
-        { nom: "Commune d'Agadir",        min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Fès",          min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Meknès",       min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Tanger",       min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Tétouan",      min: "Ministère de l'Intérieur" },
-        { nom: "Commune d'Oujda",         min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Kénitra",      min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Laâyoune",     min: "Ministère de l'Intérieur" },
-        { nom: "Commune de Dakhla",       min: "Ministère de l'Intérieur" },
+        { nom: "Commune de Casablanca",   ar: "جماعة الدار البيضاء", tf: "",                          min: _INT },
+        { nom: "Commune de Rabat",        ar: "جماعة الرباط",         tf: "",                          min: _INT },
+        { nom: "Commune de Marrakech",    ar: "جماعة مراكش",          tf: "",                          min: _INT },
+        { nom: "Commune d'Agadir",        ar: "جماعة أكادير",         tf: "ⵜⴰⵊⵎⴰⵄⵜ ⵏ ⴰⴳⴰⴷⵉⵔ",        min: _INT },
+        { nom: "Commune de Fès",          ar: "جماعة فاس",            tf: "",                          min: _INT },
+        { nom: "Commune de Meknès",       ar: "جماعة مكناس",          tf: "",                          min: _INT },
+        { nom: "Commune de Tanger",       ar: "جماعة طنجة",           tf: "",                          min: _INT },
+        { nom: "Commune de Tétouan",      ar: "جماعة تطوان",          tf: "",                          min: _INT },
+        { nom: "Commune d'Oujda",         ar: "جماعة وجدة",           tf: "",                          min: _INT },
+        { nom: "Commune de Kénitra",      ar: "جماعة القنيطرة",       tf: "",                          min: _INT },
+        { nom: "Commune de Laâyoune",     ar: "جماعة العيون",         tf: "ⵜⴰⵊⵎⴰⵄⵜ ⵏ ⵍⵄⵢⵓⵏ",         min: _INT },
+        { nom: "Commune de Dakhla",       ar: "جماعة الداخلة",        tf: "ⵜⴰⵊⵎⴰⵄⵜ ⵏ ⴷⴷⴰⵅⵍⴰ",        min: _INT },
       ]},
       { groupe: "Régions & Wilayas", items: [
-        { nom: "Wilaya de la Région Souss-Massa",                  min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Casablanca-Settat",            min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Rabat-Salé-Kénitra",           min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Marrakech-Safi",               min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Fès-Meknès",                   min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Tanger-Tétouan-Al Hoceïma",    min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région l'Oriental",                   min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Béni Mellal-Khénifra",         min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Drâa-Tafilalet",               min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Guelmim-Oued Noun",            min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Laâyoune-Sakia El Hamra",      min: "Ministère de l'Intérieur" },
-        { nom: "Wilaya de la Région Dakhla-Oued Ed-Dahab",         min: "Ministère de l'Intérieur" },
+        { nom: "Wilaya de la Région Souss-Massa",
+          ar: "ولاية جهة سوس ماسة",                  tf: "ⵡⴰⵍⵉⵢⴰ ⵏ ⵜⴰⵎⵏⵟⵓⵟ ⵏ ⵙⵓⵙ ⵎⴰⵙⵙⴰ",       min: _INT },
+        { nom: "Wilaya de la Région Casablanca-Settat",
+          ar: "ولاية جهة الدار البيضاء-سطات",         tf: "",                                          min: _INT },
+        { nom: "Wilaya de la Région Rabat-Salé-Kénitra",
+          ar: "ولاية جهة الرباط-سلا-القنيطرة",        tf: "",                                          min: _INT },
+        { nom: "Wilaya de la Région Marrakech-Safi",
+          ar: "ولاية جهة مراكش-آسفي",                 tf: "",                                          min: _INT },
+        { nom: "Wilaya de la Région Fès-Meknès",
+          ar: "ولاية جهة فاس-مكناس",                  tf: "",                                          min: _INT },
+        { nom: "Wilaya de la Région Tanger-Tétouan-Al Hoceïma",
+          ar: "ولاية جهة طنجة-تطوان-الحسيمة",         tf: "",                                          min: _INT },
+        { nom: "Wilaya de la Région l'Oriental",
+          ar: "ولاية جهة الشرق",                       tf: "",                                          min: _INT },
+        { nom: "Wilaya de la Région Béni Mellal-Khénifra",
+          ar: "ولاية جهة بني ملال-خنيفرة",             tf: "ⵡⴰⵍⵉⵢⴰ ⵏ ⵜⴰⵎⵏⵟⵓⵟ ⵏ ⴱⵏⵉ ⵎⵍⵍⴰⵍ-ⵅⵏⵉⴼⵔⴰ",  min: _INT },
+        { nom: "Wilaya de la Région Drâa-Tafilalet",
+          ar: "ولاية جهة درعة-تافيلالت",               tf: "ⵡⴰⵍⵉⵢⴰ ⵏ ⵜⴰⵎⵏⵟⵓⵟ ⵏ ⴷⴰⵔⵄⴰ-ⵜⴰⴼⵉⵍⴰⵍⵜ",   min: _INT },
+        { nom: "Wilaya de la Région Guelmim-Oued Noun",
+          ar: "ولاية جهة كلميم-واد نون",               tf: "ⵡⴰⵍⵉⵢⴰ ⵏ ⵜⴰⵎⵏⵟⵓⵟ ⵏ ⴳⵍⵎⵉⵎ-ⵡⴰⴷ ⵏⵓⵏ",    min: _INT },
+        { nom: "Wilaya de la Région Laâyoune-Sakia El Hamra",
+          ar: "ولاية جهة العيون-الساقية الحمراء",       tf: "ⵡⴰⵍⵉⵢⴰ ⵏ ⵜⴰⵎⵏⵟⵓⵟ ⵏ ⵍⵄⵢⵓⵏ-ⵙⴰⵇⵢⴰ ⵍⵃⴰⵎⵔⴰ", min: _INT },
+        { nom: "Wilaya de la Région Dakhla-Oued Ed-Dahab",
+          ar: "ولاية جهة الداخلة-وادي الذهب",           tf: "ⵡⴰⵍⵉⵢⴰ ⵏ ⵜⴰⵎⵏⵟⵓⵟ ⵏ ⴷⴷⴰⵅⵍⴰ-ⵡⴰⴷ ⴷⴷⴰⵀⴰⴱ", min: _INT },
       ]},
     ];
 
-    // Remplir datalist ministères
+    // Remplir datalist ministères (valeur FR + label FR / AR)
     (function() {
       const dl = $("pc-ministere-list"); if (!dl) return;
-      PC_MINISTERES.forEach(m => { const o = document.createElement("option"); o.value = m; dl.appendChild(o); });
+      PC_MINISTERES.forEach(m => {
+        const o = document.createElement("option");
+        o.value = m.fr;
+        o.label = m.fr + " — " + m.ar;
+        dl.appendChild(o);
+      });
     })();
 
-    // Remplir select institutions par groupe
+    // Remplir select institutions par groupe (stocke AR et TF en data attributes)
     (function() {
       const sel = $("pc-institution-select"); if (!sel) return;
       PC_INSTITUTIONS.forEach(g => {
         const grp = document.createElement("optgroup"); grp.label = g.groupe;
         g.items.forEach(it => {
           const o = document.createElement("option");
-          o.value = it.nom; o.dataset.ministere = it.min || ""; o.textContent = it.nom;
+          o.value              = it.nom;
+          o.dataset.ministere  = it.min || "";
+          o.dataset.ar         = it.ar  || "";
+          o.dataset.tf         = it.tf  || "";
+          o.textContent        = it.nom + (it.ar ? " — " + it.ar : "");
           grp.appendChild(o);
         });
         sel.appendChild(grp);
       });
     })();
 
-    // Quand on choisit dans le select → remplir le champ texte + ministère si connu
+    // Quand on choisit dans le select → remplir FR, AR, TF + ministère FR/AR
     if ($("pc-institution-select")) {
       $("pc-institution-select").addEventListener("change", function() {
         const opt = this.options[this.selectedIndex];
         if (!opt || !opt.value) return;
-        if ($("pc-institution-nom")) { $("pc-institution-nom").value = opt.value; renderPanneau(); }
-        if ($("pc-ministere") && opt.dataset.ministere) { $("pc-ministere").value = opt.dataset.ministere; renderPanneau(); }
+        if ($("pc-institution-nom"))    { $("pc-institution-nom").value    = opt.value; }
+        if ($("pc-institution-nom-ar")) { $("pc-institution-nom-ar").value = opt.dataset.ar || ""; }
+        if ($("pc-institution-nom-tf")) { $("pc-institution-nom-tf").value = opt.dataset.tf || ""; }
+        if (opt.dataset.ministere) {
+          if ($("pc-ministere")) { $("pc-ministere").value = opt.dataset.ministere; }
+          // Auto-fill arabe du ministère
+          const mObj = PC_MINISTERES.find(m => m.fr === opt.dataset.ministere);
+          if ($("pc-ministere-ar")) { $("pc-ministere-ar").value = mObj ? mObj.ar : ""; }
+        }
+        renderPanneau();
+      });
+    }
+
+    // Auto-fill arabe du ministère quand on tape / sélectionne dans le datalist
+    if ($("pc-ministere")) {
+      $("pc-ministere").addEventListener("change", function() {
+        const mObj = PC_MINISTERES.find(m => m.fr === this.value);
+        if (mObj && $("pc-ministere-ar")) { $("pc-ministere-ar").value = mObj.ar; renderPanneau(); }
       });
     }
 
@@ -19250,7 +19386,7 @@ window.addEventListener('appinstalled', () => {
       r.readAsDataURL(f);
     });
 
-    // Logo institution (panneau public, côté droit)
+    // Logo institution seul (panneau public, côté droit)
     if ($("pc-institution-logo")) {
       $("pc-institution-logo").addEventListener("change", (e) => {
         const f = e.target.files[0]; if (!f) return;
@@ -19260,8 +19396,60 @@ window.addEventListener('appinstalled', () => {
       });
     }
 
+    // ── Logos complets (image unique remplaçant toute la colonne) ──────────
+    function _syncLogoCompletUI() {
+      // GAUCHE
+      const prevL  = $("pc-moa-logo-complet-preview");
+      const imgL   = $("pc-moa-logo-complet-img");
+      const clearL = $("pc-moa-logo-complet-clear");
+      if (prevL)  prevL.style.display  = logoMoaComplet ? "block" : "none";
+      if (imgL)   imgL.src             = logoMoaComplet || "";
+      if (clearL) clearL.style.display = logoMoaComplet ? "inline-block" : "none";
+      // DROITE
+      const prevR  = $("pc-inst-logo-complet-preview");
+      const imgR   = $("pc-inst-logo-complet-img");
+      const clearR = $("pc-inst-logo-complet-clear");
+      if (prevR)  prevR.style.display  = logoInstComplet ? "block" : "none";
+      if (imgR)   imgR.src             = logoInstComplet || "";
+      if (clearR) clearR.style.display = logoInstComplet ? "inline-block" : "none";
+    }
+
+    // Upload logo complet gauche (ministère)
+    if ($("pc-moa-logo-complet-file")) {
+      $("pc-moa-logo-complet-file").addEventListener("change", (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = () => { logoMoaComplet = r.result; _syncLogoCompletUI(); renderPanneau(); };
+        r.readAsDataURL(f);
+      });
+    }
+    if ($("pc-moa-logo-complet-clear")) {
+      $("pc-moa-logo-complet-clear").addEventListener("click", () => {
+        logoMoaComplet = null;
+        if ($("pc-moa-logo-complet-file")) $("pc-moa-logo-complet-file").value = "";
+        _syncLogoCompletUI(); renderPanneau();
+      });
+    }
+
+    // Upload logo complet droit (institution)
+    if ($("pc-inst-logo-complet-file")) {
+      $("pc-inst-logo-complet-file").addEventListener("change", (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = () => { logoInstComplet = r.result; _syncLogoCompletUI(); renderPanneau(); };
+        r.readAsDataURL(f);
+      });
+    }
+    if ($("pc-inst-logo-complet-clear")) {
+      $("pc-inst-logo-complet-clear").addEventListener("click", () => {
+        logoInstComplet = null;
+        if ($("pc-inst-logo-complet-file")) $("pc-inst-logo-complet-file").value = "";
+        _syncLogoCompletUI(); renderPanneau();
+      });
+    }
+
     // Champs texte publics → re-render en live
-    ["pc-ministere","pc-institution-nom","pc-institution-nom-ar","pc-institution-nom-tf","pc-budget"].forEach(id => {
+    ["pc-ministere","pc-ministere-ar","pc-institution-nom","pc-institution-nom-ar","pc-institution-nom-tf","pc-budget"].forEach(id => {
       const el = $(id); if (el) el.addEventListener("input", renderPanneau);
     });
 

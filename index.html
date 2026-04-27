@@ -17792,7 +17792,9 @@ window.addEventListener('appinstalled', () => {
 
   // Référence vers updatePubTextScale (définie dans initPanneauChantier).
   // Initialisée à null ici et assignée dès que initPanneauChantier est appelé.
-  let _pcPubScale = null;
+  let _pcPubScale    = null;
+  // Référence vers _syncLogoCompletUI (même scoping problem — définie dans initPanneauChantier)
+  let _pcSyncLogoUI  = null;
 
   const REGIONS = [
     "Tanger-Tétouan-Al Hoceïma","L'Oriental","Fès-Meknès","Rabat-Salé-Kénitra",
@@ -18516,7 +18518,7 @@ window.addEventListener('appinstalled', () => {
     logoInstitutionUpload = state.logoInstitutionUpload || null;
     logoMoaComplet        = state.logoMoaComplet        || null;
     logoInstComplet       = state.logoInstComplet       || null;
-    _syncLogoCompletUI(); // sync les previews dans le formulaire
+    if (_pcSyncLogoUI) _pcSyncLogoUI(); // sync les previews dans le formulaire
     // Afficher/masquer les champs publics + sync sliders selon le type restauré
     if (_pcPubScale) _pcPubScale();
     if (typeof toggleMoaPublic === "function") toggleMoaPublic();
@@ -19431,6 +19433,7 @@ window.addEventListener('appinstalled', () => {
       if (imgR)   imgR.src             = logoInstComplet || "";
       if (clearR) clearR.style.display = logoInstComplet ? "inline-block" : "none";
     }
+    _pcSyncLogoUI = _syncLogoCompletUI; // expose à la portée IIFE (applyState y accède)
 
     // Upload logo complet gauche (ministère)
     if ($("pc-moa-logo-complet-file")) {

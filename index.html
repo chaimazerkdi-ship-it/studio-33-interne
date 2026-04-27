@@ -2762,7 +2762,8 @@
 
           <fieldset class="pc-fieldset" style="border-color:#A67C52;">
             <legend style="color:#A67C52;"><span class="mi" style="color:#A67C52;">save</span> Enregistrer le panneau</legend>
-            <div id="pc-save-status" class="pc-hint" style="margin-bottom:8px;">Aucun projet sélectionné.</div>
+            <div id="pc-save-status" class="pc-hint" style="margin-bottom:4px;">Aucun projet sélectionné.</div>
+            <div id="pc-draft-status" class="pc-hint" style="margin-bottom:8px;font-size:11px;color:#6B7280;min-height:16px;"></div>
 
             <!-- Qualité d'export (impacte JPEG, PNG, PDF) -->
             <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -17653,46 +17654,47 @@ window.addEventListener('appinstalled', () => {
     display: grid; gap: 0; flex: 1 1 auto; background: #fff;
   }
   #page-panneau .pc-intervenants .pc-card {
-    padding: calc(22px * var(--pc-scale, 1)) calc(26px * var(--pc-scale, 1));
+    padding: calc(24px * var(--pc-scale, 1)) calc(28px * var(--pc-scale, 1));
     display: grid;
-    grid-template-columns: calc(140px * var(--pc-scale, 1)) 1fr;
-    gap: calc(20px * var(--pc-scale, 1));
+    grid-template-columns: calc(200px * var(--pc-scale, 1)) 1fr;
+    gap: calc(24px * var(--pc-scale, 1));
     align-items: center;
     border-right: calc(2px * var(--pc-scale, 1)) solid #111;
     border-bottom: calc(2px * var(--pc-scale, 1)) solid #111;
   }
   #page-panneau .pc-intervenants .pc-logo-box {
-    width: calc(140px * var(--pc-scale, 1));
-    height: calc(140px * var(--pc-scale, 1));
+    width: calc(200px * var(--pc-scale, 1));
+    height: calc(200px * var(--pc-scale, 1));
     display: flex; align-items: center; justify-content: center;
     background: #fff;
+    flex-shrink: 0;
   }
   #page-panneau .pc-intervenants .pc-logo-box img {
     max-width: 100%; max-height: 100%; object-fit: contain;
   }
   #page-panneau .pc-intervenants .pc-logo-box.pc-empty {
     border: calc(2px * var(--pc-scale, 1)) dashed #bbb;
-    color: #bbb; font-size: calc(14px * var(--pc-scale, 1));
+    color: #bbb; font-size: calc(18px * var(--pc-scale, 1));
     text-align: center;
   }
   #page-panneau .pc-intervenants .pc-role {
-    font-size: calc(24px * var(--pc-scale, 1));
+    font-size: calc(30px * var(--pc-scale, 1));
     font-weight: 800; color: #111;
     text-transform: uppercase; letter-spacing: 0.8px;
     border-bottom: calc(2px * var(--pc-scale, 1)) solid #111;
-    padding-bottom: calc(4px * var(--pc-scale, 1));
-    margin-bottom: calc(6px * var(--pc-scale, 1));
+    padding-bottom: calc(5px * var(--pc-scale, 1));
+    margin-bottom: calc(8px * var(--pc-scale, 1));
     display: inline-block;
   }
   #page-panneau .pc-intervenants .pc-nom {
-    font-size: calc(28px * var(--pc-scale, 1));
+    font-size: calc(36px * var(--pc-scale, 1));
     font-weight: 800; color: #111; line-height: 1.15;
     margin-top: calc(4px * var(--pc-scale, 1));
   }
   #page-panneau .pc-intervenants .pc-infos {
-    font-size: calc(20px * var(--pc-scale, 1));
+    font-size: calc(24px * var(--pc-scale, 1));
     color: #222; line-height: 1.3;
-    margin-top: calc(6px * var(--pc-scale, 1));
+    margin-top: calc(8px * var(--pc-scale, 1));
     white-space: pre-wrap;
   }
 
@@ -17709,17 +17711,53 @@ window.addEventListener('appinstalled', () => {
   }
   #page-panneau .pc-panneau.pc-tmpl-lateral .pc-intervenants { flex: 1 1 auto; }
 
-  /* Template: bandeau — image en bande étroite en haut */
-  #page-panneau .pc-panneau.pc-tmpl-bandeau .pc-image { max-height: 18%; min-height: calc(280px * var(--pc-scale, 1)); }
+  /* Template: bandeau — image en bande étroite en haut (~18 % de la hauteur) */
+  #page-panneau .pc-panneau.pc-tmpl-bandeau .pc-image {
+    /* On garde flex: 1 1 auto (hérité) pour que max-height fasse son rôle de plafond */
+    max-height: 18%;
+    min-height: calc(300px * var(--pc-scale, 1));
+  }
 
-  /* Template: compact — pas d'image, intervenants prennent tout */
+  /* Template: compact — pas d'image, intervenants prennent tout le panneau */
   #page-panneau .pc-panneau.pc-tmpl-compact .pc-image { display: none; }
+  /* En compact, cartes verticales (logo en haut, texte centré dessous) */
+  #page-panneau .pc-panneau.pc-tmpl-compact .pc-intervenants .pc-card {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: calc(32px * var(--pc-scale, 1)) calc(24px * var(--pc-scale, 1));
+    grid-template-columns: none;
+  }
+  #page-panneau .pc-panneau.pc-tmpl-compact .pc-intervenants .pc-logo-box {
+    width: calc(260px * var(--pc-scale, 1));
+    height: calc(260px * var(--pc-scale, 1));
+    margin-bottom: calc(18px * var(--pc-scale, 1));
+    max-width: 55%;
+    max-height: 40%;
+  }
+  #page-panneau .pc-panneau.pc-tmpl-compact .pc-intervenants .pc-role {
+    font-size: calc(34px * var(--pc-scale, 1));
+    display: block;
+  }
+  #page-panneau .pc-panneau.pc-tmpl-compact .pc-intervenants .pc-nom {
+    font-size: calc(40px * var(--pc-scale, 1));
+  }
+  #page-panneau .pc-panneau.pc-tmpl-compact .pc-intervenants .pc-infos {
+    font-size: calc(26px * var(--pc-scale, 1));
+  }
 
-  /* Template: moderne — titre en haut, intervenants en bas */
+  /* Template: moderne — titre puis image-bande (25%), puis intervenants larges en bas */
+  /* Objectif : intervenants dominants (≈60 % du panneau), image decorative au centre */
   #page-panneau .pc-panneau.pc-tmpl-moderne .pc-titre { order: 2; }
-  #page-panneau .pc-panneau.pc-tmpl-moderne .pc-image { order: 3; border-bottom: calc(4px * var(--pc-scale, 1)) solid #111; border-top: calc(4px * var(--pc-scale, 1)) solid #111; }
-  #page-panneau .pc-panneau.pc-tmpl-moderne .pc-auth  { order: 4; }
-  #page-panneau .pc-panneau.pc-tmpl-moderne .pc-intervenants { order: 5; }
+  #page-panneau .pc-panneau.pc-tmpl-moderne .pc-image {
+    order: 3;
+    flex: 0 0 25%;                                  /* image = 25 % de la hauteur du panneau */
+    min-height: calc(400px * var(--pc-scale, 1));   /* plancher pour les petits formats */
+    border-bottom: calc(4px * var(--pc-scale, 1)) solid #111;
+    border-top:    calc(4px * var(--pc-scale, 1)) solid #111;
+  }
+  #page-panneau .pc-panneau.pc-tmpl-moderne .pc-auth         { order: 4; }
+  #page-panneau .pc-panneau.pc-tmpl-moderne .pc-intervenants { order: 5; flex: 1 1 auto; }
 
   /* Template: AGADIR — entête + titre + split(image|principaux) + auth + strip secondaires */
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-mid {
@@ -17737,15 +17775,25 @@ window.addEventListener('appinstalled', () => {
     border-right: 0;
     border-bottom: calc(2px * var(--pc-scale, 1)) solid #111;
     display: grid;
-    grid-template-columns: calc(180px * var(--pc-scale, 1)) 1fr;
-    gap: calc(20px * var(--pc-scale, 1));
-    padding: calc(24px * var(--pc-scale, 1));
+    grid-template-columns: calc(220px * var(--pc-scale, 1)) 1fr;
+    gap: calc(24px * var(--pc-scale, 1));
+    padding: calc(28px * var(--pc-scale, 1));
     flex: 1 1 0;
+    align-items: center;
   }
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-principals .pc-card:last-child { border-bottom: 0; }
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-principals .pc-logo-box {
-    width: calc(180px * var(--pc-scale, 1));
-    height: calc(180px * var(--pc-scale, 1));
+    width: calc(220px * var(--pc-scale, 1));
+    height: calc(220px * var(--pc-scale, 1));
+  }
+  #page-panneau .pc-panneau.pc-tmpl-agadir .pc-principals .pc-role {
+    font-size: calc(30px * var(--pc-scale, 1));
+  }
+  #page-panneau .pc-panneau.pc-tmpl-agadir .pc-principals .pc-nom {
+    font-size: calc(38px * var(--pc-scale, 1));
+  }
+  #page-panneau .pc-panneau.pc-tmpl-agadir .pc-principals .pc-infos {
+    font-size: calc(26px * var(--pc-scale, 1));
   }
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-secondaires {
     display: grid; gap: 0; background: #fff;
@@ -17762,19 +17810,19 @@ window.addEventListener('appinstalled', () => {
   }
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-secondaires .pc-card:last-child { border-right: 0; }
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-secondaires .pc-logo-box {
-    width: calc(120px * var(--pc-scale, 1));
-    height: calc(120px * var(--pc-scale, 1));
-    margin-bottom: calc(10px * var(--pc-scale, 1));
+    width: calc(150px * var(--pc-scale, 1));
+    height: calc(150px * var(--pc-scale, 1));
+    margin-bottom: calc(12px * var(--pc-scale, 1));
   }
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-secondaires .pc-role  {
-    font-size: calc(20px * var(--pc-scale, 1));
+    font-size: calc(24px * var(--pc-scale, 1));
     border-bottom: 0; padding-bottom: 0;
   }
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-secondaires .pc-nom   {
-    font-size: calc(22px * var(--pc-scale, 1));
+    font-size: calc(26px * var(--pc-scale, 1));
   }
   #page-panneau .pc-panneau.pc-tmpl-agadir .pc-secondaires .pc-infos {
-    font-size: calc(16px * var(--pc-scale, 1));
+    font-size: calc(20px * var(--pc-scale, 1));
   }
 
   /* Orientation paysage — ajustement typographique plus compact */
@@ -17795,6 +17843,45 @@ window.addEventListener('appinstalled', () => {
   let _pcPubScale    = null;
   // Référence vers _syncLogoCompletUI (même scoping problem — définie dans initPanneauChantier)
   let _pcSyncLogoUI  = null;
+
+  // ---- Auto-save brouillon en localStorage --------------------------------
+  const DRAFT_KEY_PREFIX = 's33_panneau_draft_';
+  let   _autosaveTimer   = null;
+
+  function _getDraftKey(){
+    const sel = typeof $ === "function" && $("pc-save-project");
+    const v   = sel ? parseInt(sel.value, 10) : NaN;
+    return (!isNaN(v) && v) ? DRAFT_KEY_PREFIX + v : null;
+  }
+
+  function _autosaveDraft(){
+    _autosaveTimer = null;
+    const key = _getDraftKey();
+    if (!key) return;                        // pas de projet sélectionné → rien à sauver
+    try {
+      const state = collectState();
+      localStorage.setItem(key, JSON.stringify(state));
+      const el = $("pc-draft-status");
+      if (el) {
+        const t = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+        el.innerHTML = `<span class="mi" style="font-size:12px;color:#6B7280;vertical-align:-2px;">cloud_done</span> Brouillon local sauvegardé à ${t}`;
+      }
+    } catch(e) { /* localStorage plein ou désactivé */ }
+  }
+
+  function scheduleDraftSave(){
+    if (_autosaveTimer) clearTimeout(_autosaveTimer);
+    _autosaveTimer = setTimeout(_autosaveDraft, 1500);   // 1.5 s après la dernière modif
+  }
+
+  function clearDraft(projId){
+    try {
+      if (projId) localStorage.removeItem(DRAFT_KEY_PREFIX + projId);
+      const el = $("pc-draft-status");
+      if (el) el.innerHTML = '';
+    } catch(e) {}
+  }
+  // -------------------------------------------------------------------------
 
   const REGIONS = [
     "Tanger-Tétouan-Al Hoceïma","L'Oriental","Fès-Meknès","Rabat-Salé-Kénitra",
@@ -18312,6 +18399,9 @@ window.addEventListener('appinstalled', () => {
     // Appliquer les styles pub APRÈS que le HTML est en place
     // (_pcPubScale est assigné dans initPanneauChantier ; null avant init)
     if (_pcPubScale) _pcPubScale();
+
+    // Planifier la sauvegarde automatique du brouillon
+    scheduleDraftSave();
   }
 
   /* ---------- Impression & export ---------- */
@@ -18594,8 +18684,34 @@ window.addEventListener('appinstalled', () => {
       }
     }
     currentStateRecordId = null;
+
+    // Pas de panneau Supabase → vérifier s'il existe un brouillon local
+    const draftKey = DRAFT_KEY_PREFIX + projId;
+    let   draftStr = null;
+    try { draftStr = localStorage.getItem(draftKey); } catch(e) {}
+    if (draftStr) {
+      try {
+        const draftState = JSON.parse(draftStr);
+        const restore = confirm(
+          `Un brouillon local a été trouvé pour "${proj.name}".\n\n` +
+          `OUI → Restaurer le brouillon (intervenants, images, tous les champs).\n` +
+          `NON → Commencer un nouveau panneau vierge.`
+        );
+        if (restore) {
+          applyState(draftState);
+          info.innerHTML = `Lié à <strong>${escapeHtml(proj.name)}</strong> — brouillon local restauré.`;
+          status.innerHTML = `Lié à <strong>${escapeHtml(proj.name)}</strong>. Brouillon chargé — pensez à enregistrer.`;
+          const dEl = $("pc-draft-status");
+          if (dEl) dEl.innerHTML = `<span class="mi" style="font-size:12px;color:#D97706;vertical-align:-2px;">history</span> Brouillon local restauré`;
+          return;
+        }
+      } catch(e) { /* JSON corrompu — ignorer */ }
+    }
+
     info.innerHTML = `Lié à <strong>${escapeHtml(proj.name)}</strong> — nouveau panneau.`;
     status.innerHTML = `Lié à <strong>${escapeHtml(proj.name)}</strong>. Prêt à enregistrer.`;
+    // Planifier une sauvegarde du brouillon dès que le projet est sélectionné
+    scheduleDraftSave();
   }
 
   async function enregistrerPanneau(){
@@ -18670,6 +18786,8 @@ window.addEventListener('appinstalled', () => {
       }
 
       if (typeof window.loadDB === "function") { try { await window.loadDB(); } catch(e){} }
+      // Brouillon local devenu inutile — on le supprime
+      clearDraft(projId);
       $("pc-save-status").innerHTML = `<span class="mi" style="color:#059669;">check_circle</span> Enregistré dans <strong>${escapeHtml(proj.name)}</strong> à ${new Date().toLocaleTimeString('fr-FR')}.`;
       alert(`✓ Panneau enregistré dans "${proj.name}" (${sizeStr}).\n\nVous pourrez le rouvrir et le modifier depuis le projet.`);
     } catch(e) {

@@ -2379,7 +2379,6 @@
                   <option value="classique">Classique (image haut)</option>
                   <option value="agadir">Agadir (image + principaux à côté)</option>
                   <option value="lateral">Image latérale</option>
-                  <option value="bandeau">Bandeau (image étroite)</option>
                   <option value="compact">Compact (sans image)</option>
                   <option value="moderne">Moderne (intervenants en bas)</option>
                 </select>
@@ -17711,11 +17710,10 @@ window.addEventListener('appinstalled', () => {
   }
   #page-panneau .pc-panneau.pc-tmpl-lateral .pc-intervenants { flex: 1 1 auto; }
 
-  /* Template: bandeau — image en bande étroite en haut (~18 % de la hauteur) */
-  #page-panneau .pc-panneau.pc-tmpl-bandeau .pc-image {
-    /* On garde flex: 1 1 auto (hérité) pour que max-height fasse son rôle de plafond */
-    max-height: 18%;
-    min-height: calc(300px * var(--pc-scale, 1));
+  /* Template: classique — grande zone image (~40 % de la hauteur du panneau) */
+  #page-panneau .pc-panneau.pc-tmpl-classique .pc-image {
+    flex: 0 0 40%;
+    min-height: calc(500px * var(--pc-scale, 1));
   }
 
   /* Template: compact — pas d'image, intervenants prennent tout le panneau */
@@ -17751,8 +17749,8 @@ window.addEventListener('appinstalled', () => {
   #page-panneau .pc-panneau.pc-tmpl-moderne .pc-titre { order: 2; }
   #page-panneau .pc-panneau.pc-tmpl-moderne .pc-image {
     order: 3;
-    flex: 0 0 25%;                                  /* image = 25 % de la hauteur du panneau */
-    min-height: calc(400px * var(--pc-scale, 1));   /* plancher pour les petits formats */
+    flex: 0 0 40%;                                  /* image = 40 % de la hauteur du panneau */
+    min-height: calc(500px * var(--pc-scale, 1));   /* plancher pour les petits formats */
     border-bottom: calc(4px * var(--pc-scale, 1)) solid #111;
     border-top:    calc(4px * var(--pc-scale, 1)) solid #111;
   }
@@ -18275,7 +18273,7 @@ window.addEventListener('appinstalled', () => {
       bgSize = `${imgZ}% ${imgZ}%`;
     }
     const imageStyle = imageProjet
-      ? `background-image:url("${imageProjet}");background-size:${bgSize};background-position:${imgX}% ${imgY}%;`
+      ? `background-image:url('${imageProjet}');background-size:${bgSize};background-position:${imgX}% ${imgY}%;`
       : '';
     const imageHtml = imageProjet
       ? '' // le background est rendu directement sur le div .pc-image

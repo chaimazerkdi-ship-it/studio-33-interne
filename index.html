@@ -9509,13 +9509,22 @@ function renderRapport() {
   const today = new Date().toISOString().slice(0, 10);
   const todayLabel = new Date().toLocaleDateString('fr-MA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   document.getElementById('rapport-subtitle').textContent = todayLabel;
+  // Titre dynamique selon le rôle
+  const pageTitleEl = document.querySelector('#page-rapport .page-title');
+  if (pageTitleEl) pageTitleEl.textContent = (currentUser.role === 'admin') ? 'Rapports de l\'équipe' : 'Mon Rapport';
 
+  const isAdmin = currentUser.role === 'admin';
   const reports = (db.dailyReports || []);
   const uid = String(currentUser.id);
   const todayReports = reports.filter(r => String(r.user_id) === uid && r.date === today);
   const todayReport = todayReports[0] || null;
-  const pastReports = reports.filter(r => String(r.user_id) === uid && r.date !== today).sort((a,b) => new Date(b.date) - new Date(a.date));
+  // Admin voit TOUS les rapports dans l'historique; les autres voient seulement les leurs
+  const pastReports = isAdmin
+    ? reports.filter(r => r.date !== today).sort((a,b) => new Date(b.date) - new Date(a.date))
+    : reports.filter(r => String(r.user_id) === uid && r.date !== today).sort((a,b) => new Date(b.date) - new Date(a.date));
   const totalTodayHours = todayReports.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
+  // Rapports de toute l'équipe aujourd'hui (admin uniquement)
+  const teamTodayReports = isAdmin ? reports.filter(r => r.date === today) : [];
 
   const formHtml = todayReport ? `
     <div class="card" style="margin-bottom:24px;border-left:2px solid var(--green);">
@@ -9557,19 +9566,55 @@ function renderRapport() {
       </div>
     </div>`;
 
+  // Bloc "Équipe aujourd'hui" visible uniquement par l'admin
+  const TEAM_MEMBERS = ['Nadia', 'Nezha', 'Oumaima', 'Zineb', 'Chaima'];
+  let teamTodayHtml = '';
+  if (isAdmin) {
+    const memberStatus = TEAM_MEMBERS.map(name => {
+      const submitted = teamTodayReports.filter(r =>
+        (r.user_name || '').split(' ')[0].toLowerCase() === name.toLowerCase() ||
+        (r.user_name || '').toLowerCase() === name.toLowerCase()
+      );
+      const totalH = submitted.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
+      return { name, submitted: submitted.length > 0, hours: totalH, reports: submitted };
+    });
+    const submittedCount = memberStatus.filter(m => m.submitted).length;
+    teamTodayHtml = `
+      <div class="card" style="margin-bottom:20px;border-left:3px solid var(--gold);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+          <div class="section-title" style="margin:0;">Équipe — rapports du jour</div>
+          <span class="badge badge-gold">${submittedCount} / ${TEAM_MEMBERS.length} soumis</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${memberStatus.map(m => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid ${m.submitted ? 'var(--green)' : 'var(--border)'};">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="mi" style="color:${m.submitted ? 'var(--green)' : 'var(--text-faint)'};font-size:18px;">${m.submitted ? 'check_circle' : 'radio_button_unchecked'}</span>
+                <span style="font-size:13px;font-weight:600;color:var(--text);">${escHTML(m.name)}</span>
+              </div>
+              ${m.submitted
+                ? `<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${m.reports.map(r => `<span class="badge badge-dim" style="font-size:10px;">${escHTML(r.project_name || '—')} · <strong>${r.hours}h</strong></span>`).join('')}</div>`
+                : `<span style="font-size:11px;color:var(--text-faint);font-style:italic;">Pas encore soumis</span>`
+              }
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+
   const historyHtml = pastReports.length === 0 ? '' : `
-    <div class="section-title" style="margin-bottom:14px;">Historique</div>
-    ${pastReports.slice(0,10).map(r => `
+    <div class="section-title" style="margin-bottom:14px;">${isAdmin ? 'Historique — toute l\'équipe' : 'Historique'}</div>
+    ${pastReports.slice(0, isAdmin ? 60 : 10).map(r => `
       <div class="card" style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
           <div style="font-size:12px;color:var(--text);">${new Date(r.date).toLocaleDateString('fr-MA',{weekday:'long',day:'numeric',month:'long'})}</div>
-          <div style="display:flex;gap:8px;">
-            <span class="badge badge-gold">${r.project_name}</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${isAdmin ? `<span class="badge" style="background:var(--surface3);color:var(--text);font-weight:700;">${escHTML(r.user_name || '—')}</span>` : ''}
+            <span class="badge badge-gold">${escHTML(r.project_name || '—')}</span>
             <span class="badge badge-dim">${r.hours}h</span>
           </div>
         </div>
-        <div style="font-size:12px;color:var(--text-dim);white-space:pre-wrap;">${r.tasks}</div>
-        ${r.blockers ? `<div style="font-size:11px;color:var(--red);margin-top:8px;">${r.blockers}</div>` : ''}
+        <div style="font-size:12px;color:var(--text-dim);white-space:pre-wrap;">${escHTML(r.tasks || '')}</div>
+        ${r.blockers ? `<div style="font-size:11px;color:var(--red);margin-top:8px;">${escHTML(r.blockers)}</div>` : ''}
       </div>`).join('')}`;
 
   // ── Mes heures cette semaine ──
@@ -9614,48 +9659,67 @@ function renderRapport() {
 
   // ── Rapport d'équipe (admin only) ──
   let teamHtml = '';
-  if (currentUser.role === 'admin') {
-    const members = ['Admin', 'Nadia', 'Nezha', 'Oumaima', 'Zineb'];
+  if (isAdmin) {
+    const members = TEAM_MEMBERS;
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
     const rows = members.map(name => {
-      let done = 0, inprogress = 0, hours = 0;
+      let done = 0, inprogress = 0, mins = 0;
+      // Heures via timelogs sur tâches
       (db.projects || []).forEach(p => {
         (p.tasks || []).forEach(t => {
-          const assigned = (t.assignedTo || '').toLowerCase() === name.toLowerCase();
+          const assigned = (t.assignedTo || '').split(' ')[0].toLowerCase() === name.toLowerCase()
+                        || (t.assignedTo || '').toLowerCase() === name.toLowerCase();
           if (assigned) {
             if (isTaskDone(t)) done++;
             else if (t.status === 'inprogress') inprogress++;
           }
           (t.timeLog || []).forEach(l => {
-            if (l.author === name && l.date >= monthStart) hours += (l.minutes || 0);
+            if ((l.author||'').split(' ')[0].toLowerCase() === name.toLowerCase() && l.date >= monthStart)
+              mins += (l.minutes || 0);
           });
         });
       });
-      return `<tr>
-        <td style="padding:8px 10px;font-size:12px;font-weight:600;color:var(--text);">${name}</td>
+      // Heures via rapports quotidiens
+      const reportMins = (db.dailyReports || [])
+        .filter(r => r.date >= monthStart && (
+          (r.user_name||'').split(' ')[0].toLowerCase() === name.toLowerCase() ||
+          (r.user_name||'').toLowerCase() === name.toLowerCase()
+        ))
+        .reduce((s, r) => s + (parseFloat(r.hours) || 0) * 60, 0);
+      const totalMins = mins + reportMins;
+      const rapportCount = (db.dailyReports || []).filter(r => r.date >= monthStart && (
+        (r.user_name||'').split(' ')[0].toLowerCase() === name.toLowerCase() ||
+        (r.user_name||'').toLowerCase() === name.toLowerCase()
+      )).length;
+      return `<tr style="border-bottom:1px solid var(--surface2);">
+        <td style="padding:8px 10px;font-size:12px;font-weight:600;color:var(--text);">${escHTML(name)}</td>
         <td style="padding:8px 10px;font-size:12px;color:var(--text-dim);text-align:center;">${done}</td>
-        <td style="padding:8px 10px;font-size:12px;color:var(--gold);text-align:center;font-weight:600;">${formatTime(hours)}</td>
+        <td style="padding:8px 10px;font-size:12px;color:var(--gold);text-align:center;font-weight:700;">${formatTime(totalMins)}</td>
+        <td style="padding:8px 10px;font-size:12px;color:var(--text-dim);text-align:center;">${rapportCount}</td>
         <td style="padding:8px 10px;font-size:12px;color:var(--text-dim);text-align:center;">${inprogress}</td>
       </tr>`;
     }).join('');
     teamHtml = `
       <div class="card" style="margin-bottom:24px;">
-        <div class="section-title" style="margin-bottom:16px;">Rapport d'équipe — ce mois</div>
+        <div class="section-title" style="margin-bottom:16px;">Récap équipe — ce mois</div>
         <table style="width:100%;border-collapse:collapse;">
           <thead>
-            <tr style="border-bottom:1px solid var(--border);">
+            <tr style="border-bottom:2px solid var(--border);">
               <th style="padding:6px 10px;font-size:11px;color:var(--text-dim);text-align:left;font-weight:600;">Membre</th>
-              <th style="padding:6px 10px;font-size:11px;color:var(--text-dim);text-align:center;font-weight:600;">Terminées ce mois</th>
-              <th style="padding:6px 10px;font-size:11px;color:var(--text-dim);text-align:center;font-weight:600;">Heures loguées</th>
+              <th style="padding:6px 10px;font-size:11px;color:var(--text-dim);text-align:center;font-weight:600;">Tâches terminées</th>
+              <th style="padding:6px 10px;font-size:11px;color:var(--text-dim);text-align:center;font-weight:600;">Heures travaillées</th>
+              <th style="padding:6px 10px;font-size:11px;color:var(--text-dim);text-align:center;font-weight:600;">Rapports soumis</th>
               <th style="padding:6px 10px;font-size:11px;color:var(--text-dim);text-align:center;font-weight:600;">En cours</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
+        <div style="font-size:10px;color:var(--text-faint);margin-top:8px;">Heures = timelogs sur tâches + heures des rapports quotidiens</div>
       </div>`;
   }
 
-  document.getElementById('rapport-content').innerHTML = formHtml + weekBarsHtml + teamHtml + historyHtml;
+  // Pour admin : teamTodayHtml en premier, puis son propre formulaire, puis le récap, puis l'historique global
+  document.getElementById('rapport-content').innerHTML = teamTodayHtml + formHtml + weekBarsHtml + teamHtml + historyHtml;
 
   // If no report yet today, init the multi-project form
   if (!todayReport && typeof window.mrInit === 'function' && document.getElementById('rp-entries')) {

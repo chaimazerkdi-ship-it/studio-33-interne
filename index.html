@@ -4730,9 +4730,9 @@ function renderProjectDetailPage() {
             const typeLabels = { doc_admin:'Doc. administratif', certif_propriete:'Certificat de propriété', plan_cadastral:'Plan cadastral', calcul_contenance:'Calcul de contenance', pv_chantier:'PV de chantier', photo_chantier:'Photo de chantier' };
             return docs.map(doc => `
               <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:box-shadow .2s;" onmouseover="this.style.boxShadow='var(--shadow-lg)'" onmouseout="this.style.boxShadow='none'">
-                ${doc.is_pdf || doc.doc_type !== 'photo_chantier'
-                  ? `<div style="height:80px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:32px;">${typeIcons[doc.doc_type]||'<span class="mi mi-lg">description</span>'}</div>`
-                  : `<img src="" data-mid="${doc.id}" style="width:100%;height:80px;object-fit:cover;transition:opacity .3s;opacity:0;" alt="${doc.name}" onload="this.style.opacity=1">`
+                ${(doc.is_pdf || (!doc.mime?.startsWith('image/') && doc.doc_type !== 'photo_chantier' && doc.doc_type !== 'plan_cadastral' && doc.doc_type))
+                  ? `<div style="height:110px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:36px;">${typeIcons[doc.doc_type]||'<span class="mi mi-lg">description</span>'}</div>`
+                  : `<img src="" data-mid="${doc.id}" style="width:100%;height:110px;object-fit:cover;transition:opacity .3s;opacity:0;" alt="${doc.name}" onload="this.style.opacity=1">`
                 }
                 <div style="padding:8px 10px;">
                   <div style="font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${doc.name}">${doc.name}</div>
@@ -12776,13 +12776,19 @@ function escHTML(str) {
               '<span class="mi mi-lg" style="display:block;margin:0 auto 8px;color:var(--text-dim);">folder_open</span>' +
               'Aucun document dans ce dossier.<br>Cliquez sur « Ajouter un fichier » pour commencer.' +
             '</div>'
-          : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;">' +
+          : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">' +
             folderDocs.map(d => {
-              const isImg = !d.is_pdf && (d.mime ? d.mime.startsWith('image') : (!d.doc_type || d.doc_type === 'photo_chantier'));
-              const icon = d.is_pdf ? 'picture_as_pdf' : (isImg ? '' : 'description');
+              // isImg : vrai si mime image OU (pas PDF et pas un doc_type explicitement non-image)
+              const isImg = !d.is_pdf && (
+                (d.mime && d.mime.startsWith('image/')) ||
+                (!d.mime && (d.doc_type === 'photo_chantier' || d.doc_type === 'plan_cadastral' || !d.doc_type))
+              );
+              const icon = d.is_pdf ? 'picture_as_pdf' : 'description';
               return '<div class="s33-doc-card">' +
-                '<div class="s33-doc-preview" onclick="s33OpenDoc(' + d.id + ')" title="Ouvrir">' +
-                  (isImg ? '<img src="" data-mid="' + d.id + '" alt="" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .3s;" onload="this.style.opacity=1">' : '<span class="mi mi-lg">' + icon + '</span>') +
+                '<div class="s33-doc-preview" onclick="s33OpenDoc(' + d.id + ')" title="Ouvrir" style="height:160px;cursor:pointer;">' +
+                  (isImg
+                    ? '<img src="" data-mid="' + d.id + '" alt="" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s;" onload="this.style.opacity=1">'
+                    : '<span class="mi" style="font-size:48px;color:var(--text-dim);">' + icon + '</span>') +
                 '</div>' +
                 '<div class="s33-doc-body">' +
                   '<div class="s33-doc-name" title="' + escHTML(d.name) + '">' + escHTML(d.name) + '</div>' +
@@ -13124,6 +13130,42 @@ function escHTML(str) {
     });
   };
 
+  // Taille max en octets avant compression automatique (7 Mo brut ≈ 9.3 Mo base64 ≈ limite sûre Supabase)
+  const S33_MAX_IMG_BYTES = 7 * 1024 * 1024;
+  // Taille max pour les PDFs (pas compressibles côté client)
+  const S33_MAX_PDF_BYTES = 9 * 1024 * 1024;
+
+  // Comprime une image via canvas jusqu'à ce qu'elle soit sous la limite
+  function s33CompressImage(dataUrl, mime, maxBytes, callback) {
+    const img = new Image();
+    img.onload = () => {
+      let quality = 0.82;
+      let scale = 1.0;
+      // Si l'image est très grande en dimensions, réduire d'abord
+      const MAX_DIM = 2400;
+      if (img.width > MAX_DIM || img.height > MAX_DIM) {
+        scale = Math.min(MAX_DIM / img.width, MAX_DIM / img.height);
+      }
+      const tryCompress = (q, s) => {
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.width  * s);
+        canvas.height = Math.round(img.height * s);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const out = canvas.toDataURL('image/jpeg', q);
+        const approxBytes = Math.round(out.length * 0.75); // base64 → bytes approx
+        if (approxBytes <= maxBytes || q <= 0.40) {
+          callback(out, approxBytes);
+        } else {
+          // Réduire qualité ou dimensions et réessayer
+          if (q > 0.55) tryCompress(q - 0.15, s);
+          else          tryCompress(q,         s * 0.75);
+        }
+      };
+      tryCompress(quality, scale);
+    };
+    img.src = dataUrl;
+  }
+
   window.s33HandleUploadFile = function(input) {
     const file = input.files[0];
     if (!file) return;
@@ -13132,21 +13174,52 @@ function escHTML(str) {
       toast('Format non accepté');
       return;
     }
+
+    // Vérification taille PDF (non compressible)
+    if (file.type === 'application/pdf' && file.size > S33_MAX_PDF_BYTES) {
+      const mb = (file.size / 1024 / 1024).toFixed(1);
+      alert(`Ce PDF fait ${mb} Mo. La limite pour les PDFs est 9 Mo.\nCompressez-le en ligne (ex: ilovepdf.com) avant de l'uploader.`);
+      input.value = '';
+      return;
+    }
+
+    const dzInner = document.getElementById('s33-dz-inner');
+
     const reader = new FileReader();
     reader.onload = e => {
-      window._s33UploadData = e.target.result;
-      window._s33UploadMime = file.type;
-      window._s33UploadSize = formatSize(file.size);
-      window._s33UploadFileName = file.name;
-      const shortName = file.name.length > 34 ? file.name.slice(0,31) + '...' : file.name;
-      document.getElementById('s33-dz-inner').innerHTML =
-        '<span class="mi mi-lg" style="color:var(--gold);">' + (file.type === 'application/pdf' ? 'picture_as_pdf' : 'image') + '</span>' +
-        '<div style="margin-top:8px;font-size:13px;font-weight:700;color:var(--text);">' + escHTML(shortName) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">' + window._s33UploadSize + '</div>';
-      document.getElementById('s33-name-row').style.display = '';
-      document.getElementById('s33-upload-name').value = file.name.replace(/\.[^.]+$/, '');
-      const btn = document.getElementById('s33-upload-save');
-      btn.disabled = false; btn.style.opacity = '1';
+      const rawData = e.target.result;
+      const isImage = file.type !== 'application/pdf';
+
+      const finalize = (data, finalSize) => {
+        window._s33UploadData = data;
+        window._s33UploadMime = file.type;
+        window._s33UploadSize = formatSize(file.size);
+        window._s33UploadFileName = file.name;
+        const shortName = file.name.length > 34 ? file.name.slice(0,31) + '...' : file.name;
+        const wasCompressed = isImage && file.size > S33_MAX_IMG_BYTES;
+        const compressedLabel = wasCompressed
+          ? `<div style="font-size:10px;color:var(--green);margin-top:2px;">✓ Comprimée : ${formatSize(finalSize)}</div>`
+          : '';
+        dzInner.innerHTML =
+          '<span class="mi mi-lg" style="color:var(--gold);">' + (file.type === 'application/pdf' ? 'picture_as_pdf' : 'image') + '</span>' +
+          '<div style="margin-top:8px;font-size:13px;font-weight:700;color:var(--text);">' + escHTML(shortName) + '</div>' +
+          '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">' + window._s33UploadSize + (wasCompressed ? ' → comprimée' : '') + '</div>' +
+          compressedLabel;
+        document.getElementById('s33-name-row').style.display = '';
+        document.getElementById('s33-upload-name').value = file.name.replace(/\.[^.]+$/, '');
+        const btn = document.getElementById('s33-upload-save');
+        btn.disabled = false; btn.style.opacity = '1';
+      };
+
+      if (isImage && file.size > S33_MAX_IMG_BYTES) {
+        // Montrer un indicateur de compression en cours
+        dzInner.innerHTML = '<span class="mi mi-lg" style="color:var(--gold);">hourglass_top</span><div style="margin-top:8px;font-size:13px;color:var(--text-dim);">Compression en cours…</div>';
+        s33CompressImage(rawData, file.type, S33_MAX_IMG_BYTES * 1.33, (compressed, bytes) => {
+          finalize(compressed, bytes);
+        });
+      } else {
+        finalize(rawData, Math.round(rawData.length * 0.75));
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -13174,6 +13247,7 @@ function escHTML(str) {
       folder: window._s33UploadFolder,
       is_project_doc: true,
       is_pdf: window._s33UploadMime === 'application/pdf',
+      mime: window._s33UploadMime || null,
       data: window._s33UploadData,
       project_id: window._s33UploadProjId,
       size: window._s33UploadSize,

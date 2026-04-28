@@ -12073,12 +12073,21 @@ function escHTML(str) {
 
   function getMinutesByPhase(p) {
     const result = {};
+    // Source 1 : timelogs sur les tâches
     (p.tasks || []).forEach(t => {
       (t.timeLog || []).forEach(l => {
         const ph = l.phase || p.phase || 'Autre';
         if (!result[ph]) result[ph] = 0;
         result[ph] += l.minutes || 0;
       });
+    });
+    // Source 2 : rapports quotidiens — rattachés à la phase courante du projet
+    (db.dailyReports || []).filter(r =>
+      parseInt(r.project_id) === parseInt(p.id) && (Number(r.hours) || 0) > 0
+    ).forEach(r => {
+      const ph = p.phase || 'Autre';
+      if (!result[ph]) result[ph] = 0;
+      result[ph] += (Number(r.hours) || 0) * 60;
     });
     return result;
   }
@@ -12091,20 +12100,40 @@ function escHTML(str) {
     const honoraires = paid.reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
     // Agrégation par auteur — coût = somme(heures_auteur × taux_auteur)
-    const byAuthor = {}; // { name: { minutes, rate, cost } }
+    const byAuthor = {}; // { name: { minutes, rate, cost, reportMins, taskMins } }
     let totalMins = 0;
+
+    // Source 1 : timelogs sur les tâches
     (p.tasks || []).forEach(t => {
       (t.timeLog || []).forEach(l => {
         const mins = Number(l.minutes) || 0;
         if (mins <= 0) return;
         const author = l.author || 'Inconnu';
         if (!byAuthor[author]) {
-          byAuthor[author] = { minutes: 0, rate: getRateForAuthor(author, rates, mode), cost: 0 };
+          byAuthor[author] = { minutes: 0, taskMins: 0, reportMins: 0, rate: getRateForAuthor(author, rates, mode), cost: 0 };
         }
-        byAuthor[author].minutes += mins;
+        byAuthor[author].minutes   += mins;
+        byAuthor[author].taskMins  += mins;
         totalMins += mins;
       });
     });
+
+    // Source 2 : rapports quotidiens (daily_reports) — heures saisies par les collaboratrices
+    let totalReportMins = 0;
+    (db.dailyReports || []).filter(r =>
+      parseInt(r.project_id) === parseInt(p.id) && (Number(r.hours) || 0) > 0
+    ).forEach(r => {
+      const mins = (Number(r.hours) || 0) * 60;
+      const author = r.user_name || 'Inconnu';
+      if (!byAuthor[author]) {
+        byAuthor[author] = { minutes: 0, taskMins: 0, reportMins: 0, rate: getRateForAuthor(author, rates, mode), cost: 0 };
+      }
+      byAuthor[author].minutes    += mins;
+      byAuthor[author].reportMins += mins;
+      totalMins      += mins;
+      totalReportMins += mins;
+    });
+
     let costMO = 0;
     Object.keys(byAuthor).forEach(name => {
       const row = byAuthor[name];
@@ -12112,7 +12141,7 @@ function escHTML(str) {
       costMO += row.cost;
     });
     const marge = honoraires - costMO;
-    return { honoraires, costMO, marge, totalMins, byAuthor, mode };
+    return { honoraires, costMO, marge, totalMins, totalReportMins, byAuthor, mode };
   }
 
   // ── PROJECT DETAIL ADDONS ───────────────────────────────────
@@ -12176,8 +12205,13 @@ function escHTML(str) {
       // Détail par personne
       const authorRows = Object.keys(prof.byAuthor).sort().map(name => {
         const r = prof.byAuthor[name];
+        const sourceTag = (r.reportMins > 0 && r.taskMins > 0)
+          ? '<span style="font-size:10px;background:#fff3cd;color:#856404;padding:1px 5px;border-radius:4px;margin-left:6px;">tâches + rapports</span>'
+          : r.reportMins > 0
+            ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 5px;border-radius:4px;margin-left:6px;">via rapports</span>'
+            : '';
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--surface2);font-size:12px;">' +
-          '<span style="color:var(--text);font-weight:600;">' + escHTML(name) + '</span>' +
+          '<span style="color:var(--text);font-weight:600;">' + escHTML(name) + sourceTag + '</span>' +
           '<span style="color:var(--text-dim);">' + formatTime(r.minutes) + ' × ' + r.rate + ' dh/h = <strong style="color:var(--text);">' + formatNum(Math.round(r.cost)) + ' dh</strong></span>' +
         '</div>';
       }).join('');
@@ -12203,7 +12237,7 @@ function escHTML(str) {
           '<div class="stat-card">' +
             '<div class="stat-label">Coût main-d\'œuvre</div>' +
             '<div style="font-size:20px;font-weight:800;color:var(--text);margin-top:4px;">' + formatNum(Math.round(prof.costMO)) + ' dh</div>' +
-            '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">' + formatTime(prof.totalMins) + ' cumulées — ' + modeLabel.toLowerCase() + '</div>' +
+            '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">' + formatTime(prof.totalMins) + ' cumulées' + (prof.totalReportMins > 0 ? ' · <span style="color:#2e7d32;">dont ' + formatTime(prof.totalReportMins) + ' via rapports</span>' : '') + '</div>' +
           '</div>' +
           '<div class="stat-card">' +
             '<div class="stat-label">Marge</div>' +

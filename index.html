@@ -3732,7 +3732,10 @@
         <label>Date de signature du contrat</label>
         <input type="date" id="p-contract-date">
       </div>
-      <div class="form-row" style="margin-bottom:0"></div>
+      <div class="form-row" style="margin-bottom:0">
+        <label>N° dossier Rokhass</label>
+        <input type="text" id="p-num-rokhass" placeholder="ex: 2024/12345">
+      </div>
     </div>
     <div class="form-row">
       <label>Notes</label>
@@ -4745,18 +4748,32 @@ function renderProjectDetailPage() {
       ` : ''}
     </div>`;
     })()}
-    ${(p.contract_date || p.contractDate) ? `
-    <div style="display:inline-flex;align-items:center;gap:10px;background:#f0faf0;border:1px solid #b7ddb7;border-radius:var(--radius-sm);padding:10px 18px;margin-bottom:20px;">
-      <span class="mi mi-lg" style="color:#2d7a2d;">draw</span>
-      <div>
-        <div style="font-size:11px;font-weight:600;color:#2d7a2d;letter-spacing:.05em;">CONTRAT SIGNÉ LE</div>
-        <div style="font-size:14px;font-weight:700;color:var(--text);">${new Date(p.contract_date||p.contractDate).toLocaleDateString('fr-MA',{day:'numeric',month:'long',year:'numeric'})}</div>
-      </div>
-    </div>` : `
-    <div style="display:inline-flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 18px;margin-bottom:20px;cursor:pointer;" onclick="editProject(${p.id})">
-      <span class="mi mi-lg" style="color:var(--text-dim);">edit_note</span>
-      <div style="font-size:13px;color:var(--text-dim);">Contrat non signé — <span style="color:var(--gold);font-weight:600;">Ajouter la date</span></div>
-    </div>`}
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:20px;">
+      ${(p.contract_date || p.contractDate) ? `
+      <div style="display:inline-flex;align-items:center;gap:10px;background:#f0faf0;border:1px solid #b7ddb7;border-radius:var(--radius-sm);padding:10px 18px;">
+        <span class="mi mi-lg" style="color:#2d7a2d;">draw</span>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#2d7a2d;letter-spacing:.05em;">CONTRAT SIGNÉ LE</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">${new Date(p.contract_date||p.contractDate).toLocaleDateString('fr-MA',{day:'numeric',month:'long',year:'numeric'})}</div>
+        </div>
+      </div>` : `
+      <div style="display:inline-flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 18px;cursor:pointer;" onclick="editProject(${p.id})">
+        <span class="mi mi-lg" style="color:var(--text-dim);">edit_note</span>
+        <div style="font-size:13px;color:var(--text-dim);">Contrat non signé — <span style="color:var(--gold);font-weight:600;">Ajouter la date</span></div>
+      </div>`}
+      ${p.num_rokhass ? `
+      <div style="display:inline-flex;align-items:center;gap:10px;background:#f0f4ff;border:1px solid #b8c8e8;border-radius:var(--radius-sm);padding:10px 18px;">
+        <span class="mi mi-lg" style="color:#3a5a9a;">tag</span>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#3a5a9a;letter-spacing:.05em;">N° DOSSIER ROKHASS</div>
+          <div style="font-size:16px;font-weight:800;color:var(--text);letter-spacing:.04em;">${p.num_rokhass}</div>
+        </div>
+      </div>` : `
+      <div style="display:inline-flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 18px;cursor:pointer;" onclick="editProject(${p.id})">
+        <span class="mi mi-lg" style="color:var(--text-dim);">tag</span>
+        <div style="font-size:13px;color:var(--text-dim);">Pas de N° Rokhass — <span style="color:var(--gold);font-weight:600;">Ajouter</span></div>
+      </div>`}
+    </div>
 
     <div class="grid-2">
       <!-- Tâches -->
@@ -5151,6 +5168,7 @@ function makeProjectCard(p, small) {
       <span>${client ? client.name : '—'}</span>
       ${(()=>{ const names=getAssignees(p); if(!names.length) return ''; return '<span style="display:inline-flex;gap:-6px;align-items:center;" title="'+names.join(', ')+'">'+names.map((n,i)=>{const u=USERS.find(x=>x.name===n);return u?'<span style="display:inline-block;margin-left:'+( i>0?'-8':'0')+'px;border:2px solid var(--surface);border-radius:50%;">'+avatarHTML(u.id,34)+'</span>':''}).join('')+'</span>'; })()}
     </div>
+    ${p.num_rokhass ? `<div style="display:inline-flex;align-items:center;gap:5px;margin-top:2px;margin-bottom:2px;padding:3px 8px;background:#f0f4ff;border-radius:99px;font-size:10px;font-weight:700;color:#3a5a9a;letter-spacing:.02em;"><span class="mi" style="font-size:12px;">tag</span>${p.num_rokhass}</div>` : ''}
     <div class="proj-card-meta">
       <span class="badge badge-dim ${phaseClass}" style="font-size:9px;">${p.phase}</span>
       ${p.type ? `<span class="badge badge-dim" style="font-size:9px;">${p.type}</span>` : ''}
@@ -5661,6 +5679,7 @@ function openModal(id) {
       document.getElementById('p-budget').value = '';
       document.getElementById('p-notes').value = '';
       document.getElementById('p-link').value = '';
+      document.getElementById('p-num-rokhass').value = '';
       document.getElementById('p-client').value = '';
       document.getElementById('p-client-search').value = '';
       populateResponsableSelect('p-responsable', '');
@@ -5817,6 +5836,7 @@ async function saveProject() {
     type: document.getElementById('p-type')?.value || 'Autre',
     budget: parseFloat(document.getElementById('p-budget').value) || 0,
     contract_date: document.getElementById('p-contract-date').value || null,
+    num_rokhass: document.getElementById('p-num-rokhass').value.trim() || null,
     assigned_to: getSelectedResponsables(),
     notes: document.getElementById('p-notes').value,
     link: document.getElementById('p-link').value,
@@ -5876,6 +5896,7 @@ function editProject(id) {
   if (document.getElementById('p-type')) document.getElementById('p-type').value = p.type || '';
   document.getElementById('p-budget').value = p.budget || '';
   document.getElementById('p-contract-date').value = p.contract_date || p.contractDate || '';
+  document.getElementById('p-num-rokhass').value = p.num_rokhass || '';
   const assignedVal = p.assigned_to || localStorage.getItem('s33_assigned_' + p.id) || '';
   populateResponsableSelect('p-responsable', assignedVal);
   // Pré-cocher les chips sélectionnés

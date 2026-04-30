@@ -1720,6 +1720,69 @@
   }
   .ai-sug:hover { border-color: var(--gold-dim); color: var(--text); }
 
+  /* ── MIC BUTTON (dictée vocale) ── */
+  .ai-mic-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    transition: all .2s;
+  }
+  .ai-mic-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .ai-mic-btn.recording {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #ef4444;
+    animation: mic-pulse 1s ease-in-out infinite;
+  }
+  @keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.4); }
+    50%       { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+  }
+
+  /* ── COPILOTE CHANTIER PANEL ── */
+  .copilote-panel {
+    background: linear-gradient(135deg, #1a2744 0%, #0f1b3d 100%);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+    color: #fff;
+  }
+  .copilote-panel select {
+    flex: 1; min-width: 160px;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+  }
+  .copilote-panel select option { background: #1a2744; color: #fff; }
+  .copilote-mic-big {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: #fbbf24;
+    color: #1a2744;
+    border: none;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 22px;
+    flex-shrink: 0;
+    transition: transform .15s;
+  }
+  .copilote-mic-big:hover { transform: scale(1.08); }
+  .copilote-mic-big.recording {
+    background: #ef4444;
+    color: #fff;
+    animation: mic-pulse 1s ease-in-out infinite;
+  }
+
   /* ── FLOATING BUTTON ── */
   .ai-fab {
     position: fixed;
@@ -2952,6 +3015,33 @@
             En ligne
           </div>
         </div>
+        <!-- COPILOTE CHANTIER -->
+        <div class="copilote-panel" id="copilote-panel">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+            <span class="mi mi-lg" style="color:#fbbf24;">construction</span>
+            <div>
+              <div style="font-size:15px;font-weight:800;letter-spacing:-.01em;">Copilote Chantier</div>
+              <div style="font-size:11px;opacity:.65;margin-top:1px;">Dictez vos observations → PV · Réserves · Email · Planning</div>
+            </div>
+            <button onclick="document.getElementById('copilote-panel').style.display='none'" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.5);font-size:18px;cursor:pointer;line-height:1;">×</button>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <select id="copilote-project-sel" style="flex:1;min-width:160px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:8px 12px;color:#fff;font-family:inherit;font-size:13px;outline:none;">
+              <option value="">— Projet —</option>
+            </select>
+            <button class="copilote-mic-big" id="copilote-mic-btn"
+              onclick="toggleVoiceDictation('ai-page-input','copilote-mic-btn')"
+              title="Dicter les observations">
+              <span class="mi">mic</span>
+            </button>
+            <button onclick="sendCopiloteChantier()"
+              style="display:flex;align-items:center;gap:6px;padding:10px 18px;background:#10b981;color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">
+              <span class="mi mi-sm">bolt</span> Générer
+            </button>
+          </div>
+          <div id="copilote-transcript" style="margin-top:10px;font-size:12px;color:rgba(255,255,255,.6);min-height:16px;font-style:italic;"></div>
+        </div>
+
         <div class="ai-messages" id="ai-page-messages"></div>
         <div class="ai-input-wrap">
           <div class="ai-suggestions" id="ai-page-suggestions"></div>
@@ -2960,6 +3050,11 @@
             <button class="ai-attach" title="Joindre un fichier" onclick="document.getElementById('ai-page-file').click()"><span class="mi">attach_file</span></button>
             <textarea class="ai-input" id="ai-page-input" placeholder="Pose une question, demande un résumé, crée un projet..." rows="1"
               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();aiPageSend();}"></textarea>
+            <button class="ai-mic-btn" id="ai-page-mic-btn"
+              onclick="toggleVoiceDictation('ai-page-input','ai-page-mic-btn')"
+              title="Dicter un message">
+              <span class="mi">mic</span>
+            </button>
             <button class="ai-send" id="ai-page-send" onclick="aiPageSend()">↑</button>
           </div>
           <div class="ai-file-preview" id="ai-page-file-preview" style="display:none;"></div>
@@ -9130,18 +9225,15 @@ Sois concise, utile et directe. Utilise du **gras** pour les infos importantes.`
 
 // ── API CALL ──
 async function callSamia(messages, onChunk) {
-  // Appel via Edge Function sécurisée (clé API côté serveur)
-  if (!supabaseToken) {
-    throw new Error('Vous devez être connecté via Supabase Auth pour utiliser Samia IA.');
-  }
-
+  // Edge Function ai-proxy a verify_jwt:false → la clé anon suffit
+  const authToken = supabaseToken || SUPABASE_KEY;
   const systemPrompt = getDbContext();
 
   const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-proxy`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + supabaseToken,
+      'Authorization': 'Bearer ' + authToken,
       'apikey': SUPABASE_KEY
     },
     body: JSON.stringify({
@@ -9161,7 +9253,7 @@ async function callSamia(messages, onChunk) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + supabaseToken,
+            'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY),
             'apikey': SUPABASE_KEY
           },
           body: JSON.stringify({
@@ -9377,6 +9469,132 @@ async function executeSamiaActions(text, mode) {
 }
 
 // ══════════════════════════════
+// COPILOTE CHANTIER — Dictée vocale
+// ══════════════════════════════
+let _s33VoiceRec = null;
+let _s33VoiceActive = false;
+let _s33VoiceBase = ''; // texte déjà finalisé avant la session courante
+
+function toggleVoiceDictation(inputId, btnId) {
+  if (_s33VoiceActive) {
+    _stopVoice(btnId);
+  } else {
+    _startVoice(inputId, btnId);
+  }
+}
+
+function _startVoice(inputId, btnId) {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) {
+    toast('Dictée vocale non disponible. Utilisez Chrome ou Safari.');
+    return;
+  }
+
+  const rec = new SpeechRec();
+  _s33VoiceRec  = rec;
+  _s33VoiceActive = true;
+
+  const input = document.getElementById(inputId);
+  _s33VoiceBase = input ? input.value.trim() : '';
+
+  rec.lang = 'fr-FR';
+  rec.continuous = true;
+  rec.interimResults = true;
+
+  // Style du bouton : rouge pulsant
+  const btn = document.getElementById(btnId);
+  if (btn) {
+    btn.classList.add('recording');
+    btn.innerHTML = '<span class="mi">stop_circle</span>';
+    btn.title = 'Arrêter la dictée';
+  }
+  // Indicateur dans le copilote panel
+  const transcrEl = document.getElementById('copilote-transcript');
+  if (transcrEl) transcrEl.textContent = '🎙 Dictée en cours… parlez maintenant';
+
+  rec.onresult = (e) => {
+    let interim = '';
+    let finalPart = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalPart += t;
+      else interim += t;
+    }
+    if (finalPart) {
+      _s33VoiceBase = (_s33VoiceBase ? _s33VoiceBase + ', ' : '') + finalPart.trim();
+    }
+    if (input) {
+      input.value = _s33VoiceBase + (interim ? ' ' + interim : '');
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    }
+    if (transcrEl && interim) transcrEl.textContent = '🎙 ' + interim;
+  };
+
+  rec.onerror = (e) => {
+    console.warn('Voice error:', e.error);
+    if (e.error !== 'no-speech') _stopVoice(btnId);
+  };
+
+  rec.onend = () => {
+    // Relancer automatiquement tant que l'utilisateur n'a pas cliqué "Stop"
+    if (_s33VoiceActive) {
+      try { rec.start(); } catch(e) {}
+    }
+  };
+
+  rec.start();
+}
+
+function _stopVoice(btnId) {
+  _s33VoiceActive = false;
+  if (_s33VoiceRec) { try { _s33VoiceRec.stop(); } catch(e) {} _s33VoiceRec = null; }
+  const btn = document.getElementById(btnId);
+  if (btn) {
+    btn.classList.remove('recording');
+    btn.innerHTML = '<span class="mi">mic</span>';
+    btn.title = btn.id === 'copilote-mic-btn' ? 'Dicter les observations' : 'Dicter un message';
+  }
+  const transcrEl = document.getElementById('copilote-transcript');
+  if (transcrEl) transcrEl.textContent = _s33VoiceBase ? '✓ Dictée terminée — cliquez Générer' : '';
+}
+
+function sendCopiloteChantier() {
+  // Arrêter la dictée si en cours
+  if (_s33VoiceActive) _stopVoice('copilote-mic-btn');
+
+  const input = document.getElementById('ai-page-input');
+  const obs = (input ? input.value.trim() : '').replace(/\[.*?\]/g, '').trim();
+
+  if (!obs) { toast('Dictez vos observations d\'abord'); return; }
+
+  const projId = parseInt(document.getElementById('copilote-project-sel')?.value) || null;
+  const proj   = projId ? (db.projects || []).find(p => p.id === projId) : null;
+  const client = proj   ? (db.clients  || []).find(c => c.id === proj.clientId) : null;
+  const dateVisite = new Date().toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  const prompt =
+    `[COPILOTE CHANTIER]\n` +
+    `Projet : ${proj ? proj.name : 'Non précisé'}\n` +
+    `Client : ${client ? client.name : 'Non précisé'}\n` +
+    `Date de visite : ${dateVisite}\n\n` +
+    `Observations dictées :\n${obs}\n\n` +
+    `---\nGénère les 4 documents suivants, clairement séparés avec des titres en gras :\n\n` +
+    `**1. PV DE VISITE DE CHANTIER**\nCompte rendu formel, observations structurées par zone.\n\n` +
+    `**2. LISTE DE RÉSERVES**\nRéserves numérotées : zone · description · priorité (🔴 Urgent / 🟡 Normal).\n\n` +
+    `**3. EMAIL POUR L'ENTREPRISE**\nEmail professionnel, ton neutre mais ferme, prêt à copier-coller.\n\n` +
+    `**4. NOTES PLANNING**\nImpacts sur le planning : retards détectés, tâches bloquées, délais recommandés.`;
+
+  if (input) input.value = prompt;
+
+  // Masquer le copilote panel
+  const panel = document.getElementById('copilote-panel');
+  if (panel) panel.style.display = 'none';
+
+  aiPageSend();
+}
+
+// ══════════════════════════════
 // PAGE AI
 // ══════════════════════════════
 function initAiPage() {
@@ -9386,8 +9604,19 @@ function initAiPage() {
   const msgEl = document.getElementById('ai-page-messages');
   const sugEl = document.getElementById('ai-page-suggestions');
 
+  // Peupler le sélecteur de projets du Copilote Chantier
+  const copSel = document.getElementById('copilote-project-sel');
+  if (copSel) {
+    const chantierProjects = (db.projects || []).filter(p => !p.archived);
+    copSel.innerHTML = '<option value="">— Projet —</option>' +
+      chantierProjects.map(p => {
+        const c = (db.clients || []).find(x => x.id === p.clientId);
+        return `<option value="${p.id}">${p.name}${c ? ' — ' + c.name : ''}</option>`;
+      }).join('');
+  }
+
   // Welcome message
-  addAiPageMsg('bot', `Bonjour Chaima 👋<br><br>Je suis <strong>Samia</strong>, ton assistante IA. Je connais tes projets, clients, finances et devis en temps réel.<br><br>Que puis-je faire pour toi ?`, true);
+  addAiPageMsg('bot', `Bonjour Chaima 👋<br><br>Je suis <strong>Samia</strong>, ton assistante IA. Je connais tes projets, clients, finances et devis en temps réel.<br><br>Utilise le <strong>Copilote Chantier</strong> pour dicter une visite, ou pose-moi une question.`, true);
 
   // Suggestions
   sugEl.innerHTML = AI_SUGGESTIONS.map(s =>

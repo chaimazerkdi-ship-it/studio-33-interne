@@ -1517,6 +1517,69 @@
   .mat-cat-filter-tab.active { background:var(--gold); border-color:var(--gold); color:#fff; }
   .mat-cat-filter-tab:hover:not(.active) { border-color:var(--gold-dim); color:var(--text); }
 
+  /* ═══ BIBLIOTHÈQUE DOCUMENTAIRE ═══ */
+  .lib-tab {
+    padding: 10px 20px; border: none; border-bottom: 3px solid transparent;
+    background: transparent; font-family: inherit; font-size: 12px; font-weight: 600;
+    color: var(--text-dim); cursor: pointer; transition: all .15s; white-space: nowrap;
+    margin-bottom: -2px;
+  }
+  .lib-tab:hover { color: var(--text); }
+  .lib-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+  .lib-doc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
+  .lib-doc-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+    display: flex; flex-direction: column; gap: 8px;
+    cursor: pointer; transition: border-color .15s, transform .15s;
+    position: relative;
+  }
+  .lib-doc-card:hover { border-color: var(--gold-dim); transform: translateY(-1px); }
+  .lib-doc-card-icon {
+    font-size: 32px; margin-bottom: 4px; line-height: 1;
+  }
+  .lib-doc-card-cat {
+    font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .lib-doc-card-title {
+    font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.35;
+  }
+  .lib-doc-card-zone {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 600;
+    background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border);
+    align-self: flex-start;
+  }
+  .lib-doc-card-desc { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+  .lib-doc-card-open {
+    margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; color: var(--gold);
+  }
+  .lib-doc-card-actions {
+    position: absolute; top: 10px; right: 10px;
+    display: flex; gap: 4px; opacity: 0; transition: opacity .15s;
+  }
+  .lib-doc-card:hover .lib-doc-card-actions { opacity: 1; }
+  .lib-doc-card-btn {
+    width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); cursor: pointer; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: inherit; transition: background .1s;
+  }
+  .lib-doc-card-btn:hover { background: var(--surface2); }
+  .lib-zone-filter-chip {
+    padding: 4px 12px; border-radius: 99px; border: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; cursor: pointer; background: transparent;
+    color: var(--text-dim); font-family: inherit; transition: all .15s;
+  }
+  .lib-zone-filter-chip.active { background: var(--gold); border-color: var(--gold); color: #fff; }
+
   /* ═══ SIGNALEMENTS BUREAU ═══ */
   .sign-grid {
     display: grid;
@@ -2658,17 +2721,28 @@
     <div class="page" id="page-library">
       <div class="page-header">
         <div>
-          <div class="page-title">Bibliothèque</div>
-          <div class="page-subtitle">Ressources techniques et références</div>
+          <div class="page-title">Bibliothèque <span>documentaire</span></div>
+          <div class="page-subtitle">Normes · Détails · Peintures · Cahiers des charges</div>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;">
-          <input class="search-input" placeholder="Rechercher..." oninput="filterLibrary(this.value)">
-          <button class="btn btn-gold" onclick="openModal('library-modal')">+ Ajouter</button>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input class="search-input" placeholder="Rechercher..." oninput="filterLibrary(this.value)" id="lib-search" style="width:200px;">
+          <button class="btn btn-gold" onclick="openLibModal()">+ Ajouter un document</button>
         </div>
       </div>
 
-      <div style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;" id="lib-cats"></div>
-      <div class="grid-3" id="library-grid"></div>
+      <!-- 4 onglets principaux -->
+      <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:2px solid var(--border);" id="lib-tabs">
+        <button id="lib-tab-normes"   class="lib-tab active" onclick="switchLibTab('normes')"><span class="mi">gavel</span> Normes marocaines</button>
+        <button id="lib-tab-details"  class="lib-tab"        onclick="switchLibTab('details')"><span class="mi">architecture</span> Détails techniques</button>
+        <button id="lib-tab-peinture" class="lib-tab"        onclick="switchLibTab('peinture')"><span class="mi">palette</span> Références peinture</button>
+        <button id="lib-tab-cahiers"  class="lib-tab"        onclick="switchLibTab('cahiers')"><span class="mi">folder_open</span> Cahiers des charges</button>
+      </div>
+
+      <!-- Sous-filtre zone (uniquement pour cahiers des charges) -->
+      <div id="lib-zone-filters" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:18px;"></div>
+
+      <!-- Grille de documents -->
+      <div id="library-grid" class="lib-doc-grid"></div>
     </div>
 
     <!-- PANNEAU DE CHANTIER -->
@@ -4566,37 +4640,54 @@
 
 <!-- LIBRARY MODAL -->
 <div class="modal-overlay" id="library-modal">
-  <div class="modal">
+  <div class="modal" style="max-width:520px;">
     <button class="modal-close" onclick="closeModal('library-modal')">×</button>
-    <div class="modal-title" id="lib-modal-title">Nouvelle ressource</div>
+    <div class="modal-title" id="lib-modal-title">Nouveau document</div>
     <input type="hidden" id="lib-edit-id">
-    <div class="form-row">
-      <label>Titre</label>
-      <input type="text" id="l-title" placeholder="Norme NM 10.1.010...">
-    </div>
+    <input type="hidden" id="lib-file-path-existing">
+
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
         <label>Catégorie</label>
-        <select id="l-cat">
-          <option value="Détails techniques">Détails techniques</option>
-          <option value="Matériaux">Matériaux</option>
-          <option value="Références projets">Références projets</option>
-          <option value="Réglementation">Réglementation</option>
-          <option value="Fournisseurs">Fournisseurs</option>
+        <select id="l-cat" onchange="toggleLibZoneField()">
+          <option value="normes">Normes marocaines</option>
+          <option value="details">Détails techniques</option>
+          <option value="peinture">Références peinture</option>
+          <option value="cahiers">Cahiers des charges</option>
         </select>
       </div>
-      <div class="form-row" style="margin-bottom:0">
-        <label>Lien (optionnel)</label>
-        <input type="text" id="l-link" placeholder="https://...">
+      <div class="form-row" style="margin-bottom:0" id="lib-zone-field" style="display:none">
+        <label>Zone / Ville</label>
+        <input type="text" id="l-zone" placeholder="Ex : Agadir, Casablanca...">
       </div>
     </div>
+
     <div class="form-row">
-      <label>Description</label>
-      <textarea id="l-desc" placeholder="Notes, détails techniques..."></textarea>
+      <label>Titre du document</label>
+      <input type="text" id="l-title" placeholder="Ex : NM 10.1.010, DTU 25.1, Chromastone RAL 9010...">
     </div>
+
+    <div class="form-row">
+      <label>Notes / Description</label>
+      <textarea id="l-desc" rows="2" placeholder="Résumé, remarques, domaine d'application..."></textarea>
+    </div>
+
+    <!-- Zone upload PDF -->
+    <div class="form-row">
+      <label>Fichier PDF</label>
+      <div id="lib-file-zone" style="border:2px dashed var(--border);border-radius:var(--radius-sm);padding:18px;text-align:center;cursor:pointer;transition:border-color .15s;" onclick="document.getElementById('lib-pdf-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--gold)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="libHandleDrop(event)">
+        <input type="file" id="lib-pdf-input" accept=".pdf,application/pdf" style="display:none" onchange="libHandleFile(this.files[0])">
+        <div id="lib-file-info">
+          <span class="mi" style="font-size:36px;display:block;margin-bottom:6px;color:var(--border2);">upload_file</span>
+          <div style="font-size:12px;font-weight:600;color:var(--text-dim);">Cliquez ou glissez un PDF ici</div>
+          <div style="font-size:10px;color:var(--text-faint);margin-top:4px;">Uniquement les fichiers .pdf</div>
+        </div>
+      </div>
+    </div>
+
     <div class="form-actions">
       <button class="btn btn-outline" onclick="closeModal('library-modal')">Annuler</button>
-      <button class="btn btn-gold" onclick="saveLibraryItem()">Enregistrer</button>
+      <button class="btn btn-gold" id="lib-save-btn" onclick="saveLibraryItem()">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -8390,44 +8481,44 @@ function printInvoice(id) {
   setTimeout(() => w.print(), 800);
 }
 
-// ===== LIBRARY =====
-let libFilter = '';
-let libCatFilter = 'Tout';
+// ===== BIBLIOTHÈQUE DOCUMENTAIRE =====
+let libFilter    = '';
+let _libTab      = 'normes';   // normes | details | peinture | cahiers
+let _libZone     = 'Toutes';   // sous-filtre zone (pour cahiers)
+let _libPdfFile  = null;       // fichier PDF sélectionné en attente d'upload
 
-function renderLibrary() {
-  const cats = ['Tout', ...new Set(db.library.map(i => i.cat))];
-  const catsEl = document.getElementById('lib-cats');
-  if (catsEl) {
-    catsEl.innerHTML = cats.map(c => `
-      <button class="btn ${libCatFilter === c ? 'btn-gold' : 'btn-outline'}" onclick="setLibCat('${c}')" style="font-size:10px;padding:6px 14px;">${c}</button>
-    `).join('');
-  }
+const LIB_TAB_CAT = {
+  normes:   'normes',
+  details:  'details',
+  peinture: 'peinture',
+  cahiers:  'cahiers'
+};
+const LIB_TAB_LABEL = {
+  normes:   'Normes marocaines',
+  details:  'Détails techniques',
+  peinture: 'Références peinture',
+  cahiers:  'Cahiers des charges'
+};
+const LIB_TAB_ICON = {
+  normes:   'gavel',
+  details:  'architecture',
+  peinture: 'palette',
+  cahiers:  'folder_open'
+};
+const LIB_TAB_EMPTY = {
+  normes:   'Aucune norme ajoutée. Ajoutez vos normes marocaines (NM, NF...) en PDF.',
+  details:  'Aucun détail technique. Ajoutez vos fiches de référence en PDF.',
+  peinture: 'Aucune référence peinture. Ajoutez vos nuanciers et codes fabricants.',
+  cahiers:  'Aucun cahier des charges. Ajoutez vos documents de zone en PDF.'
+};
 
-  let list = db.library;
-  if (libCatFilter !== 'Tout') list = list.filter(i => i.cat === libCatFilter);
-  if (libFilter) list = list.filter(i =>
-    i.title.toLowerCase().includes(libFilter.toLowerCase()) ||
-    i.desc.toLowerCase().includes(libFilter.toLowerCase())
-  );
-
-  const grid = document.getElementById('library-grid');
-  if (!grid) return;
-  if (list.length === 0) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="icon">◈</div><p>Aucune ressource trouvée.</p></div>`;
-    return;
-  }
-  grid.innerHTML = list.map(item => `
-    <div class="lib-card" onclick="editLibItem(${item.id})">
-      <div class="lib-card-cat">${item.cat}</div>
-      <div class="lib-card-title">${item.title}</div>
-      <div class="lib-card-desc">${item.desc}</div>
-      ${item.link ? `<a href="${item.link}" target="_blank" onclick="event.stopPropagation()" style="color:var(--gold);font-size:11px;margin-top:10px;display:inline-block;text-decoration:none;">Ouvrir le lien →</a>` : ''}
-    </div>
-  `).join('');
-}
-
-function setLibCat(cat) {
-  libCatFilter = cat;
+function switchLibTab(tab) {
+  _libTab = tab;
+  _libZone = 'Toutes';
+  ['normes','details','peinture','cahiers'].forEach(t => {
+    const el = document.getElementById('lib-tab-' + t);
+    if (el) el.classList.toggle('active', t === tab);
+  });
   renderLibrary();
 }
 
@@ -8436,36 +8527,229 @@ function filterLibrary(v) {
   renderLibrary();
 }
 
-async function saveLibraryItem() {
-  const editId = document.getElementById('lib-edit-id').value;
-  const obj = {
-    title: document.getElementById('l-title').value.trim(),
-    cat: document.getElementById('l-cat').value,
-    description: document.getElementById('l-desc').value,
-    link: document.getElementById('l-link').value,
-  };
-  if (!obj.title) return;
-  if (editId) {
-    await sbUpdate('library', parseInt(editId), obj);
-    toast('Ressource modifiée');
-  } else {
-    await sbInsert('library', obj);
-    toast('Ressource ajoutée');
+function renderLibrary() {
+  const grid     = document.getElementById('library-grid');
+  const zoneWrap = document.getElementById('lib-zone-filters');
+  if (!grid) return;
+
+  const cat  = LIB_TAB_CAT[_libTab];
+  let list   = (db.library || []).filter(i => (i.cat || '') === cat);
+
+  // Zone sub-filter (cahiers seulement)
+  if (_libTab === 'cahiers' && zoneWrap) {
+    zoneWrap.style.display = 'flex';
+    const zones = ['Toutes', ...new Set(list.map(i => i.zone).filter(Boolean).sort())];
+    zoneWrap.innerHTML = zones.map(z =>
+      `<button class="lib-zone-filter-chip${_libZone===z?' active':''}" onclick="_libZone='${z}';renderLibrary()">
+        ${z === 'Toutes' ? 'Toutes les zones' : '<span class="mi" style="font-size:13px;vertical-align:-3px;">location_on</span> ' + escHTML(z)}
+      </button>`
+    ).join('');
+    if (_libZone !== 'Toutes') list = list.filter(i => (i.zone || '') === _libZone);
+  } else if (zoneWrap) {
+    zoneWrap.style.display = 'none';
   }
-  closeModal('library-modal');
-  await loadDB(); renderLibrary();
-  document.getElementById('lib-edit-id').value = '';
+
+  // Recherche texte
+  if (libFilter) {
+    const q = libFilter.toLowerCase();
+    list = list.filter(i =>
+      (i.title || '').toLowerCase().includes(q) ||
+      (i.desc || i.description || '').toLowerCase().includes(q) ||
+      (i.zone || '').toLowerCase().includes(q)
+    );
+  }
+
+  if (!list.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-faint);">
+      <span class="mi" style="font-size:48px;display:block;margin-bottom:12px;color:var(--border2);">picture_as_pdf</span>
+      <div style="font-size:14px;font-weight:600;margin-bottom:16px;">${LIB_TAB_EMPTY[_libTab]}</div>
+      <button class="btn btn-gold" onclick="openLibModal()">+ Ajouter un document</button>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = list.map(item => {
+    const desc  = item.desc || item.description || '';
+    const hasPdf = !!item.file_path;
+    const tabIcon = LIB_TAB_ICON[item.cat] || 'description';
+    return `<div class="lib-doc-card">
+      <div class="lib-doc-card-actions">
+        <button class="lib-doc-card-btn" onclick="event.stopPropagation();editLibItem(${item.id})" title="Modifier"><span class="mi" style="font-size:14px;">edit</span></button>
+        <button class="lib-doc-card-btn" onclick="event.stopPropagation();deleteLibItem(${item.id})" title="Supprimer"><span class="mi" style="font-size:14px;">delete</span></button>
+      </div>
+      <span class="mi lib-doc-card-icon" style="font-size:32px;color:var(--gold-dim);">${hasPdf ? 'picture_as_pdf' : tabIcon}</span>
+      ${item.zone ? `<span class="lib-doc-card-zone"><span class="mi" style="font-size:12px;vertical-align:-2px;">location_on</span> ${escHTML(item.zone)}</span>` : ''}
+      <div class="lib-doc-card-title">${escHTML(item.title || '')}</div>
+      ${desc ? `<div class="lib-doc-card-desc">${escHTML(desc)}</div>` : ''}
+      ${hasPdf
+        ? `<div class="lib-doc-card-open" onclick="openLibPDF(${item.id})">
+            <span class="mi" style="font-size:15px;">open_in_new</span> Ouvrir le PDF
+           </div>`
+        : `<div class="lib-doc-card-open" style="color:var(--text-faint);">
+            <span class="mi" style="font-size:15px;">upload_file</span> Pas encore de PDF
+           </div>`
+      }
+    </div>`;
+  }).join('');
 }
 
-function editLibItem(id) {
-  const item = db.library.find(x => x.id === id);
-  document.getElementById('lib-modal-title').textContent = 'Modifier la ressource';
-  document.getElementById('lib-edit-id').value = id;
-  document.getElementById('l-title').value = item.title;
-  document.getElementById('l-cat').value = item.cat;
-  document.getElementById('l-desc').value = item.desc || '';
-  document.getElementById('l-link').value = item.link || '';
+async function openLibPDF(id) {
+  const item = (db.library || []).find(x => x.id === id);
+  if (!item?.file_path) { toast('Pas de PDF pour ce document','warning'); return; }
+  toast('Chargement du PDF…');
+  const url = await _mediaStorageUrl(item.file_path, 3600);
+  if (url) window.open(url, '_blank');
+  else toast('Impossible d\'ouvrir le PDF','error');
+}
+
+function openLibModal() {
+  document.getElementById('lib-modal-title').textContent = 'Nouveau document';
+  document.getElementById('lib-edit-id').value = '';
+  document.getElementById('lib-file-path-existing').value = '';
+  document.getElementById('l-cat').value = _libTab;
+  document.getElementById('l-title').value = '';
+  document.getElementById('l-desc').value = '';
+  document.getElementById('l-zone').value = '';
+  document.getElementById('lib-file-info').innerHTML = `
+    <span class="mi" style="font-size:36px;display:block;margin-bottom:6px;color:var(--border2);">upload_file</span>
+    <div style="font-size:12px;font-weight:600;color:var(--text-dim);">Cliquez ou glissez un PDF ici</div>
+    <div style="font-size:10px;color:var(--text-faint);margin-top:4px;">Uniquement les fichiers .pdf</div>`;
+  document.getElementById('lib-pdf-input').value = '';
+  _libPdfFile = null;
+  toggleLibZoneField();
   openModal('library-modal');
+}
+
+function toggleLibZoneField() {
+  const cat   = document.getElementById('l-cat')?.value;
+  const field = document.getElementById('lib-zone-field');
+  if (field) field.style.display = cat === 'cahiers' ? 'block' : 'none';
+}
+
+function libHandleFile(file) {
+  if (!file) return;
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    toast('Seuls les fichiers PDF sont acceptés', 'warning'); return;
+  }
+  _libPdfFile = file;
+  document.getElementById('lib-file-info').innerHTML = `
+    <span class="mi" style="font-size:32px;display:block;margin-bottom:4px;color:#22c55e;">check_circle</span>
+    <div style="font-size:12px;font-weight:700;color:var(--text);">${escHTML(file.name)}</div>
+    <div style="font-size:10px;color:var(--text-faint);margin-top:2px;">${(file.size/1024/1024).toFixed(2)} Mo</div>`;
+  document.getElementById('lib-file-zone').style.borderColor = 'var(--gold)';
+}
+
+function libHandleDrop(event) {
+  event.preventDefault();
+  document.getElementById('lib-file-zone').style.borderColor = 'var(--border)';
+  const file = event.dataTransfer?.files?.[0];
+  if (file) libHandleFile(file);
+}
+
+async function saveLibraryItem() {
+  const title = document.getElementById('l-title').value.trim();
+  if (!title) { toast('Le titre est obligatoire', 'warning'); return; }
+
+  const editId      = document.getElementById('lib-edit-id').value;
+  const existingFP  = document.getElementById('lib-file-path-existing').value;
+  const cat         = document.getElementById('l-cat').value;
+  const zone        = (cat === 'cahiers') ? document.getElementById('l-zone').value.trim() || null : null;
+
+  const btn = document.getElementById('lib-save-btn');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
+
+  let filePath = existingFP || null;
+
+  // Upload PDF si un nouveau fichier est sélectionné
+  if (_libPdfFile) {
+    const ext      = 'pdf';
+    const safeName = _libPdfFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path     = `library/${cat}/${Date.now()}_${safeName}`;
+    try {
+      const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${S33_STORAGE_BUCKET}/${path}`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_KEY,
+          'Content-Type': 'application/pdf',
+          'x-upsert': 'true'
+        },
+        body: _libPdfFile
+      });
+      if (uploadRes.ok) {
+        filePath = path;
+      } else {
+        const errText = await uploadRes.text().catch(() => '');
+        console.error('Upload PDF library error:', errText);
+        toast('Erreur upload PDF — document enregistré sans fichier', 'warning');
+      }
+    } catch(e) {
+      console.error('Upload PDF library exception:', e);
+      toast('Erreur réseau upload PDF', 'warning');
+    }
+  }
+
+  const obj = {
+    title,
+    cat,
+    description: document.getElementById('l-desc').value.trim() || null,
+    zone,
+    file_path: filePath
+  };
+
+  if (editId) {
+    await sbUpdate('library', parseInt(editId), obj);
+    db.library = (db.library || []).map(i => i.id === parseInt(editId) ? {...i, ...obj} : i);
+    toast('Document modifié ✓');
+  } else {
+    const res = await sbInsert('library', obj);
+    const ins = Array.isArray(res) ? res[0] : res;
+    if (ins?.id) db.library = [...(db.library || []), ins];
+    toast('Document ajouté ✓');
+  }
+
+  btn.disabled = false; btn.textContent = 'Enregistrer';
+  _libPdfFile = null;
+  closeModal('library-modal');
+  renderLibrary();
+}
+
+async function editLibItem(id) {
+  const item = (db.library || []).find(x => x.id === id);
+  if (!item) return;
+  document.getElementById('lib-modal-title').textContent = 'Modifier le document';
+  document.getElementById('lib-edit-id').value        = id;
+  document.getElementById('lib-file-path-existing').value = item.file_path || '';
+  document.getElementById('l-cat').value              = item.cat || 'normes';
+  document.getElementById('l-title').value            = item.title || '';
+  document.getElementById('l-desc').value             = item.desc || item.description || '';
+  document.getElementById('l-zone').value             = item.zone || '';
+  document.getElementById('lib-pdf-input').value      = '';
+  _libPdfFile = null;
+  if (item.file_path) {
+    const name = item.file_path.split('/').pop();
+    document.getElementById('lib-file-info').innerHTML = `
+      <span class="mi" style="font-size:30px;display:block;margin-bottom:4px;color:var(--gold);">picture_as_pdf</span>
+      <div style="font-size:12px;font-weight:700;color:var(--text);">${escHTML(name)}</div>
+      <div style="font-size:10px;color:var(--text-faint);margin-top:2px;">PDF existant — remplacez si besoin</div>`;
+  } else {
+    document.getElementById('lib-file-info').innerHTML = `
+      <span class="mi" style="font-size:36px;display:block;margin-bottom:6px;color:var(--border2);">upload_file</span>
+      <div style="font-size:12px;font-weight:600;color:var(--text-dim);">Cliquez ou glissez un PDF ici</div>
+      <div style="font-size:10px;color:var(--text-faint);margin-top:4px;">Pas encore de PDF attaché</div>`;
+  }
+  toggleLibZoneField();
+  openModal('library-modal');
+}
+
+async function deleteLibItem(id) {
+  const item = (db.library || []).find(x => x.id === id);
+  if (!item) return;
+  if (!confirm(`Supprimer « ${item.title} » ?`)) return;
+  await sbDelete('library', id);
+  db.library = (db.library || []).filter(x => x.id !== id);
+  toast('Document supprimé');
+  renderLibrary();
 }
 
 // ===== MEETING MODE =====

@@ -4442,7 +4442,7 @@
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
         <label>Catégorie</label>
-        <select id="c-category">
+        <select id="cpr-category">
           <option>BET Structure</option>
           <option>BET Fluides</option>
           <option>BET VRD</option>
@@ -4457,37 +4457,37 @@
       </div>
       <div class="form-row" style="margin-bottom:0">
         <label>Nom société / cabinet</label>
-        <input type="text" id="c-name" placeholder="Ex: BET Alami...">
+        <input type="text" id="cpr-name" placeholder="Ex: BET Alami...">
       </div>
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
         <label>Personne de contact</label>
-        <input type="text" id="c-contact-name" placeholder="M. Alami Hassan">
+        <input type="text" id="cpr-contact-name" placeholder="M. Alami Hassan">
       </div>
       <div class="form-row" style="margin-bottom:0">
         <label>Téléphone</label>
-        <input type="tel" id="c-phone" placeholder="06 00 00 00 00">
+        <input type="tel" id="cpr-phone" placeholder="06 00 00 00 00">
       </div>
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
         <label>Email</label>
-        <input type="email" id="c-email" placeholder="contact@...">
+        <input type="email" id="cpr-email" placeholder="contact@...">
       </div>
       <div class="form-row" style="margin-bottom:0">
         <label>Site / lien</label>
-        <input type="text" id="c-website" placeholder="https://...">
+        <input type="text" id="cpr-website" placeholder="https://...">
       </div>
     </div>
     <div class="form-row">
       <label>Projets associés</label>
-      <div id="c-projects-wrap" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);min-height:44px;max-height:120px;overflow-y:auto;"></div>
+      <div id="cpr-projects-wrap" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);min-height:44px;max-height:120px;overflow-y:auto;"></div>
       <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Cliquez pour sélectionner les projets</div>
     </div>
     <div class="form-row">
       <label>Notes</label>
-      <textarea id="c-notes" placeholder="Spécialité, conditions, remarques..." rows="2"></textarea>
+      <textarea id="cpr-notes" placeholder="Spécialité, conditions, remarques..." rows="2"></textarea>
     </div>
     <div class="form-actions">
       <button class="btn btn-outline" onclick="closeModal('contact-modal')">Annuler</button>
@@ -7773,7 +7773,7 @@ function openContactModal(id) {
   document.getElementById('contact-modal-title').textContent = id ? 'Modifier le contact' : 'Nouveau contact pro';
 
   // Peupler les chips projets
-  const wrap = document.getElementById('c-projects-wrap');
+  const wrap = document.getElementById('cpr-projects-wrap');
   const c = id ? (db.contactsPro || []).find(x => x.id === id) : null;
   const selectedIds = c ? (c.project_ids || []).map(String) : [];
 
@@ -7784,32 +7784,32 @@ function openContactModal(id) {
   ).join('');
 
   // Préremplir les champs si édition
-  document.getElementById('c-category').value = c?.category || 'BET Structure';
-  document.getElementById('c-name').value = c?.name || '';
-  document.getElementById('c-contact-name').value = c?.contact_name || '';
-  document.getElementById('c-phone').value = c?.phone || '';
-  document.getElementById('c-email').value = c?.email || '';
-  document.getElementById('c-website').value = c?.website || '';
-  document.getElementById('c-notes').value = c?.notes || '';
+  document.getElementById('cpr-category').value     = c?.category || 'BET Structure';
+  document.getElementById('cpr-name').value         = c?.name || '';
+  document.getElementById('cpr-contact-name').value = c?.contact_name || '';
+  document.getElementById('cpr-phone').value        = c?.phone || '';
+  document.getElementById('cpr-email').value        = c?.email || '';
+  document.getElementById('cpr-website').value      = c?.website || '';
+  document.getElementById('cpr-notes').value        = c?.notes || '';
 
   openModal('contact-modal');
 }
 
 async function saveContact() {
-  const name = document.getElementById('c-name').value.trim();
+  const name = document.getElementById('cpr-name').value.trim();
   if (!name) { toast('Le nom est obligatoire'); return; }
 
-  const selectedIds = [...document.querySelectorAll('#c-projects-wrap [data-pid][data-sel="1"]')]
+  const selectedIds = [...document.querySelectorAll('#cpr-projects-wrap [data-pid][data-sel="1"]')]
     .map(el => parseInt(el.dataset.pid));
 
   const obj = {
-    category:     document.getElementById('c-category').value,
+    category:     document.getElementById('cpr-category').value,
     name,
-    contact_name: document.getElementById('c-contact-name').value.trim() || null,
-    phone:        document.getElementById('c-phone').value.trim() || null,
-    email:        document.getElementById('c-email').value.trim() || null,
-    website:      document.getElementById('c-website').value.trim() || null,
-    notes:        document.getElementById('c-notes').value.trim() || null,
+    contact_name: document.getElementById('cpr-contact-name').value.trim() || null,
+    phone:        document.getElementById('cpr-phone').value.trim() || null,
+    email:        document.getElementById('cpr-email').value.trim() || null,
+    website:      document.getElementById('cpr-website').value.trim() || null,
+    notes:        document.getElementById('cpr-notes').value.trim() || null,
     project_ids:  selectedIds
   };
 

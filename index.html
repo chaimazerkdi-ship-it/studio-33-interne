@@ -2625,7 +2625,7 @@
           <div class="page-subtitle" id="projects-count-sub">—</div>
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <input class="search-input" id="proj-search" placeholder="Rechercher un projet…" oninput="projSearchQuery=this.value;renderProjects()" style="width:200px;">
+          <input class="search-input" id="proj-search" placeholder="Rechercher un projet…" oninput="projSearchQuery=this.value;_debouncedRenderProjects()" style="width:200px;">
           <div class="view-toggle">
             <button class="view-btn active" id="view-cards-btn" onclick="setProjectView('cards')">Cartes</button>
             <button class="view-btn" id="view-kanban-btn" onclick="setProjectView('kanban')">Kanban</button>
@@ -5300,6 +5300,19 @@ async function loadDB() {
     db.calEvents     = (calendarEventsRows || []);
     db.activityLog   = (activityLogRows   || []);
 
+    // Pre-index finance data for fast month lookup
+    db._chargesIdx = {};
+    db._entreesIdx = {};
+    db._fixedCharges = (db.charges || []).filter(c => c.recur === 'mensuel');
+    (db.charges || []).filter(c => c.recur !== 'mensuel').forEach(c => {
+      if (!db._chargesIdx[c.month]) db._chargesIdx[c.month] = [];
+      db._chargesIdx[c.month].push(c);
+    });
+    (db.entrees || []).forEach(e => {
+      if (!db._entreesIdx[e.month]) db._entreesIdx[e.month] = [];
+      db._entreesIdx[e.month].push(e);
+    });
+
     // Dynamically overlay USERS from team_members DB rows
     if (db.teamMembers.length > 0) {
       db.teamMembers.forEach(tm => {
@@ -5913,8 +5926,8 @@ function renderDashboard() {
   // Activity feed
   const da = document.getElementById('dash-activity');
   if (da) {
-    const logs = (db.activityLog || []).slice(0, 15);
-    if (!logs.length) {
+    const allLogs = (db.activityLog || []);
+    if (!allLogs.length) {
       da.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-faint);font-size:13px;">Aucune activité récente.</div>';
     } else {
       const icons = {
@@ -5922,28 +5935,37 @@ function renderDashboard() {
         add_concours: 'emoji_events', add_signalement: 'warning', add_report: 'assignment',
         add_library: 'book', add_media: 'photo', add_devis: 'description'
       };
-      da.innerHTML = logs.map((log, i) => {
-        const icon = icons[log.action_type] || 'notifications';
-        const dt = new Date(log.created_at);
-        const now = new Date();
-        const diffMs = now - dt;
-        const diffMin = Math.floor(diffMs / 60000);
-        const diffH = Math.floor(diffMs / 3600000);
-        const diffD = Math.floor(diffMs / 86400000);
-        let timeLabel;
-        if (diffMin < 1) timeLabel = 'à l\'instant';
-        else if (diffMin < 60) timeLabel = diffMin + ' min';
-        else if (diffH < 24) timeLabel = diffH + 'h';
-        else if (diffD < 7) timeLabel = diffD + 'j';
-        else timeLabel = dt.toLocaleDateString('fr-MA', {day:'numeric', month:'short'});
-        return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;${i < logs.length-1 ? 'border-bottom:1px solid var(--surface2);' : ''}">
-          <span class="mi" style="font-size:18px;color:var(--gold);flex-shrink:0;">${icon}</span>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;color:var(--text);">${log.description}</div>
-          </div>
-          <div style="font-size:11px;color:var(--text-faint);flex-shrink:0;white-space:nowrap;">${timeLabel}</div>
-        </div>`;
-      }).join('');
+      window._renderActivityRows = function(entries) {
+        return entries.map((log) => {
+          const icon = icons[log.action_type] || 'notifications';
+          const dt = new Date(log.created_at);
+          const now = new Date();
+          const diffMs = now - dt;
+          const diffMin = Math.floor(diffMs / 60000);
+          const diffH = Math.floor(diffMs / 3600000);
+          const diffD = Math.floor(diffMs / 86400000);
+          let timeLabel;
+          if (diffMin < 1) timeLabel = 'à l\'instant';
+          else if (diffMin < 60) timeLabel = diffMin + ' min';
+          else if (diffH < 24) timeLabel = diffH + 'h';
+          else if (diffD < 7) timeLabel = diffD + 'j';
+          else timeLabel = dt.toLocaleDateString('fr-MA', {day:'numeric', month:'short'});
+          return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--surface2);">
+            <span class="mi" style="font-size:18px;color:var(--gold);flex-shrink:0;">${icon}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;color:var(--text);">${log.description}</div>
+            </div>
+            <div style="font-size:11px;color:var(--text-faint);flex-shrink:0;white-space:nowrap;">${timeLabel}</div>
+          </div>`;
+        }).join('');
+      };
+      const shown = allLogs.slice(0, 10);
+      da.innerHTML = window._renderActivityRows(shown) +
+        (allLogs.length > 10
+          ? `<div style="padding:10px 16px;text-align:center;">
+               <button onclick="document.getElementById('dash-activity').innerHTML=window._renderActivityRows(db.activityLog||[]);" style="background:none;border:none;color:var(--gold);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Voir tout (${allLogs.length})</button>
+             </div>`
+          : '');
     }
   }
 
@@ -6133,10 +6155,10 @@ function toggleShowAll() {
 
 function renderProjects() {
   renderProjectFilters();
-  renderProjectsCards();
-  renderProjectsKanban();
-  renderProjectsList();
-  if (projectView === 'gantt') renderProjectsGantt();
+  if (projectView === 'cards')  renderProjectsCards();
+  else if (projectView === 'kanban') renderProjectsKanban();
+  else if (projectView === 'list')   renderProjectsList();
+  else if (projectView === 'gantt')  renderProjectsGantt();
   // update subtitle
   const sub = document.getElementById('projects-count-sub');
   if (sub) {
@@ -6796,7 +6818,7 @@ function openModal(id) {
   }
   if (id === 'entree-modal') {
     const enClient = document.getElementById('en-client');
-    if (enClient) enClient.innerHTML = '<option value="">— Sans client —</option>' + db.clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    if (enClient) enClient.innerHTML = '<option value="">— Sans client —</option>' + db.clients.map(c => `<option value="${c.id}">${escHTML(c.name)}</option>`).join('');
   }
   document.getElementById(id).classList.add('open');
 }
@@ -6815,7 +6837,7 @@ function closeModal(id) {
 function populateClientSelect(selectId) {
   const sel = document.getElementById(selectId);
   if (!sel) return;
-  sel.innerHTML = db.clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  sel.innerHTML = db.clients.map(c => `<option value="${c.id}">${escHTML(c.name)}</option>`).join('');
 }
 
 function populateProjectSelect(selectId) {
@@ -6885,15 +6907,32 @@ function getSelectedResponsables() {
   return names.length ? JSON.stringify(names) : null;
 }
 
+function _buildClientDropdown(matches, dd) {
+  dd.innerHTML = '';
+  if (!matches.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding:10px 14px;font-size:13px;color:var(--text-faint);';
+    empty.textContent = 'Aucun client trouvé';
+    dd.appendChild(empty);
+    return;
+  }
+  matches.forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'client-ac-item';
+    item.style.cssText = 'padding:10px 14px;font-size:13px;cursor:pointer;color:var(--text);';
+    item.textContent = c.name;
+    item.addEventListener('mousedown', () => selectClientAC(c.id, c.name));
+    item.addEventListener('mouseover', () => { item.style.background = 'var(--surface2)'; });
+    item.addEventListener('mouseout',  () => { item.style.background = ''; });
+    dd.appendChild(item);
+  });
+}
+
 function filterClientDropdown() {
   const q = document.getElementById('p-client-search').value.toLowerCase();
   const dd = document.getElementById('p-client-dropdown');
   const matches = db.clients.filter(c => c.name.toLowerCase().includes(q));
-  if (!matches.length) {
-    dd.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:var(--text-faint);">Aucun client trouvé</div>';
-  } else {
-    dd.innerHTML = matches.map(c => `<div class="client-ac-item" style="padding:10px 14px;font-size:13px;cursor:pointer;color:var(--text);" onmousedown="selectClientAC(${c.id},'${c.name.replace(/'/g,"\'")}');" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">${c.name}</div>`).join('');
-  }
+  _buildClientDropdown(matches, dd);
   dd.style.display = 'block';
 }
 
@@ -6901,7 +6940,7 @@ function showClientDropdown() {
   const dd = document.getElementById('p-client-dropdown');
   const q = document.getElementById('p-client-search').value.toLowerCase();
   const matches = q ? db.clients.filter(c => c.name.toLowerCase().includes(q)) : db.clients;
-  dd.innerHTML = matches.map(c => `<div class="client-ac-item" style="padding:10px 14px;font-size:13px;cursor:pointer;color:var(--text);" onmousedown="selectClientAC(${c.id},'${c.name.replace(/'/g,"\'")}');" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">${c.name}</div>`).join('');
+  _buildClientDropdown(matches, dd);
   dd.style.display = matches.length ? 'block' : 'none';
 }
 
@@ -6923,6 +6962,22 @@ document.querySelectorAll('.modal-overlay').forEach(m => {
 });
 
 // ===== PROJECT CRUD =====
+function _debounce(fn, ms) {
+  let timer;
+  return function(...args) { clearTimeout(timer); timer = setTimeout(() => fn.apply(this, args), ms); };
+}
+const _debouncedRenderProjects = _debounce(() => renderProjects(), 250);
+
+function _formError(fieldId, msg) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+  el.style.borderColor = 'var(--red, #e53)';
+  el.style.boxShadow = '0 0 0 2px rgba(229,83,83,.2)';
+  el.focus();
+  toast(msg, 'warning');
+  setTimeout(() => { el.style.borderColor = ''; el.style.boxShadow = ''; }, 3000);
+}
+
 async function saveProject() {
   const editId = document.getElementById('project-edit-id').value;
   const obj = {
@@ -6937,7 +6992,7 @@ async function saveProject() {
     notes: document.getElementById('p-notes').value,
     link: document.getElementById('p-link').value,
   };
-  if (!obj.name) return;
+  if (!obj.name) { _formError('p-name', 'Le nom du projet est obligatoire'); return; }
   if (editId) {
     const pid = parseInt(editId);
     let updateObj = {...obj};
@@ -7492,7 +7547,7 @@ async function _uploadCoDoc(doc, concoursId) {
 
 async function saveConcours() {
   const title = document.getElementById('co-title').value.trim();
-  if (!title) { toast('L\'intitulé est obligatoire','warning'); return; }
+  if (!title) { _formError('co-title', 'L\'intitulé est obligatoire'); return; }
 
   const btn = document.getElementById('co-save-btn');
   btn.disabled = true; btn.textContent = 'Enregistrement…';
@@ -8080,7 +8135,7 @@ async function saveClient() {
     type: document.getElementById('c-type').value,
     notes: document.getElementById('c-notes').value,
   };
-  if (!obj.name) return;
+  if (!obj.name) { _formError('c-name', 'Le nom du client est obligatoire'); return; }
   if (editId) {
     await sbUpdate('clients', parseInt(editId), obj);
     toast('Client modifié');
@@ -9609,7 +9664,7 @@ let devisPhases = [
 function initDevis() {
   const sel = document.getElementById('dv-client');
   if (!sel) return;
-  sel.innerHTML = db.clients.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  sel.innerHTML = db.clients.map(c => `<option value="${escHTML(c.name)}">${escHTML(c.name)}</option>`).join('');
   if (!document.getElementById('dv-date').value) {
     document.getElementById('dv-date').value = new Date().toISOString().split('T')[0];
   }
@@ -10283,7 +10338,7 @@ function initFinance() {
 
   // Populate client select in entree modal
   const enClient = document.getElementById('en-client');
-  if (enClient) enClient.innerHTML = '<option value="">— Sans client —</option>' + db.clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  if (enClient) enClient.innerHTML = '<option value="">— Sans client —</option>' + db.clients.map(c => `<option value="${c.id}">${escHTML(c.name)}</option>`).join('');
 
   // Set default month for modals
   const monthStr = now.toISOString().slice(0,7);
@@ -10303,14 +10358,14 @@ function renderFinance() {
   const { y, m, str } = getFinanceMonth();
 
   // Get charges for this month (fixed recurring + one-time this month)
-  const monthCharges = db.charges.filter(c => {
-    if (c.recur === 'mensuel') return true; // always shown
-    return c.month === str;
-  });
+  const monthCharges = [
+    ...(db._fixedCharges || db.charges.filter(c => c.recur === 'mensuel')),
+    ...(db._chargesIdx?.[str] || [])
+  ];
   const totalCharges = monthCharges.reduce((s, c) => s + c.amount, 0);
 
   // Get entrees for this month
-  const monthEntrees = db.entrees.filter(e => e.month === str);
+  const monthEntrees = (db._entreesIdx?.[str] || []);
   // Also pull paid invoices from this month
   const paidInvoices = db.invoices.filter(i => i.status === 'Payée' && i.date && i.date.startsWith(str));
   const invoiceEntrees = paidInvoices.map(i => ({ id: 'inv_'+i.id, label: i.num + ' — ' + (db.clients.find(c=>c.id===i.clientId)?.name||''), amount: i.amount * 1.2, month: str, fromInvoice: true }));
@@ -10424,13 +10479,13 @@ function renderAnnualTable(year) {
   const tbody = document.getElementById('finance-annual-table');
   if (!tbody) return;
 
-  const fixedChargesTotal = db.charges.filter(c => c.recur === 'mensuel').reduce((s,c) => s+c.amount, 0);
+  const fixedChargesTotal = (db._fixedCharges || db.charges.filter(c => c.recur === 'mensuel')).reduce((s,c) => s+c.amount, 0);
 
   tbody.innerHTML = MONTHS_FR.map((mName, mi) => {
     const mStr = `${year}-${String(mi+1).padStart(2,'0')}`;
-    const oneTimeCharges = db.charges.filter(c => c.recur !== 'mensuel' && c.month === mStr).reduce((s,c) => s+c.amount, 0);
+    const oneTimeCharges = (db._chargesIdx?.[mStr] || []).reduce((s,c) => s+c.amount, 0);
     const totalCharges = fixedChargesTotal + oneTimeCharges;
-    const manualEntrees = db.entrees.filter(e => e.month === mStr).reduce((s,e) => s+e.amount, 0);
+    const manualEntrees = (db._entreesIdx?.[mStr] || []).reduce((s,e) => s+e.amount, 0);
     const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && i.date && i.date.startsWith(mStr)).reduce((s,i) => s+i.amount*1.2, 0);
     const totalEntrees = manualEntrees + invoiceEntrees;
     const solde = totalEntrees - totalCharges;
@@ -10567,11 +10622,11 @@ function renderFinanceAnnuelle() {
     const mStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     const abbr = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][d.getMonth()];
 
-    const fixedCharges = db.charges.filter(c => c.recur === 'mensuel').reduce((s, c) => s + c.amount, 0);
-    const oneTimeCharges = db.charges.filter(c => c.recur !== 'mensuel' && c.month === mStr).reduce((s, c) => s + c.amount, 0);
+    const fixedCharges = (db._fixedCharges || db.charges.filter(c => c.recur === 'mensuel')).reduce((s, c) => s + c.amount, 0);
+    const oneTimeCharges = (db._chargesIdx?.[mStr] || []).reduce((s, c) => s + c.amount, 0);
     const totalCharges = fixedCharges + oneTimeCharges;
 
-    const manualEntrees = db.entrees.filter(e => e.month === mStr).reduce((s, e) => s + e.amount, 0);
+    const manualEntrees = (db._entreesIdx?.[mStr] || []).reduce((s, e) => s + e.amount, 0);
     const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && i.date && i.date.startsWith(mStr)).reduce((s, i) => s + i.amount * 1.2, 0);
     const totalEntrees = manualEntrees + invoiceEntrees;
 
@@ -10595,10 +10650,10 @@ function renderFinanceAnnuelle() {
   // Annual recap table for current year
   const recapRows = MONTHS_FR.map((mName, mi) => {
     const mStr = currentYear + '-' + String(mi + 1).padStart(2, '0');
-    const fixedCharges = db.charges.filter(c => c.recur === 'mensuel').reduce((s, c) => s + c.amount, 0);
-    const oneTimeCharges = db.charges.filter(c => c.recur !== 'mensuel' && c.month === mStr).reduce((s, c) => s + c.amount, 0);
+    const fixedCharges = (db._fixedCharges || db.charges.filter(c => c.recur === 'mensuel')).reduce((s, c) => s + c.amount, 0);
+    const oneTimeCharges = (db._chargesIdx?.[mStr] || []).reduce((s, c) => s + c.amount, 0);
     const totalCharges = fixedCharges + oneTimeCharges;
-    const manualEntrees = db.entrees.filter(e => e.month === mStr).reduce((s, e) => s + e.amount, 0);
+    const manualEntrees = (db._entreesIdx?.[mStr] || []).reduce((s, e) => s + e.amount, 0);
     const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && i.date && i.date.startsWith(mStr)).reduce((s, i) => s + i.amount * 1.2, 0);
     const totalEntrees = manualEntrees + invoiceEntrees;
     const solde = totalEntrees - totalCharges;

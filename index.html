@@ -13499,12 +13499,20 @@ function renderWorkload() {
 
 /* ── Vue profil membre ─────────────────────────────────────────── */
 function viewMemberReports(memberId) {
-  const member = USERS.find(u => u.id === memberId);
+  const member = USERS.find(u => String(u.id) === String(memberId));
   if (!member) return;
 
-  // All reports for this member, newest first
+  // Resolve Supabase auth UUID for this member via team_members table
+  const _tm = (db.teamMembers || []).find(t => t.username === member.username);
+  const authUid = (_tm && _tm.user_id) ? String(_tm.user_id) : null;
+
+  // Match by auth UUID (primary), numeric id (legacy fallback), or name
   const reports = (db.dailyReports || [])
-    .filter(r => String(r.user_id) === String(memberId))
+    .filter(r =>
+      (authUid && String(r.user_id) === authUid) ||
+      String(r.user_id) === String(memberId) ||
+      (r.user_name || '').toLowerCase() === (member.name || '').toLowerCase()
+    )
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   // Stats
@@ -13524,24 +13532,37 @@ function viewMemberReports(memberId) {
   const reportsControls = document.getElementById('equipe-reports-controls');
   if (reportsControls) reportsControls.style.display = 'none';
 
-  const reportCards = reports.length === 0
+  // Group by date — one card per day (may contain multiple projects)
+  const _profGroups = [];
+  const _profSeen = {};
+  for (const r of reports) {
+    if (!_profSeen[r.date]) {
+      _profSeen[r.date] = { date: r.date, rows: [] };
+      _profGroups.push(_profSeen[r.date]);
+    }
+    _profSeen[r.date].rows.push(r);
+  }
+
+  const reportCards = _profGroups.length === 0
     ? `<div class="empty-state"><p>Aucun rapport soumis.</p></div>`
-    : reports.map(r => {
-        const dateLabel = new Date(r.date).toLocaleDateString('fr-MA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    : _profGroups.map(g => {
+        const dateLabel = new Date(g.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+        const totalH = g.rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
         return `<div class="card" style="margin-bottom:12px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
-            <div>
-              <div style="font-size:12px;font-weight:600;color:var(--text);text-transform:capitalize;">${dateLabel}</div>
-              <div style="font-size:10px;color:var(--text-faint);">${new Date(r.submitted_at).toLocaleTimeString('fr-MA',{hour:'2-digit',minute:'2-digit'})}</div>
-            </div>
-            <div style="display:flex;gap:6px;">
-              <span class="badge badge-gold">${r.project_name}</span>
-              <span class="badge badge-dim">${r.hours}h</span>
-            </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+            <span style="font-size:12px;font-weight:600;color:var(--text);text-transform:capitalize;">${dateLabel}</span>
+            <span class="badge badge-gold">${totalH % 1 === 0 ? totalH : totalH.toFixed(1)}h au total</span>
           </div>
-          <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em;">Tâches</div>
-          <div style="font-size:12px;color:var(--text);white-space:pre-wrap;margin-bottom:${r.blockers?'12px':'0'};">${r.tasks}</div>
-          ${r.blockers ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em;">Blocages</div><div style="font-size:12px;color:var(--red);white-space:pre-wrap;">${r.blockers}</div>` : ''}
+          ${g.rows.map(r => `
+            <div style="padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+                <span class="badge badge-gold" style="font-size:11px;">${escHTML(r.project_name || '—')}</span>
+                <span class="badge badge-dim" style="font-size:11px;">${r.hours}h</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Tâches</div>
+              <div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;${r.blockers?'margin-bottom:8px;':''}">${escHTML(r.tasks || '')}</div>
+              ${r.blockers ? `<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Blocages</div><div style="font-size:12px;color:var(--red);white-space:pre-wrap;padding:5px 8px;background:#fee2e2;border-radius:4px;">${escHTML(r.blockers)}</div>` : ''}
+            </div>`).join('')}
         </div>`;
       }).join('');
 
@@ -13561,7 +13582,7 @@ function viewMemberReports(memberId) {
       </div>
       <div style="display:flex;gap:24px;text-align:center;">
         <div>
-          <div style="font-size:18px;font-weight:700;color:var(--gold);">${reports.length}</div>
+          <div style="font-size:18px;font-weight:700;color:var(--gold);">${_profGroups.length}</div>
           <div style="font-size:10px;color:var(--text-faint);margin-top:2px;">Rapports</div>
         </div>
         <div>
@@ -13577,7 +13598,7 @@ function viewMemberReports(memberId) {
 
     <!-- Reports -->
     <div style="font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:14px;">
-      Tous les rapports (${reports.length})
+      Tous les rapports (${_profGroups.length} jour${_profGroups.length !== 1 ? 's' : ''})
     </div>
     ${reportCards}
   `;
@@ -13646,31 +13667,52 @@ function renderEquipe() {
     document.getElementById('equipe-filter-date').value = today;
   }
   const activeDate = document.getElementById('equipe-filter-date').value;
+
+  // Helper: resolve Supabase auth UUID for a USERS entry (numeric id → teamMembers.user_id)
+  function _resolveAuthUid(user) {
+    if (!user) return null;
+    // If user.id is already a UUID string (dynamically added users)
+    if (typeof user.id === 'string' && user.id.includes('-')) return user.id;
+    const tm = (db.teamMembers || []).find(t => t.username === user.username);
+    return tm ? tm.user_id : null;
+  }
+  // Check whether a report row belongs to a given USERS entry
+  function _reportBelongsTo(r, user) {
+    if (!user) return false;
+    const authUid = _resolveAuthUid(user);
+    return (authUid && String(r.user_id) === String(authUid)) ||
+           String(r.user_id) === String(user.id) ||
+           (r.user_name || '').toLowerCase() === (user.name || '').toLowerCase();
+  }
+
   let reports = [...(db.dailyReports || [])];
   if (activeDate) reports = reports.filter(r => r.date === activeDate);
-  if (filterUser) reports = reports.filter(r => String(r.user_id) === String(filterUser));
+  if (filterUser) {
+    const fu = USERS.find(u => String(u.id) === String(filterUser));
+    reports = reports.filter(r => _reportBelongsTo(r, fu));
+  }
   reports.sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
 
-  // Track which members submitted on the active date
-  const submittedIds = new Set(
-    (db.dailyReports || [])
-      .filter(r => r.date === activeDate)
-      .map(r => String(r.user_id))
-  );
   const members = USERS.filter(u => u.role === 'member');
+
+  // Which members have submitted on the active date
+  const activeDateReports = (db.dailyReports || []).filter(r => r.date === activeDate);
+  const _memberSubmitted = m => activeDateReports.some(r => _reportBelongsTo(r, m));
 
   const container = document.getElementById('equipe-reports-list');
 
   // Status row — each card is clickable to show all reports for that member
   const statusHtml = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">
-    ${members.map(m => `
-      <div onclick="viewMemberReports(${m.id})" style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid ${submittedIds.has(String(m.id)) ? 'var(--green)' : 'var(--border)'};border-radius:var(--radius);padding:12px 18px;cursor:pointer;transition:all .15s;min-width:150px;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='';this.style.transform=''">
+    ${members.map(m => {
+      const submitted = _memberSubmitted(m);
+      return `<div onclick="viewMemberReports(${JSON.stringify(m.id)})" style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid ${submitted ? 'var(--green)' : 'var(--border)'};border-radius:var(--radius);padding:12px 18px;cursor:pointer;transition:all .15s;min-width:150px;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='';this.style.transform=''">
         ${avatarHTML(m.id, 36)}
         <div>
           <div style="font-size:15px;color:var(--text);font-weight:700;">${m.name}</div>
-          <div style="font-size:11px;font-weight:500;color:${submittedIds.has(String(m.id)) ? 'var(--green)' : 'var(--red)'};">${submittedIds.has(String(m.id)) ? 'Soumis' : 'En attente'}</div>
+          <div style="font-size:11px;font-weight:500;color:${submitted ? 'var(--green)' : 'var(--red)'};">${submitted ? 'Soumis ✓' : 'En attente'}</div>
         </div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
   </div>`;
 
   if (reports.length === 0) {
@@ -13678,25 +13720,44 @@ function renderEquipe() {
     return;
   }
 
-  const cards = reports.map(r => `
-    <div class="card" style="margin-bottom:14px;">
+  // Group reports by (user_id, date) — one card per person per day
+  const _eqGroups = [];
+  const _eqSeen = {};
+  for (const r of reports) {
+    const key = String(r.user_id) + '|' + r.date;
+    if (!_eqSeen[key]) {
+      _eqSeen[key] = { user_id: r.user_id, user_name: r.user_name, date: r.date, rows: [] };
+      _eqGroups.push(_eqSeen[key]);
+    }
+    _eqSeen[key].rows.push(r);
+  }
+
+  const cards = _eqGroups.map(g => {
+    const totalH = g.rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
+    const timeStr = g.rows[0].submitted_at ? new Date(g.rows[0].submitted_at).toLocaleTimeString('fr-MA', {hour:'2-digit',minute:'2-digit'}) : '';
+    return `<div class="card" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          ${avatarHTML(r.user_id, 32, r.user_avatar || '??')}
+          ${avatarHTML(g.user_id, 32)}
           <div>
-            <div style="font-size:13px;color:var(--text);font-weight:400;">${r.user_name}</div>
-            <div style="font-size:10px;color:var(--text-faint);">${new Date(r.submitted_at).toLocaleTimeString('fr-MA', {hour:'2-digit',minute:'2-digit'})}</div>
+            <div style="font-size:13px;color:var(--text);font-weight:700;">${escHTML(g.user_name || '—')}</div>
+            <div style="font-size:10px;color:var(--text-faint);">${timeStr}</div>
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <span class="badge badge-gold">${r.project_name}</span>
-          <span class="badge badge-dim">${r.hours}h</span>
-        </div>
+        <span class="badge badge-gold">Total : ${totalH % 1 === 0 ? totalH : totalH.toFixed(1)}h</span>
       </div>
-      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em;">Tâches</div>
-      <div style="font-size:12px;color:var(--text);white-space:pre-wrap;margin-bottom:${r.blockers ? '14px' : '0'};">${r.tasks}</div>
-      ${r.blockers ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:.1em;">Blocages</div><div style="font-size:12px;color:var(--red);white-space:pre-wrap;">${r.blockers}</div>` : ''}
-    </div>`).join('');
+      ${g.rows.map(r => `
+        <div style="padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+            <span class="badge badge-gold" style="font-size:11px;">${escHTML(r.project_name || '—')}</span>
+            <span class="badge badge-dim" style="font-size:11px;">${r.hours}h</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Tâches</div>
+          <div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;${r.blockers?'margin-bottom:8px;':''}">${escHTML(r.tasks || '')}</div>
+          ${r.blockers ? `<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Blocages</div><div style="font-size:12px;color:var(--red);white-space:pre-wrap;padding:5px 8px;background:#fee2e2;border-radius:4px;">${escHTML(r.blockers)}</div>` : ''}
+        </div>`).join('')}
+    </div>`;
+  }).join('');
 
   container.innerHTML = statusHtml + cards;
 }

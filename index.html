@@ -482,7 +482,24 @@
   .badge-green { color: var(--green); border-color: rgba(110,201,138,0.4); background: rgba(110,201,138,0.08); }
   .badge-red { color: var(--red); border-color: rgba(201,110,110,0.4); background: rgba(201,110,110,0.08); }
   .badge-blue { color: var(--blue); border-color: rgba(110,154,201,0.4); background: rgba(110,154,201,0.08); }
+  .badge-yellow { color: var(--yellow); border-color: rgba(234,179,8,0.4); background: rgba(234,179,8,0.08); }
   .badge-dim { color: var(--text-faint); border-color: var(--border); background: transparent; }
+
+  /* Project health status border */
+  .proj-card.health-critical { border-left: 3px solid var(--red); }
+  .proj-card.health-warning  { border-left: 3px solid var(--yellow); }
+
+  /* Dashboard alert card */
+  .dash-alert-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border-bottom: 1px solid var(--surface2);
+    cursor: pointer; transition: background .15s;
+  }
+  .dash-alert-card:last-child { border-bottom: none; }
+  .dash-alert-card:hover { background: var(--surface2); }
+  .dash-alert-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dash-alert-dot.critical { background: var(--red); box-shadow: 0 0 6px rgba(239,68,68,.5); }
+  .dash-alert-dot.warning  { background: var(--yellow); box-shadow: 0 0 6px rgba(234,179,8,.4); }
 
   /* TABLE */
   .table-wrap { overflow-x: auto; }
@@ -2595,6 +2612,15 @@
           <div class="stat-value gold" id="stat-clients">0</div>
           <div class="stat-sub">fiches →</div>
         </div>
+      </div>
+
+      <!-- Attention requise -->
+      <div id="dash-alerts-section" style="display:none;margin-bottom:28px;">
+        <div class="section-title" style="margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+          <span class="mi" style="font-size:18px;color:var(--red);">crisis_alert</span>
+          Attention requise
+        </div>
+        <div class="card" id="dash-alerts" style="padding:0;overflow:hidden;"></div>
       </div>
 
       <!-- Fil d'activité -->
@@ -5927,6 +5953,37 @@ function renderDashboard() {
   document.getElementById('stat-invoices').textContent = pending.length;
   document.getElementById('stat-clients').textContent = db.clients.length;
 
+  // Attention requise — projects with health issues
+  const alertEl = document.getElementById('dash-alerts');
+  if (alertEl) {
+    const problemProjects = activeProjects
+      .map(p => ({ p, h: getProjectHealth(p) }))
+      .filter(({ h }) => h.status !== 'ok')
+      .sort((a, b) => (a.h.status === 'critical' ? -1 : 1));
+
+    const alertSection = document.getElementById('dash-alerts-section');
+    if (problemProjects.length === 0) {
+      if (alertSection) alertSection.style.display = 'none';
+    } else {
+      if (alertSection) alertSection.style.display = 'block';
+      alertEl.innerHTML = problemProjects.map(({ p, h }) => {
+        const dotClass = h.status === 'critical' ? 'critical' : 'warning';
+        const client = db.clients.find(c => c.id === p.clientId);
+        return `<div class="dash-alert-card" onclick="openProjectDetail(${p.id})">
+          <div class="dash-alert-dot ${dotClass}"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
+            <div style="font-size:11px;color:var(--text-faint);margin-top:2px;">${h.reasons.join(' · ')}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+            <span class="badge badge-dim" style="font-size:9px;">${p.phase}</span>
+            ${client ? `<span style="font-size:10px;color:var(--text-faint);">${client.name}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+
   // Activity feed
   const da = document.getElementById('dash-activity');
   if (da) {
@@ -6139,6 +6196,40 @@ function getProjectUrgency(p) {
   return 'Basse';
 }
 
+function getProjectHealth(p) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const reasons = [];
+  let status = 'ok';
+
+  const urgentPending = (p.tasks || []).filter(t => t.priority === 'urgent' && !isTaskDone(t));
+  const overdue = (p.tasks || []).filter(t => !isTaskDone(t) && t.deadline && new Date(t.deadline) < today);
+
+  if (urgentPending.length > 0) {
+    reasons.push(`${urgentPending.length} tâche${urgentPending.length > 1 ? 's' : ''} urgente${urgentPending.length > 1 ? 's' : ''}`);
+    status = 'critical';
+  }
+  if (overdue.length > 0) {
+    reasons.push(`${overdue.length} tâche${overdue.length > 1 ? 's' : ''} en retard`);
+    if (status === 'ok') status = 'warning';
+  }
+
+  if (p.budget && p.budget > 0) {
+    const spent = (db.invoices || [])
+      .filter(inv => inv.projectId === p.id && inv.status !== 'Annulé')
+      .reduce((s, inv) => s + (inv.amount || 0), 0);
+    const pct = spent / p.budget;
+    if (pct > 1) {
+      reasons.push('Budget dépassé');
+      status = 'critical';
+    } else if (pct > 0.85) {
+      reasons.push(`Budget à ${Math.round(pct * 100)}%`);
+      if (status === 'ok') status = 'warning';
+    }
+  }
+
+  return { status, reasons };
+}
+
 function setProjectView(v) {
   projectView = v;
   ['cards','kanban','list','gantt'].forEach(n => {
@@ -6273,8 +6364,16 @@ function makeProjectCard(p, small) {
   const progress = total > 0 ? Math.round(done/total*100) : 0;
   const phaseClass = 'phase-' + p.phase.toLowerCase().replace(/\s/g,'');
   const pendingUrgent = p.tasks.filter(t => t.priority === 'urgent' && !isTaskDone(t));
+  const health = p.archived ? null : getProjectHealth(p);
+  const healthClass = health && health.status !== 'ok' ? 'health-' + health.status : '';
+  const healthBadge = health && health.status !== 'ok'
+    ? `<span class="badge ${health.status === 'critical' ? 'badge-red' : 'badge-yellow'}" style="font-size:9px;gap:3px;display:inline-flex;align-items:center;">
+        <span class="mi" style="font-size:10px;">${health.status === 'critical' ? 'error' : 'warning'}</span>
+        ${health.reasons[0]}${health.reasons.length > 1 ? ` +${health.reasons.length - 1}` : ''}
+      </span>`
+    : '';
 
-  return `<div class="proj-card ${p.pinned ? 'pinned' : ''} ${p.archived ? 'archived' : ''}" onclick="openProjectDetail(${p.id})" style="${p.archived ? 'opacity:0.72;' : ''}">
+  return `<div class="proj-card ${p.pinned ? 'pinned' : ''} ${p.archived ? 'archived' : ''} ${healthClass}" onclick="openProjectDetail(${p.id})" style="${p.archived ? 'opacity:0.72;' : ''}">
     <div class="proj-card-top">
       <div class="proj-card-name">${p.name}${p.archived ? ' <span style="font-size:9px;letter-spacing:.06em;color:#7c5cbf;font-weight:700;background:#f0ebff;padding:2px 7px;border-radius:99px;vertical-align:middle;">ARCHIVÉ</span>' : ''}</div>
       <div style="display:flex;gap:4px;align-items:center;">
@@ -6286,16 +6385,16 @@ function makeProjectCard(p, small) {
       ${(()=>{ const names=getAssignees(p); if(!names.length) return ''; return '<span style="display:inline-flex;gap:-6px;align-items:center;" title="'+names.join(', ')+'">'+names.map((n,i)=>{const u=USERS.find(x=>x.name===n);return u?'<span style="display:inline-block;margin-left:'+( i>0?'-8':'0')+'px;border:2px solid var(--surface);border-radius:50%;">'+avatarHTML(u.id,34)+'</span>':''}).join('')+'</span>'; })()}
     </div>
     ${p.num_rokhass ? `<div style="display:inline-flex;align-items:center;gap:5px;margin-top:2px;margin-bottom:2px;padding:3px 8px;background:#f0f4ff;border-radius:99px;font-size:10px;font-weight:700;color:#3a5a9a;letter-spacing:.02em;"><span class="mi" style="font-size:12px;">tag</span>${p.num_rokhass}</div>` : ''}
-    <div class="proj-card-meta">
+    <div class="proj-card-meta" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
       <span class="badge badge-dim ${phaseClass}" style="font-size:9px;">${p.phase}</span>
       ${p.type ? `<span class="badge badge-dim" style="font-size:9px;">${p.type}</span>` : ''}
+      ${healthBadge}
     </div>
     ${total > 0 ? `
       <div class="proj-progress-bar"><div class="proj-progress-fill" style="width:${progress}%"></div></div>
     ` : ''}
     <div class="proj-card-footer">
       <span>${total > 0 ? done+'/'+total+' tâches' : 'Aucune tâche'}</span>
-      ${pendingUrgent.length > 0 ? `<span style="color:var(--red);font-size:10px;">⚠ ${pendingUrgent.length} urgent${pendingUrgent.length>1?'s':''}</span>` : ''}
       ${p.budget && currentUser?.role === 'admin' ? `<span>${formatNum(p.budget)} MAD</span>` : ''}
     </div>
   </div>`;

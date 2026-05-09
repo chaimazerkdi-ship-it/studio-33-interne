@@ -3642,12 +3642,13 @@
     <div class="page" id="page-taches">
       <div class="page-header">
         <div>
-          <div class="page-title">Mes Tâches</div>
+          <div class="page-title" id="taches-page-title">Mes Tâches</div>
           <div class="page-subtitle" id="taches-subtitle">Checklist du jour</div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center;">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <select id="taches-filter-project" onchange="renderMesTaches()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 14px;font-size:13px;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;"></select>
-          <button onclick="openAddTaskModal()" style="display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;"><span style="font-size:16px;line-height:1;">+</span> Nouvelle tâche</button>
+          <select id="taches-filter-member" onchange="renderMesTaches()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 14px;font-size:13px;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;"></select>
+          <button onclick="openAddTaskModal()" style="display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;"><span class="mi mi-sm">add_task</span> Nouvelle tâche</button>
         </div>
       </div>
       <div id="taches-content"></div>
@@ -4751,11 +4752,6 @@
       <label>Assigné à</label>
       <select id="task-assigned">
         <option value="">— Non assigné —</option>
-        <option value="Admin">Admin</option>
-        <option value="Nadia">Nadia</option>
-        <option value="Nezha">Nezha</option>
-        <option value="Oumaima">Oumaima</option>
-        <option value="Zineb">Zineb</option>
       </select>
     </div>
     <div class="form-row">
@@ -6332,8 +6328,23 @@ function openTaskModal(projectId) {
   document.getElementById('task-project-id').value = projectId;
   document.getElementById('task-name').value = '';
   document.getElementById('task-priority').value = 'normal';
-  if (document.getElementById('task-assigned')) document.getElementById('task-assigned').value = '';
   if (document.getElementById('task-deadline')) document.getElementById('task-deadline').value = '';
+
+  // Populate assignees dynamically from db.teamMembers + USERS
+  const sel = document.getElementById('task-assigned');
+  if (sel) {
+    sel.innerHTML = '<option value="">— Non assigné —</option>';
+    const members = (db.teamMembers && db.teamMembers.length > 0)
+      ? db.teamMembers.map(t => t.display_name || t.username).filter(Boolean)
+      : USERS.map(u => u.name);
+    members.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    sel.value = '';
+  }
   openModal('task-modal');
 }
 
@@ -12204,6 +12215,30 @@ function renderMesTaches() {
   if (!currentUser) return;
   const today = new Date().toLocaleDateString('fr-MA', {weekday:'long', day:'numeric', month:'long'});
   document.getElementById('taches-subtitle').textContent = today;
+  const isAdmin = currentUser.role === 'admin';
+
+  // Titre dynamique
+  const titleEl = document.getElementById('taches-page-title');
+  if (titleEl) titleEl.textContent = isAdmin ? 'Tâches de l\'équipe' : 'Mes Tâches';
+
+  // Filtre membre (admin uniquement)
+  const memberSel = document.getElementById('taches-filter-member');
+  if (memberSel) {
+    if (isAdmin) {
+      memberSel.style.display = '';
+      const curMember = memberSel.value;
+      memberSel.innerHTML = '<option value="">Tous les membres</option>' +
+        (db.teamMembers || [])
+          .filter(m => m.role !== 'admin')
+          .map(m => `<option value="${escHTML(m.display_name || m.username)}" ${curMember === (m.display_name || m.username) ? 'selected' : ''}>${escHTML(m.display_name || m.username)}</option>`)
+          .join('');
+      // Restore selection
+      if (curMember) memberSel.value = curMember;
+    } else {
+      memberSel.style.display = 'none';
+    }
+  }
+  const filterMember = (isAdmin && memberSel) ? memberSel.value : '';
 
   // Populate project filter (avec nom client + option Administratif)
   const sel = document.getElementById('taches-filter-project');
@@ -12215,7 +12250,6 @@ function renderMesTaches() {
   const filterVal = sel.value;
   const filterPid = (filterVal && filterVal !== 'admin') ? parseInt(filterVal) : null;
   const filterAdmin = filterVal === 'admin';
-  const isAdmin = currentUser.role === 'admin';
 
   // Tâches administratives (Supabase, par utilisateur)
   const uid = String(currentUser.id);
@@ -12245,8 +12279,17 @@ function renderMesTaches() {
     const allProjects = filterPid ? db.projects.filter(p => p.id === filterPid) : db.projects;
     const projects = allProjects.map(p => ({
       ...p,
-      tasks: (p.tasks || []).filter(t => isAdmin || !t.assignedUserId || t.assignedUserId === currentUser.id || (t.assignedTo||'').toLowerCase() === currentUser.name.toLowerCase())
-    })).filter(p => isAdmin || p.tasks.length > 0);
+      tasks: (p.tasks || []).filter(t => {
+        // Admin avec filtre membre → montrer seulement les tâches de ce membre
+        if (isAdmin && filterMember) {
+          return (t.assignedTo || '').toLowerCase() === filterMember.toLowerCase();
+        }
+        // Admin sans filtre → toutes les tâches
+        if (isAdmin) return true;
+        // Staff → seulement ses tâches
+        return !t.assignedUserId || t.assignedUserId === currentUser.id || (t.assignedTo||'').toLowerCase() === currentUser.name.toLowerCase();
+      })
+    })).filter(p => p.tasks.length > 0);
 
     projects.forEach(p => {
       if (!p.tasks || p.tasks.length === 0) return;
@@ -13028,16 +13071,22 @@ function openAddTaskModal() {
   projSel.innerHTML = '<option value="">— Administratif (sans projet) —</option>' +
     db.projects.map(p => `<option value="${p.id}">${getProjectLabel(p)}</option>`).join('');
 
-  // Populate assignees (admin or can_assign members see all members)
+  // Populate assignees dynamically from db.teamMembers
   const assigneeRow = document.getElementById('at-assignee-row');
   const assigneeSel = document.getElementById('at-assignee');
-  const members = USERS.filter(u => u.role === 'member');
   const canAssign = isAdmin || currentUser?.permissions?.can_assign === true;
 
   if (canAssign) {
     assigneeRow.style.display = '';
-    assigneeSel.innerHTML = '<option value="">— Non assigné —</option>' +
-      members.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+    const memberList = (db.teamMembers && db.teamMembers.length > 0)
+      ? db.teamMembers.filter(t => t.role !== 'admin')
+      : USERS.filter(u => u.role === 'member');
+    assigneeSel.innerHTML = '<option value="">— Non assigné (moi-même) —</option>' +
+      memberList.map(m => {
+        const uid = m.user_id || m.id;
+        const name = m.display_name || m.username || m.name || '';
+        return `<option value="${uid}">${escHTML(name)}</option>`;
+      }).join('');
   } else {
     // Members auto-assign to themselves — hide the row
     assigneeRow.style.display = 'none';
@@ -13099,12 +13148,22 @@ async function saveNewTask() {
   let assignedTo = '';
   let assignedUserId = null;
 
-  if (isAdmin) {
-    const uid = parseInt(document.getElementById('at-assignee').value);
-    if (uid) {
-      const member = USERS.find(u => u.id === uid);
-      assignedTo = member ? member.name : '';
-      assignedUserId = uid;
+  if (isAdmin || currentUser?.permissions?.can_assign) {
+    const selVal = document.getElementById('at-assignee').value;
+    if (selVal) {
+      // selVal is user_id (UUID or numeric) from db.teamMembers
+      const tm = (db.teamMembers || []).find(m => String(m.user_id || m.id) === String(selVal));
+      if (tm) {
+        assignedTo = tm.display_name || tm.username || '';
+        assignedUserId = tm.user_id || tm.id;
+      } else {
+        const u = USERS.find(u => String(u.id) === String(selVal));
+        if (u) { assignedTo = u.name; assignedUserId = u.id; }
+      }
+    } else {
+      // "Non assigné" = assigner à soi-même si admin veut se l'attribuer
+      assignedTo = '';
+      assignedUserId = null;
     }
   } else {
     assignedTo = currentUser.name;
@@ -13163,11 +13222,11 @@ function updateUIForUser() {
     if (el) el.style.display = isAdmin ? '' : 'none';
   });
 
-  // Member-only items
+  // "Mes Tâches" visible pour tous (admin et membres)
   const memberOnly = ['nav-taches','mnav-taches'];
   memberOnly.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.style.display = isAdmin ? 'none' : '';
+    if (el) el.style.display = '';
   });
 
   // Update user badge in sidebar footer

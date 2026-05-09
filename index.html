@@ -5659,6 +5659,12 @@ initTheme();
 let currentPage = 'dashboard';
 
 function navigate(page) {
+  // Bloquer l'accès à Administratif pour les co-admins avec no_administratif
+  if (page === 'administratif' && currentUser?.permissions?.no_administratif === true) {
+    toast('Accès non autorisé', 'warning');
+    return;
+  }
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
@@ -11264,6 +11270,13 @@ async function callSamia(messages, onChunk) {
   const authToken = supabaseToken || SUPABASE_KEY;
   const systemPrompt = getDbContext();
 
+  // Si c'est un Copilote Chantier (4 documents longs), on monte les tokens à 4000
+  const isCopilote = messages.some(m =>
+    (typeof m.content === 'string' && m.content.includes('[COPILOTE CHANTIER]')) ||
+    (Array.isArray(m.content) && m.content.some(c => typeof c.text === 'string' && c.text.includes('[COPILOTE CHANTIER]')))
+  );
+  const maxTokens = isCopilote ? 4000 : 2000;
+
   const response = await fetch(`${SUPABASE_URL}/functions/v1/ai-proxy`, {
     method: 'POST',
     headers: {
@@ -11273,7 +11286,7 @@ async function callSamia(messages, onChunk) {
     },
     body: JSON.stringify({
       model: AI_MODEL,
-      max_tokens: 1000,
+      max_tokens: maxTokens,
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       stream: true
     })
@@ -11293,7 +11306,7 @@ async function callSamia(messages, onChunk) {
           },
           body: JSON.stringify({
             model: AI_MODEL,
-            max_tokens: 1000,
+            max_tokens: maxTokens,
             messages: [{ role: 'system', content: systemPrompt }, ...messages],
             stream: true
           })
@@ -11504,11 +11517,89 @@ async function executeSamiaActions(text, mode) {
 }
 
 // ══════════════════════════════
+// ── Sauvegarde d'un PV généré par Samia dans le projet ──
+async function saveSamiaPV(btn, textContent) {
+  const titleEl = document.getElementById('_samia-pv-title');
+  const projEl  = document.getElementById('_samia-pv-proj');
+  const docTitle = (titleEl ? titleEl.value.trim() : '') || 'PV de chantier';
+  const projId   = projEl ? parseInt(projEl.value) : null;
+  if (!projId) { toast('Choisissez un projet', 'warning'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="mi" style="font-size:14px;">hourglass_top</span> Enregistrement…';
+
+  try {
+    // Convertir le texte en fichier HTML simple uploadable
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>${docTitle}</title>
+<style>body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 20px;color:#222;line-height:1.7;}
+h1,h2,h3{color:#8B6914;}hr{border:none;border-top:1px solid #ddd;margin:24px 0;}
+pre{white-space:pre-wrap;font-family:inherit;}</style>
+</head><body><pre>${textContent.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const safeName = docTitle.replace(/[^a-zA-Z0-9À-ɏ\s_-]/g, '').replace(/\s+/g, '_');
+    const filePath = `projects/${projId}/pv/${Date.now()}_${safeName}.html`;
+
+    // Upload vers Supabase Storage
+    const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${S33_STORAGE_BUCKET}/${filePath}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'text/html',
+        'x-upsert': 'true'
+      },
+      body: blob
+    });
+
+    let dataUri = null;
+    if (uploadRes.ok) {
+      // Utiliser le file_path pour générer une URL signée à la lecture
+      dataUri = null; // on utilisera file_path
+    } else {
+      // Fallback : stocker en base64 directement dans media.data
+      const reader = new FileReader();
+      dataUri = await new Promise(res => { reader.onload = e => res(e.target.result); reader.readAsDataURL(blob); });
+    }
+
+    const docObj = {
+      name:           docTitle,
+      doc_type:       'pv_chantier',
+      is_project_doc: true,
+      is_pdf:         false,
+      project_id:     projId,
+      added_by:       currentUser?.name || 'Samia IA',
+      added_at:       new Date().toLocaleDateString('fr-MA'),
+      ...(uploadRes.ok ? { file_path: filePath } : { data: dataUri })
+    };
+
+    const res = await sbInsertOrThrow('media', docObj);
+    const inserted = Array.isArray(res) ? res[0] : res;
+    if (inserted) {
+      db.media = db.media || [];
+      db.media.push({ ...inserted, isPDF: false, isGeneral: false, addedAt: inserted.added_at, projectId: inserted.project_id });
+    }
+
+    // Remplacer la barre de sauvegarde par une confirmation
+    const bar = btn.closest('div');
+    if (bar) bar.innerHTML = `<span class="mi" style="color:var(--green);font-size:16px;vertical-align:-3px;">check_circle</span> <span style="font-size:12px;color:var(--green);font-weight:600;">PV enregistré dans le projet</span> <button onclick="openProjectDetail(${projId})" style="margin-left:8px;padding:5px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:11px;cursor:pointer;color:var(--text);">Voir le projet →</button>`;
+    toast('PV enregistré ✓');
+
+  } catch(e) {
+    console.error('saveSamiaPV error:', e);
+    btn.disabled = false;
+    btn.innerHTML = '<span class="mi" style="font-size:14px;">save</span> Réessayer';
+    toast('Erreur lors de l\'enregistrement', 'error');
+  }
+}
+
 // COPILOTE CHANTIER — Dictée vocale
 // ══════════════════════════════
 let _s33VoiceRec = null;
 let _s33VoiceActive = false;
 let _s33VoiceBase = ''; // texte déjà finalisé avant la session courante
+let _lastCopiloteProjectId = null; // projet sélectionné lors du dernier envoi Copilote
 
 function toggleVoiceDictation(inputId, btnId) {
   if (_s33VoiceActive) {
@@ -11604,6 +11695,7 @@ function sendCopiloteChantier() {
   if (!obs) { toast('Dictez vos observations d\'abord'); return; }
 
   const projId = parseInt(document.getElementById('copilote-project-sel')?.value) || null;
+  _lastCopiloteProjectId = projId; // mémoriser pour le bouton de sauvegarde
   const proj   = projId ? (db.projects || []).find(p => p.id === projId) : null;
   const client = proj   ? (db.clients  || []).find(c => c.id === proj.clientId) : null;
   const dateVisite = new Date().toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -11738,6 +11830,30 @@ async function aiPageSend() {
 
     // ── EXECUTE SAMIA ACTIONS ──
     await executeSamiaActions(fullText, 'page');
+
+    // ── Bouton "Sauvegarder dans le projet" après un Copilote Chantier ──
+    if (_lastCopiloteProjectId !== undefined && _lastCopiloteProjectId !== null && bubble) {
+      const capturedProjId = _lastCopiloteProjectId;
+      const capturedText   = fullText;
+      _lastCopiloteProjectId = null; // consommer le flag
+
+      const saveBar = document.createElement('div');
+      saveBar.style.cssText = 'margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;';
+      saveBar.innerHTML = `
+        <span style="font-size:11px;color:var(--text-faint);flex:1;">Enregistrer ce PV dans le projet</span>
+        <input id="_samia-pv-title" type="text" placeholder="Titre du document…"
+          value="PV de chantier — ${new Date().toLocaleDateString('fr-FR')}"
+          style="flex:2;min-width:160px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-size:12px;border-radius:var(--radius-sm);font-family:'Inter',system-ui,sans-serif;outline:none;">
+        <select id="_samia-pv-proj" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-size:12px;border-radius:var(--radius-sm);font-family:'Inter',system-ui,sans-serif;outline:none;">
+          ${(db.projects||[]).map(p => `<option value="${p.id}" ${p.id===capturedProjId?'selected':''}>${escHTML(p.name)}</option>`).join('')}
+        </select>
+        <button onclick="saveSamiaPV(this, ${JSON.stringify(capturedText).replace(/</g,'\\u003c')})"
+          style="padding:7px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;white-space:nowrap;">
+          <span class="mi" style="font-size:15px;">save</span> Enregistrer
+        </button>`;
+      bubble.appendChild(saveBar);
+      bubble.closest('.ai-msg')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
 
     // Keep history max 20 messages
     if (aiPageHistory.length > 20) aiPageHistory = aiPageHistory.slice(-20);
@@ -13212,14 +13328,24 @@ function updateUIForUser() {
   if (!currentUser) return;
   const isAdmin = currentUser.role === 'admin';
 
+  // Vérifier si l'accès à Administratif est bloqué (même pour un admin co-admin)
+  const noAdministratif = isAdmin && currentUser.permissions?.no_administratif === true;
+
   // Admin-only items
   const adminOnly = ['nav-equipe','nav-clients','nav-invoices','nav-devis',
-    'nav-finance','nav-library','nav-administratif','nav-section-finance','nav-section-ressources',
+    'nav-finance','nav-library','nav-section-finance','nav-section-ressources',
     'mnav-more-equipe','mnav-more-devis','mnav-more-invoices',
-    'mnav-more-finance','mnav-more-library','mnav-more-mediatheque','mnav-more-administratif','mnav-clients'];
+    'mnav-more-finance','mnav-more-library','mnav-more-mediatheque','mnav-clients'];
   adminOnly.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isAdmin ? '' : 'none';
+  });
+
+  // Administratif : visible admin sauf si no_administratif
+  const adminOnlyAdm = ['nav-administratif','mnav-more-administratif'];
+  adminOnlyAdm.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (isAdmin && !noAdministratif) ? '' : 'none';
   });
 
   // "Mes Tâches" visible pour tous (admin et membres)
@@ -14213,9 +14339,13 @@ function renderPPEquipe() {
       </div>
       <div class="pp-form-row">
         <label class="pp-label">Rôle</label>
-        <select class="pp-input" id="me-role-${m.id}">
+        <select class="pp-input" id="me-role-${m.id}" onchange="
+          const noadm = document.getElementById('me-perm-noadmin-${m.id}');
+          const lbl = noadm?.closest('label');
+          if (lbl) lbl.style.cssText = this.value === 'admin' ? '' : 'opacity:.4;pointer-events:none;';
+        ">
           <option value="member"${m.role === 'member' ? ' selected' : ''}>Membre</option>
-          <option value="admin"${m.role === 'admin'  ? ' selected' : ''}>Administrateur</option>
+          <option value="admin"${m.role === 'admin'  ? ' selected' : ''}>Administrateur (co-admin)</option>
         </select>
       </div>
       <div class="pp-form-row">
@@ -14229,6 +14359,9 @@ function renderPPEquipe() {
           </label>
           <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
             <input type="checkbox" id="me-perm-finance-${m.id}" ${(m.permissions?.can_see_finance) ? 'checked' : ''}> Voir les finances
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;${m.role !== 'admin' ? 'opacity:.4;pointer-events:none;' : ''}">
+            <input type="checkbox" id="me-perm-noadmin-${m.id}" ${(m.permissions?.no_administratif) ? 'checked' : ''}> <span>Bloquer l'accès à <strong>Administratif</strong> <em style="font-size:10px;color:var(--text-faint);">(co-admin uniquement)</em></span>
           </label>
         </div>
       </div>
@@ -14302,17 +14435,18 @@ async function saveMemberEdit(id) {
   const displayName = (document.getElementById(`me-name-${id}`)?.value || '').trim();
   const jobTitle    = (document.getElementById(`me-title-${id}`)?.value || '').trim();
   const role        = document.getElementById(`me-role-${id}`)?.value || 'member';
-  const canAssign   = document.getElementById(`me-perm-assign-${id}`)?.checked || false;
-  const canInvoice  = document.getElementById(`me-perm-invoice-${id}`)?.checked || false;
-  const canFinance  = document.getElementById(`me-perm-finance-${id}`)?.checked || false;
-  const newPass     = (document.getElementById(`me-pass-${id}`)?.value || '').trim();
+  const canAssign      = document.getElementById(`me-perm-assign-${id}`)?.checked || false;
+  const canInvoice     = document.getElementById(`me-perm-invoice-${id}`)?.checked || false;
+  const canFinance     = document.getElementById(`me-perm-finance-${id}`)?.checked || false;
+  const noAdministratif = document.getElementById(`me-perm-noadmin-${id}`)?.checked || false;
+  const newPass        = (document.getElementById(`me-pass-${id}`)?.value || '').trim();
 
   try {
     await sbFetch('team_members', 'PATCH', {
       display_name: displayName,
       job_title: jobTitle,
       role: role,
-      permissions: { can_assign: canAssign, can_create_invoice: canInvoice, can_see_finance: canFinance }
+      permissions: { can_assign: canAssign, can_create_invoice: canInvoice, can_see_finance: canFinance, no_administratif: noAdministratif }
     }, `?id=eq.${id}`);
 
     if (newPass) {

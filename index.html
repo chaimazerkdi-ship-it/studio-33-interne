@@ -119,6 +119,37 @@
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .s33-spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  #loading-overlay {
+    position: fixed; inset: 0; z-index: 9998;
+    background: rgba(0,0,0,.45);
+    display: none; align-items: center; justify-content: center;
+  }
+  #loading-overlay.active { display: flex; }
+  #loading-overlay-box {
+    background: var(--surface); border-radius: 14px;
+    padding: 20px 28px; display: flex; align-items: center; gap: 14px;
+    box-shadow: var(--shadow);
+  }
+  #loading-overlay-label { font-size: 14px; color: var(--text); font-weight: 500; }
+
+  /* Styled confirm modal */
+  #confirm-modal .modal { max-width: 400px; text-align: center; }
+  #confirm-modal-icon { font-size: 36px; margin-bottom: 12px; }
+  #confirm-modal-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  #confirm-modal-msg { font-size: 13px; color: var(--text-faint); margin-bottom: 22px; line-height: 1.6; }
+  #confirm-modal-actions { display: flex; gap: 10px; justify-content: center; }
+  #confirm-modal-ok { padding: 9px 24px; border: none; border-radius: var(--radius-pill); font-size: 13px; font-weight: 600; cursor: pointer; color: #fff; font-family: inherit; }
+  #confirm-modal-cancel { padding: 9px 24px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-pill); font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text); font-family: inherit; }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -4977,6 +5008,27 @@
   </div>
 </div>
 
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div id="loading-overlay-box">
+    <div class="s33-spinner"></div>
+    <span id="loading-overlay-label">Enregistrement…</span>
+  </div>
+</div>
+
+<!-- Styled confirm modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal" style="max-width:400px;text-align:center;">
+    <div id="confirm-modal-icon"></div>
+    <div id="confirm-modal-title">Confirmer</div>
+    <div id="confirm-modal-msg"></div>
+    <div id="confirm-modal-actions">
+      <button id="confirm-modal-cancel" onclick="closeModal('confirm-modal');window._s33ConfirmReject?.()">Annuler</button>
+      <button id="confirm-modal-ok" onclick="closeModal('confirm-modal');window._s33ConfirmResolve?.()">Supprimer</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ===== SUPABASE CONFIG =====
 const SUPABASE_URL = 'https://yjxcqptgugatrxeyzrdc.supabase.co';
@@ -6066,7 +6118,7 @@ function renderDashboard() {
 }
 
 // ===== PROJECTS =====
-let projectView = 'cards';
+let projectView = localStorage.getItem('s33_proj_view') || 'cards';
 let projPhaseFilter = 'Tout';
 let projSearchQuery = '';
 let ganttStartMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -6232,16 +6284,19 @@ function getProjectHealth(p) {
 
 function setProjectView(v) {
   projectView = v;
+  localStorage.setItem('s33_proj_view', v);
+  _syncProjectViewButtons();
+  if (v === 'gantt') renderProjectsGantt();
+  else renderProjects();
+}
+
+function _syncProjectViewButtons() {
   ['cards','kanban','list','gantt'].forEach(n => {
-    document.getElementById('projects-' + n + '-view').style.display = v === n ? 'block' : 'none';
+    const container = document.getElementById('projects-' + n + '-view');
+    if (container) container.style.display = projectView === n ? 'block' : 'none';
     const btn = document.getElementById('view-' + n + '-btn');
-    if (btn) btn.classList.toggle('active', v === n);
+    if (btn) btn.classList.toggle('active', projectView === n);
   });
-  if (v === 'gantt') {
-    renderProjectsGantt();
-  } else {
-    renderProjects();
-  }
 }
 
 function toggleShowAll() {
@@ -6250,6 +6305,7 @@ function toggleShowAll() {
 }
 
 function renderProjects() {
+  _syncProjectViewButtons();
   renderProjectFilters();
   if (projectView === 'cards')  renderProjectsCards();
   else if (projectView === 'kanban') renderProjectsKanban();
@@ -6457,7 +6513,12 @@ async function archiveProject(id) {
   const p = db.projects.find(x => x.id === id);
   if (!p) return;
   const isArchiving = !p.archived;
-  if (!confirm(`${isArchiving ? 'Archiver' : 'Restaurer'} le projet "${p.name}" ?${isArchiving ? '\n\nIl sera masqué de la liste principale.' : ''}`)) return;
+  try {
+    await showConfirm(
+      isArchiving ? `Archiver "${p.name}" ? Il sera masqué de la liste principale.` : `Restaurer "${p.name}" dans les projets actifs ?`,
+      { title: isArchiving ? 'Archiver le projet' : 'Restaurer le projet', okLabel: isArchiving ? 'Archiver' : 'Restaurer', icon: isArchiving ? 'inventory_2' : 'unarchive', danger: false }
+    );
+  } catch { return; }
   await sbUpdate('projects', id, { archived: isArchiving });
   p.archived = isArchiving;
   // Close focus overlay if open
@@ -6942,13 +7003,38 @@ function openModal(id) {
 
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
-  // Réinitialiser l'ID d'édition quand on ferme le modal projet
   if (id === 'project-modal') {
     document.getElementById('project-edit-id').value = '';
   }
   if (id === 'invoice-modal') {
     document.getElementById('invoice-edit-id').value = '';
   }
+}
+
+function setLoading(show, label) {
+  const el = document.getElementById('loading-overlay');
+  if (!el) return;
+  if (show) {
+    document.getElementById('loading-overlay-label').textContent = label || 'Enregistrement…';
+    el.classList.add('active');
+  } else {
+    el.classList.remove('active');
+  }
+}
+
+function showConfirm(message, { title = 'Confirmer', okLabel = 'Supprimer', icon = 'delete', danger = true } = {}) {
+  return new Promise((resolve, reject) => {
+    window._s33ConfirmResolve = resolve;
+    window._s33ConfirmReject = reject;
+    document.getElementById('confirm-modal-title').textContent = title;
+    document.getElementById('confirm-modal-msg').textContent = message;
+    const iconEl = document.getElementById('confirm-modal-icon');
+    iconEl.innerHTML = `<span class="mi" style="font-size:36px;color:${danger ? 'var(--red)' : 'var(--gold)'};">${icon}</span>`;
+    const okBtn = document.getElementById('confirm-modal-ok');
+    okBtn.textContent = okLabel;
+    okBtn.style.background = danger ? 'var(--red)' : 'var(--gold)';
+    openModal('confirm-modal');
+  });
 }
 
 function populateClientSelect(selectId) {
@@ -7110,52 +7196,50 @@ async function saveProject() {
     link: document.getElementById('p-link').value,
   };
   if (!obj.name) { _formError('p-name', 'Le nom du projet est obligatoire'); return; }
-  if (editId) {
-    const pid = parseInt(editId);
-    let updateObj = {...obj};
-    // Always save assigned_to in localStorage immediately (works even without DB column)
-    if (obj.assigned_to) {
-      localStorage.setItem('s33_assigned_' + pid, obj.assigned_to);
-    } else {
-      localStorage.removeItem('s33_assigned_' + pid);
-    }
-    try {
-      await sbUpdateOrThrow('projects', pid, updateObj);
-    } catch(e) {
-      // Column might not exist yet — retry without it (localStorage holds the value)
-      delete updateObj.assigned_to;
-      await sbUpdate('projects', pid, updateObj);
-    }
-    toast('Projet modifié');
-  } else {
-    obj.tasks = [];
-    obj.pinned = false;
-    let insertObj = {...obj};
-    let res;
-    try {
-      res = await sbInsertOrThrow('projects', insertObj);
-    } catch(e) {
-      delete insertObj.assigned_to;
-      res = await sbInsert('projects', insertObj);
-    }
-    if (res && res[0]) {
-      obj.id = res[0].id;
-      // Save assigned_to in localStorage for new project
-      if (obj.assigned_to) localStorage.setItem('s33_assigned_' + obj.id, obj.assigned_to);
-    }
-    logActivity('add_project', currentUser.name + ' a ajouté le projet "' + (obj.name || 'Nouveau projet') + '"', 'project', null, obj.name || 'Nouveau projet');
-    toast('Projet créé');
-    // Notifier l'équipe du nouveau projet
-    if (typeof s33SendPush === 'function') {
-      const pname = obj.name || 'Nouveau projet';
-      s33SendPush({ roles: ['staff'] }, '🏗️ Nouveau projet', pname, '/', 'proj_' + Date.now());
-    }
-  }
   closeModal('project-modal');
-  await loadDB();
-  renderProjects();
-  renderDashboard();
-  document.getElementById('project-edit-id').value = '';
+  setLoading(true, editId ? 'Modification du projet…' : 'Création du projet…');
+  try {
+    if (editId) {
+      const pid = parseInt(editId);
+      let updateObj = {...obj};
+      if (obj.assigned_to) localStorage.setItem('s33_assigned_' + pid, obj.assigned_to);
+      else localStorage.removeItem('s33_assigned_' + pid);
+      try {
+        await sbUpdateOrThrow('projects', pid, updateObj);
+      } catch(e) {
+        delete updateObj.assigned_to;
+        await sbUpdate('projects', pid, updateObj);
+      }
+      toast('Projet modifié');
+    } else {
+      obj.tasks = [];
+      obj.pinned = false;
+      let insertObj = {...obj};
+      let res;
+      try {
+        res = await sbInsertOrThrow('projects', insertObj);
+      } catch(e) {
+        delete insertObj.assigned_to;
+        res = await sbInsert('projects', insertObj);
+      }
+      if (res && res[0]) {
+        obj.id = res[0].id;
+        if (obj.assigned_to) localStorage.setItem('s33_assigned_' + obj.id, obj.assigned_to);
+      }
+      logActivity('add_project', currentUser.name + ' a ajouté le projet "' + (obj.name || 'Nouveau projet') + '"', 'project', null, obj.name || 'Nouveau projet');
+      toast('Projet créé');
+      if (typeof s33SendPush === 'function') {
+        const pname = obj.name || 'Nouveau projet';
+        s33SendPush({ roles: ['staff'] }, '🏗️ Nouveau projet', pname, '/', 'proj_' + Date.now());
+      }
+    }
+    await loadDB();
+    renderProjects();
+    renderDashboard();
+    document.getElementById('project-edit-id').value = '';
+  } finally {
+    setLoading(false);
+  }
 }
 
 function editProject(id) {
@@ -7195,14 +7279,22 @@ function editProject(id) {
 async function deleteProject(id) {
   const p = db.projects.find(x => x.id === id);
   if (!p) return;
-  const ok = confirm(`Supprimer le projet "${p.name}" ?\n\nToutes les tâches associées seront perdues. Cette action est irréversible.`);
-  if (!ok) return;
-  await sbDelete('projects', id);
-  db.projects = db.projects.filter(x => x.id !== id);
-  // Fermer la fiche si on est dessus
-  renderProjects();
-  renderDashboard();
-  toast(`Projet "${p.name}" supprimé`);
+  try {
+    await showConfirm(`Supprimer "${p.name}" ? Toutes les tâches associées seront perdues. Cette action est irréversible.`, {
+      title: 'Supprimer le projet',
+      okLabel: 'Supprimer',
+      icon: 'delete_forever',
+      danger: true
+    });
+  } catch { return; }
+  setLoading(true, 'Suppression…');
+  try {
+    await sbDelete('projects', id);
+    db.projects = db.projects.filter(x => x.id !== id);
+    if (currentPage === 'project-detail') navigate('projects');
+    else { renderProjects(); renderDashboard(); }
+    toast(`Projet "${p.name}" supprimé`);
+  } finally { setLoading(false); }
 }
 
 // ===== CLIENTS =====
@@ -8297,11 +8389,19 @@ async function archiveClient(id) {
 }
 
 async function deleteClient(id) {
-  if (!confirm('Supprimer définitivement ce client ? Cette action est irréversible.')) return;
+  const c = db.clients.find(x => x.id === id);
+  try {
+    await showConfirm(`Supprimer définitivement "${c?.name || 'ce client'}" ? Cette action est irréversible.`, {
+      title: 'Supprimer le client', okLabel: 'Supprimer', icon: 'person_remove', danger: true
+    });
+  } catch { return; }
   closeClientProfile();
-  const ok = await sbDelete('clients', id);
-  if (!ok) { toast('Erreur : suppression refusée par la base de données'); return; }
-  await loadDB(); renderClients(); renderDashboard(); toast('Client supprimé');
+  setLoading(true, 'Suppression…');
+  try {
+    const ok = await sbDelete('clients', id);
+    if (!ok) { toast('Erreur : suppression refusée par la base de données', 'error'); return; }
+    await loadDB(); renderClients(); renderDashboard(); toast('Client supprimé');
+  } finally { setLoading(false); }
 }
 
 

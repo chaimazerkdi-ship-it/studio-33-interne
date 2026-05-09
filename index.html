@@ -5812,7 +5812,7 @@ function renderProjectDetailPage() {
                       <div style="font-size:13px;font-weight:${isDone?'400':'500'};color:var(--text);text-decoration:${isDone?'line-through':'none'};opacity:${isDone?'.5':'1'};">${t.name}</div>
                       ${t.assignedTo ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">${(()=>{const u=USERS.find(x=>x.name===t.assignedTo||x.username===t.assignedTo);return u?avatarHTML(u.id,18):'';})()}<span style="font-size:11px;color:var(--text-dim);">${t.assignedTo}</span></div>` : ''}
                     </div>
-                    ${taskDeadlineBadge(t.deadline, isDone)}
+                    ${taskDeadlineEditable(p.id, t.id, t.deadline, isDone)}
                     ${t.priority==='urgent'&&!isDone ? '<span class="badge badge-red" style="font-size:9px;flex-shrink:0;">Urgent</span>' : ''}
                     ${statusPillHTML(p.id, t.id, tStatus)}
                     <button onclick="if(confirm('Supprimer cette tâche ?'))deleteTask(${p.id},${t.id})" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;border:none;background:#fff0f0;color:#c0392b;cursor:pointer;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;">×</button>
@@ -10444,6 +10444,42 @@ function taskDeadlineBadge(deadline, isDone) {
     return `<span style="flex-shrink:0;font-size:10px;font-weight:700;color:#b7600a;display:inline-flex;align-items:center;gap:2px;background:#fff7ec;border-radius:var(--radius-pill);padding:3px 8px;white-space:nowrap;"><span class="mi mi-sm">calendar_today</span> ${diff}j</span>`;
   }
   return `<span style="flex-shrink:0;font-size:10px;color:var(--text-faint);background:var(--surface3);border-radius:var(--radius-pill);padding:3px 8px;white-space:nowrap;"><span class="mi mi-sm">calendar_today</span> ${new Date(deadline).toLocaleDateString('fr-MA',{day:'numeric',month:'short'})}</span>`;
+}
+
+// Deadline éditable inline (projet) — remplace le badge statique
+function taskDeadlineEditable(projId, taskId, deadline, isDone) {
+  if (isDone) return '';
+  let color = 'var(--text-faint)', bg = 'var(--surface3)', fw = '500';
+  if (deadline) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const d = new Date(deadline); d.setHours(0,0,0,0);
+    const diff = Math.round((d - today) / 86400000);
+    if (diff < 0)      { color='#c0392b'; bg='#fff0f0'; fw='700'; }
+    else if (diff <= 3){ color='#b7600a'; bg='#fff7ec'; fw='700'; }
+  }
+  const label = deadline
+    ? new Date(deadline).toLocaleDateString('fr-MA',{day:'numeric',month:'short'})
+    : '+ Date';
+  return `<label style="flex-shrink:0;position:relative;cursor:pointer;" title="Modifier l'échéance">
+    <span style="font-size:10px;font-weight:${fw};color:${color};background:${bg};border-radius:var(--radius-pill);padding:3px 8px;white-space:nowrap;pointer-events:none;display:inline-flex;align-items:center;gap:3px;"><span class="mi mi-sm" style="font-size:11px;">calendar_today</span>${label}</span>
+    <input type="date" value="${deadline||''}"
+      onchange="setTaskDeadline(${projId},${taskId},this.value)"
+      style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;"
+      title="Modifier l'échéance">
+  </label>`;
+}
+
+async function setTaskDeadline(projId, taskId, newDate) {
+  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
+  const freshTasks = ((fresh||[])[0]?.tasks || []).map(t => {
+    if (String(t.id) === String(taskId)) return { ...t, deadline: newDate || null };
+    return t;
+  });
+  await sbUpdate('projects', projId, { tasks: freshTasks });
+  const p = (db.projects||[]).find(x => x.id === projId);
+  if (p) p.tasks = freshTasks;
+  toast('Échéance mise à jour ✓');
+  renderProjects();
 }
 
 function formatNum(n) {

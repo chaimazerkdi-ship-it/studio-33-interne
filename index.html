@@ -5209,7 +5209,7 @@ async function loadDB() {
   try {
     showLoadingOverlay(true);
     // ── Promise.allSettled : une table en panne ne bloque plus le chargement ──
-    const TABLE_NAMES = ['clients','projects','invoices','library','devis','charges','entrees','media','app_config','user_tasks','daily_reports','conges','user_profiles','team_members','dashboard_config','contacts_pro','mat_suppliers','mat_materials','bureau_incidents','concours'];
+    const TABLE_NAMES = ['clients','projects','invoices','library','devis','charges','entrees','media','app_config','user_tasks','daily_reports','conges','user_profiles','team_members','dashboard_config','contacts_pro','mat_suppliers','mat_materials','bureau_incidents','concours','calendar_events'];
     const _settled = await Promise.allSettled([
       sbGet('clients', '?order=id'),
       sbGet('projects', '?order=id'),
@@ -5230,7 +5230,8 @@ async function loadDB() {
       sbGet('mat_suppliers', '?order=name'),
       sbGet('mat_materials', '?order=category,name'),
       sbGet('bureau_incidents', '?order=reported_at.desc'),
-      sbGet('concours', '?order=created_at.desc')
+      sbGet('concours', '?order=created_at.desc'),
+      sbGet('calendar_events', '?order=date')
     ]);
     const _vals = _settled.map((r, i) => {
       if (r.status === 'rejected') {
@@ -5239,7 +5240,7 @@ async function loadDB() {
       }
       return r.value || [];
     });
-    const [clients, projects, invoices, library, devis, charges, entrees, media, config, userTasks, dailyReports, conges, userProfiles, teamMembers, dashboardConfigRows, contactsPro, matSuppliers, matMaterials, bureauIncidents, concoursRows] = _vals;
+    const [clients, projects, invoices, library, devis, charges, entrees, media, config, userTasks, dailyReports, conges, userProfiles, teamMembers, dashboardConfigRows, contactsPro, matSuppliers, matMaterials, bureauIncidents, concoursRows, calendarEventsRows] = _vals;
 
     db.clients = clients.map(c => ({...c, id: c.id, links: c.links || []}));
     db.projects = projects.map(p => ({
@@ -5279,6 +5280,7 @@ async function loadDB() {
     db.matMaterials  = (matMaterials  || []).map(m => ({...m, project_ids: m.project_ids || []}));
     db.incidents     = (bureauIncidents || []);
     db.concours      = (concoursRows   || []);
+    db.calEvents     = (calendarEventsRows || []);
 
     // Dynamically overlay USERS from team_members DB rows
     if (db.teamMembers.length > 0) {
@@ -11980,6 +11982,7 @@ function renderRapport() {
       const totalH    = g.rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
       const dateLabel = new Date(g.date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
       const hasBlockers = g.rows.some(r => r.blockers);
+      const allIds = g.rows.map(r => r.id).join(',');
       return `<div class="card" style="margin-bottom:10px;">
         <!-- En-tête de la carte : date + nom + total heures -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
@@ -11988,14 +11991,20 @@ function renderRapport() {
             <span style="font-size:12px;color:var(--text-dim);text-transform:capitalize;">${dateLabel}</span>
             ${hasBlockers ? `<span class="mi" style="font-size:14px;color:var(--red);" title="Blocage signalé">warning</span>` : ''}
           </div>
-          <span class="badge badge-gold">${totalH % 1 === 0 ? totalH : totalH.toFixed(1)}h au total</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge badge-gold">${totalH % 1 === 0 ? totalH : totalH.toFixed(1)}h au total</span>
+            <button onclick="deleteReportGroup('${allIds}')" title="Supprimer tous les rapports de cette journée" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:4px;border-radius:4px;display:flex;align-items:center;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-faint)'"><span class="mi" style="font-size:16px;">delete_outline</span></button>
+          </div>
         </div>
         <!-- Ligne par projet -->
         ${g.rows.map(r => `
           <div style="padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
               <span class="badge badge-gold" style="font-size:11px;">${escHTML(r.project_name || '—')}</span>
-              <span class="badge badge-dim" style="font-size:11px;">${r.hours}h</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="badge badge-dim" style="font-size:11px;">${r.hours}h</span>
+                <button onclick="deleteReport(${r.id})" title="Supprimer ce rapport" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:2px;border-radius:4px;display:flex;align-items:center;line-height:1;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-faint)'"><span class="mi" style="font-size:14px;">close</span></button>
+              </div>
             </div>
             <div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;">${escHTML(r.tasks || '')}</div>
             ${r.blockers ? `<div style="font-size:11px;color:var(--red);margin-top:6px;padding:5px 8px;background:#fee2e2;border-radius:4px;"><span class="mi" style="font-size:12px;vertical-align:-2px;">warning</span> ${escHTML(r.blockers)}</div>` : ''}
@@ -12113,6 +12122,42 @@ function renderRapport() {
   // If no report yet today, init the multi-project form
   if (!todayReport && typeof window.mrInit === 'function' && document.getElementById('rp-entries')) {
     window.mrInit('rp');
+  }
+}
+
+// Rafraîchit la vue selon la page active
+function _refreshAfterReportDelete() {
+  if (currentPage === 'rapport') renderRapport();
+  else if (currentPage === 'equipe' && typeof renderEquipe === 'function') renderEquipe();
+}
+
+// Supprime un seul rapport (une ligne projet)
+async function deleteReport(id) {
+  if (!confirm('Supprimer ce rapport ?')) return;
+  try {
+    await sbDelete('daily_reports', id);
+    db.dailyReports = (db.dailyReports || []).filter(r => r.id !== id);
+    toast('Rapport supprimé');
+    _refreshAfterReportDelete();
+  } catch(e) {
+    console.error('deleteReport error:', e);
+    toast('Erreur lors de la suppression', 'error');
+  }
+}
+
+// Supprime tous les rapports d'un groupe (une journée entière) — ids = "12,34,56"
+async function deleteReportGroup(idsStr) {
+  const ids = idsStr.split(',').map(Number).filter(Boolean);
+  if (!ids.length) return;
+  if (!confirm(`Supprimer ${ids.length > 1 ? 'les ' + ids.length + ' rapports' : 'ce rapport'} de cette journée ?`)) return;
+  try {
+    await Promise.all(ids.map(id => sbDelete('daily_reports', id)));
+    db.dailyReports = (db.dailyReports || []).filter(r => !ids.includes(r.id));
+    toast(ids.length > 1 ? ids.length + ' rapports supprimés' : 'Rapport supprimé');
+    _refreshAfterReportDelete();
+  } catch(e) {
+    console.error('deleteReportGroup error:', e);
+    toast('Erreur lors de la suppression', 'error');
   }
 }
 
@@ -12377,10 +12422,14 @@ const CAL_EVENT_TYPES = {
 };
 
 function getCalCustomEvents() {
-  try { return JSON.parse(localStorage.getItem('s33_cal_events') || '[]'); } catch(e) { return []; }
-}
-function saveCalCustomEvents(events) {
-  localStorage.setItem('s33_cal_events', JSON.stringify(events));
+  // Retourne les événements depuis db.calEvents (Supabase), avec fallback localStorage pour migration
+  const dbEvts = db.calEvents || [];
+  try {
+    const legacy = JSON.parse(localStorage.getItem('s33_cal_events') || '[]');
+    // Si des events locaux existent et qu'on n'a encore rien en DB, les retourner aussi (affichage seulement, la migration se fait au prochain save)
+    if (legacy.length > 0 && dbEvts.length === 0) return legacy;
+  } catch(e) {}
+  return dbEvts;
 }
 
 function openCalEventModal(dateStr) {
@@ -12409,7 +12458,7 @@ function selectCalEventType(btn) {
   btn.style.background = 'rgba(181,135,10,.1)';
   document.getElementById('cal-event-type').value = btn.dataset.type;
 }
-function saveCalEvent() {
+async function saveCalEvent() {
   const type = document.getElementById('cal-event-type').value;
   const title = document.getElementById('cal-event-title').value.trim();
   const dateStart = document.getElementById('cal-event-date-start').value;
@@ -12418,25 +12467,59 @@ function saveCalEvent() {
   if (!title) { document.getElementById('cal-event-title').focus(); return; }
   if (!dateStart) { document.getElementById('cal-event-date-start').focus(); return; }
   if (!type) { toast('Choisissez un type d\'événement'); return; }
-  const events = getCalCustomEvents();
-  events.push({
-    id: Date.now() + Math.random().toString(36).slice(2),
-    type, title, date: dateStart,
+
+  const obj = {
+    type, title,
+    date: dateStart,
     date_end: dateEnd || null,
     note: note || null,
     created_by: currentUser?.name || ''
-  });
-  saveCalCustomEvents(events);
-  closeCalEventModal();
-  renderCalendar();
-  toast('Événement ajouté');
+  };
+
+  try {
+    const res = await sbInsert('calendar_events', obj);
+    const ins = Array.isArray(res) ? res[0] : res;
+    if (ins?.id) {
+      db.calEvents = [...(db.calEvents || []), ins];
+      // Migrer les éventuels events localStorage vers la DB (une seule fois)
+      try {
+        const legacy = JSON.parse(localStorage.getItem('s33_cal_events') || '[]');
+        if (legacy.length > 0) {
+          for (const lev of legacy) {
+            await sbInsert('calendar_events', { type: lev.type || 'autre', title: lev.title, date: lev.date, date_end: lev.date_end || null, note: lev.note || null, created_by: lev.created_by || '' }).catch(() => {});
+          }
+          localStorage.removeItem('s33_cal_events');
+          const fresh = await sbGet('calendar_events', '?order=date').catch(() => null);
+          if (fresh) db.calEvents = fresh;
+        }
+      } catch(e) {}
+    }
+    closeCalEventModal();
+    renderCalendar();
+    toast('Événement ajouté');
+  } catch(e) {
+    console.error('saveCalEvent error:', e);
+    toast('Erreur lors de l\'enregistrement', 'error');
+  }
 }
-function deleteCalEvent(id) {
+
+async function deleteCalEvent(id) {
   if (!confirm('Supprimer cet événement ?')) return;
-  const events = getCalCustomEvents().filter(e => e.id !== id);
-  saveCalCustomEvents(events);
-  renderCalendar();
-  toast('Événement supprimé');
+  try {
+    await sbDelete('calendar_events', id);
+    db.calEvents = (db.calEvents || []).filter(e => e.id !== id);
+    // Nettoyer aussi localStorage si présent
+    try {
+      const legacy = JSON.parse(localStorage.getItem('s33_cal_events') || '[]');
+      const filtered = legacy.filter(e => e.id !== id);
+      if (filtered.length !== legacy.length) localStorage.setItem('s33_cal_events', JSON.stringify(filtered));
+    } catch(e) {}
+    renderCalendar();
+    toast('Événement supprimé');
+  } catch(e) {
+    console.error('deleteCalEvent error:', e);
+    toast('Erreur lors de la suppression', 'error');
+  }
 }
 
 function navigateCalendar(delta) {
@@ -12455,12 +12538,17 @@ function renderCalendar() {
   const monthName = calendarMonth.toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
 
   // Build event maps by date
+  // Pour les membres non-admin : on met en avant leurs tâches, mais on montre aussi les autres
+  const myName = (currentUser?.name || '').toLowerCase();
   const tasksByDate = {};
   (db.projects || []).forEach(p => {
     (p.tasks || []).forEach(t => {
       if (t.deadline && !isTaskDone(t)) {
         if (!tasksByDate[t.deadline]) tasksByDate[t.deadline] = [];
-        tasksByDate[t.deadline].push({ name: t.name, proj: p.name });
+        // Détecter si la tâche est assignée au user courant
+        const assignedTo = (t.assignedTo || t.assigned_to || '').toLowerCase();
+        const isMyTask = myName && (assignedTo === myName || assignedTo.startsWith(myName + ' ') || assignedTo.includes(' ' + myName));
+        tasksByDate[t.deadline].push({ name: t.name, proj: p.name, mine: isMyTask });
       }
     });
   });
@@ -12531,11 +12619,17 @@ function renderCalendar() {
       });
     }
     if (tasksByDate[ds]) {
-      tasksByDate[ds].slice(0, 2).forEach(t => {
-        eventsHTML += `<div class="cal-event cal-event-task" title="${t.proj}: ${t.name}"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a90e2;margin-right:4px;vertical-align:middle;"></span>${t.name}</div>`;
+      // Trier : mes tâches en premier
+      const sortedTasks = [...tasksByDate[ds]].sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
+      sortedTasks.slice(0, 2).forEach(t => {
+        const dot = t.mine
+          ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-right:4px;vertical-align:middle;flex-shrink:0;"></span>`
+          : `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4a90e2;margin-right:4px;vertical-align:middle;flex-shrink:0;"></span>`;
+        const style = t.mine ? 'font-weight:600;' : '';
+        eventsHTML += `<div class="cal-event cal-event-task" title="${t.proj}: ${t.name}" style="${style}display:flex;align-items:center;">${dot}${t.name}</div>`;
       });
-      if (tasksByDate[ds].length > 2) {
-        eventsHTML += `<div class="cal-event cal-event-task">+${tasksByDate[ds].length - 2} tâche(s)</div>`;
+      if (sortedTasks.length > 2) {
+        eventsHTML += `<div class="cal-event cal-event-task">+${sortedTasks.length - 2} tâche(s)</div>`;
       }
     }
 
@@ -12543,7 +12637,11 @@ function renderCalendar() {
     if (customEventsByDate[ds]) {
       customEventsByDate[ds].forEach(ev => {
         const typeInfo = CAL_EVENT_TYPES[ev.type] || CAL_EVENT_TYPES.autre;
-        eventsHTML += `<div class="cal-event ${typeInfo.cls}" title="${ev.note ? ev.title + ' — ' + ev.note : ev.title}" style="cursor:pointer;display:flex;align-items:center;gap:3px;" onclick="event.stopPropagation();if(confirm('Supprimer : ${ev.title.replace(/'/g,"\'")} ?'))deleteCalEvent('${ev.id}')"><span class="mi mi-sm" style="font-size:10px;">${typeInfo.icon}</span>${ev.title}</div>`;
+        const canDelete = isAdmin || (ev.created_by || '').toLowerCase() === (currentUser?.name || '').toLowerCase();
+        const deleteBtn = canDelete
+          ? `onclick="event.stopPropagation();deleteCalEvent(${ev.id})"`
+          : `onclick="event.stopPropagation();"`;
+        eventsHTML += `<div class="cal-event ${typeInfo.cls}" title="${escHTML(ev.note ? ev.title + ' — ' + ev.note : ev.title)}" style="cursor:${canDelete?'pointer':'default'};display:flex;align-items:center;gap:3px;" ${deleteBtn}><span class="mi mi-sm" style="font-size:10px;">${typeInfo.icon}</span>${escHTML(ev.title)}</div>`;
       });
     }
 
@@ -13548,16 +13646,23 @@ function viewMemberReports(memberId) {
     : _profGroups.map(g => {
         const dateLabel = new Date(g.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
         const totalH = g.rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
+        const allIds = g.rows.map(r => r.id).join(',');
         return `<div class="card" style="margin-bottom:12px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
             <span style="font-size:12px;font-weight:600;color:var(--text);text-transform:capitalize;">${dateLabel}</span>
-            <span class="badge badge-gold">${totalH % 1 === 0 ? totalH : totalH.toFixed(1)}h au total</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge badge-gold">${totalH % 1 === 0 ? totalH : totalH.toFixed(1)}h au total</span>
+              <button onclick="deleteReportGroup('${allIds}')" title="Supprimer cette journée" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:4px;border-radius:4px;display:flex;align-items:center;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-faint)'"><span class="mi" style="font-size:16px;">delete_outline</span></button>
+            </div>
           </div>
           ${g.rows.map(r => `
             <div style="padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
                 <span class="badge badge-gold" style="font-size:11px;">${escHTML(r.project_name || '—')}</span>
-                <span class="badge badge-dim" style="font-size:11px;">${r.hours}h</span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="badge badge-dim" style="font-size:11px;">${r.hours}h</span>
+                  <button onclick="deleteReport(${r.id})" title="Supprimer ce rapport" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:2px;border-radius:4px;display:flex;align-items:center;" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-faint)'"><span class="mi" style="font-size:14px;">close</span></button>
+                </div>
               </div>
               <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Tâches</div>
               <div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;${r.blockers?'margin-bottom:8px;':''}">${escHTML(r.tasks || '')}</div>

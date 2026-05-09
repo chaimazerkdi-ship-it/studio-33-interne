@@ -520,6 +520,40 @@
   .proj-card.health-critical { border-left: 3px solid var(--red); }
   .proj-card.health-warning  { border-left: 3px solid var(--yellow); }
 
+  /* Communication timeline */
+  .comm-timeline { display: flex; flex-direction: column; gap: 0; }
+  .comm-entry {
+    display: flex; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--surface2);
+    position: relative;
+  }
+  .comm-entry:last-child { border-bottom: none; }
+  .comm-icon {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 14px;
+  }
+  .comm-icon.call    { background: rgba(59,130,246,.12); color: var(--blue); }
+  .comm-icon.email   { background: rgba(249,115,22,.12);  color: var(--gold); }
+  .comm-icon.meeting { background: rgba(34,197,94,.12);   color: var(--green); }
+  .comm-icon.note    { background: rgba(161,161,170,.12); color: var(--text-dim); }
+  .comm-type-btn {
+    display: flex; align-items: center; gap: 5px;
+    padding: 6px 12px; border-radius: var(--radius-pill);
+    border: 1px solid var(--border); background: var(--surface2);
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    color: var(--text-dim); font-family: inherit; transition: all .15s;
+  }
+  .comm-type-btn.active { border-color: var(--gold); background: rgba(249,115,22,.08); color: var(--gold); }
+  .comm-add-form { background: var(--surface2); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
+  .comm-add-form textarea {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 12px; font-family: inherit;
+    font-size: 13px; color: var(--text); resize: none; margin-top: 10px;
+    outline: none; line-height: 1.5;
+  }
+  .comm-add-form textarea:focus { border-color: var(--gold); }
+
   /* Dashboard alert card */
   .dash-alert-card {
     display: flex; align-items: center; gap: 12px;
@@ -5371,7 +5405,7 @@ async function loadDB() {
     });
     const [clients, projects, invoices, library, devis, charges, entrees, media, config, userTasks, dailyReports, conges, userProfiles, teamMembers, dashboardConfigRows, contactsPro, matSuppliers, matMaterials, bureauIncidents, concoursRows, calendarEventsRows, activityLogRows] = _vals;
 
-    db.clients = clients.map(c => ({...c, id: c.id, links: c.links || []}));
+    db.clients = clients.map(c => ({...c, id: c.id, links: c.links || [], communications: c.communications || []}));
     db.projects = projects.map(p => ({
       ...p, id: p.id,
       clientId: p.client_id,
@@ -8385,13 +8419,45 @@ function openClientProfile(id) {
 
       ${c.notes ? `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:24px;"><div style="font-size:10px;font-weight:600;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">Notes</div><div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap;">${c.notes}</div></div>` : ''}
 
-      <div style="border-top:1px solid var(--border);padding-top:20px;">
+      <div style="border-top:1px solid var(--border);padding-top:20px;margin-bottom:24px;">
         <div style="font-size:11px;font-weight:600;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px;">Projets (${projects.length})</div>
         ${projects.length === 0 ? '<div style="font-size:13px;color:var(--text-faint);">Aucun projet associé.</div>'
           : projects.map(p => `<div onclick="closeClientProfile();openProjectDetail(${p.id})" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;margin-bottom:4px;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
             <span style="font-size:13px;font-weight:500;color:var(--text);">${p.name}</span>
             <span class="badge badge-dim" style="font-size:9px;">${p.phase}</span>
           </div>`).join('')}
+      </div>
+
+      <!-- Communication log -->
+      <div style="border-top:1px solid var(--border);padding-top:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:600;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em;">Communications (${(c.communications||[]).length})</div>
+        </div>
+
+        <!-- Quick-add form -->
+        <div class="comm-add-form">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="comm-type-btns-${c.id}">
+            ${[['call','call','Appel'],['email','mail','Email'],['meeting','groups','Réunion'],['note','edit_note','Note']].map(([type,icon,label]) =>
+              `<button class="comm-type-btn ${type==='call'?'active':''}" onclick="selectCommType(${c.id},'${type}')" data-type="${type}">
+                <span class="mi" style="font-size:13px;">${icon}</span>${label}
+              </button>`
+            ).join('')}
+          </div>
+          <textarea id="comm-text-${c.id}" rows="2" placeholder="Résumé de l'échange…"></textarea>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+            <input type="date" id="comm-date-${c.id}" value="${new Date().toISOString().split('T')[0]}"
+              style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:12px;color:var(--text);">
+            <button onclick="addClientComm(${c.id})"
+              style="margin-left:auto;padding:7px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">
+              Ajouter
+            </button>
+          </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="comm-timeline" id="comm-timeline-${c.id}">
+          ${renderCommTimeline(c)}
+        </div>
       </div>
       <div style="height:32px;"></div>
     </div>
@@ -8404,6 +8470,75 @@ function openClientProfile(id) {
 function closeClientProfile() {
   document.getElementById('client-profile-overlay').style.display = 'none';
   document.getElementById('client-profile-panel').style.display = 'none';
+}
+
+const _commIcons = { call: 'call', email: 'mail', meeting: 'groups', note: 'edit_note' };
+const _commLabels = { call: 'Appel', email: 'Email', meeting: 'Réunion', note: 'Note' };
+
+function renderCommTimeline(c) {
+  const comms = (c.communications || []).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (!comms.length) return `<div style="padding:16px 0;text-align:center;font-size:13px;color:var(--text-faint);">Aucune communication enregistrée.</div>`;
+  return comms.map(entry => {
+    const d = new Date(entry.date).toLocaleDateString('fr-MA', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `<div class="comm-entry">
+      <div class="comm-icon ${entry.type}">
+        <span class="mi" style="font-size:15px;">${_commIcons[entry.type] || 'chat'}</span>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+          <span style="font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:.03em;">${_commLabels[entry.type] || entry.type}</span>
+          <span style="font-size:11px;color:var(--text-faint);">${d}</span>
+          ${entry.author ? `<span style="font-size:10px;color:var(--text-faint);">· ${entry.author}</span>` : ''}
+        </div>
+        <div style="font-size:13px;color:var(--text);line-height:1.55;white-space:pre-wrap;">${entry.summary}</div>
+      </div>
+      <button onclick="deleteClientComm(${c.id},'${entry.id}')" title="Supprimer"
+        style="background:none;border:none;cursor:pointer;color:var(--text-faint);font-size:16px;padding:2px 4px;flex-shrink:0;line-height:1;opacity:.5;"
+        onmouseover="this.style.opacity=1;this.style.color='var(--red)'"
+        onmouseout="this.style.opacity=.5;this.style.color='var(--text-faint)'">×</button>
+    </div>`;
+  }).join('');
+}
+
+let _activeCommType = {};
+function selectCommType(clientId, type) {
+  _activeCommType[clientId] = type;
+  document.querySelectorAll(`#comm-type-btns-${clientId} .comm-type-btn`).forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.type === type);
+  });
+}
+
+async function addClientComm(clientId) {
+  const c = db.clients.find(x => x.id === clientId);
+  if (!c) return;
+  const type = _activeCommType[clientId] || 'call';
+  const summary = (document.getElementById(`comm-text-${clientId}`)?.value || '').trim();
+  const date = document.getElementById(`comm-date-${clientId}`)?.value || new Date().toISOString().split('T')[0];
+  if (!summary) { toast('Écrivez un résumé avant d\'ajouter'); return; }
+
+  const entry = { id: 'c' + Date.now(), type, summary, date, author: currentUser?.name || '' };
+  c.communications = [entry, ...(c.communications || [])];
+
+  try {
+    await sbUpdate('clients', clientId, { communications: c.communications });
+  } catch(e) {
+    // Column may not exist yet — store in memory only until migration
+  }
+
+  document.getElementById(`comm-text-${clientId}`).value = '';
+  const timeline = document.getElementById(`comm-timeline-${clientId}`);
+  if (timeline) timeline.innerHTML = renderCommTimeline(c);
+  const countEl = document.querySelector(`#client-profile-panel [style*="Communications"]`);
+  if (countEl) countEl.textContent = `Communications (${c.communications.length})`;
+}
+
+async function deleteClientComm(clientId, entryId) {
+  const c = db.clients.find(x => x.id === clientId);
+  if (!c) return;
+  c.communications = (c.communications || []).filter(e => e.id !== entryId);
+  try { await sbUpdate('clients', clientId, { communications: c.communications }); } catch(e) {}
+  const timeline = document.getElementById(`comm-timeline-${clientId}`);
+  if (timeline) timeline.innerHTML = renderCommTimeline(c);
 }
 
 async function saveClient() {

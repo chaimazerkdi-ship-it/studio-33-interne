@@ -6890,6 +6890,11 @@ async function saveProject() {
       if (obj.assigned_to) localStorage.setItem('s33_assigned_' + obj.id, obj.assigned_to);
     }
     toast('Projet créé');
+    // Notifier l'équipe du nouveau projet
+    if (typeof s33SendPush === 'function') {
+      const pname = obj.name || 'Nouveau projet';
+      s33SendPush({ roles: ['staff'] }, '🏗️ Nouveau projet', pname, '/', 'proj_' + Date.now());
+    }
   }
   closeModal('project-modal');
   await loadDB();
@@ -7465,6 +7470,10 @@ async function saveConcours() {
   btn.disabled = false; btn.textContent = 'Enregistrer';
   _coPendingFiles = {};
   toast(editId ? 'Modifié ✓' : 'Ajouté ✓');
+  if (!editId && typeof s33SendPush === 'function') {
+    const coLabel = obj.type === 'concours' ? 'Concours' : 'Consultation';
+    s33SendPush({ roles: ['staff'] }, '🏆 ' + coLabel, obj.title + (obj.ville ? ' — ' + obj.ville : ''), '/', 'co_' + Date.now());
+  }
   closeModal('concours-modal');
   renderConcours();
 }
@@ -7630,6 +7639,11 @@ async function saveIncident() {
     const ins = Array.isArray(res)?res[0]:res;
     if (ins) db.incidents = [ins, ...(db.incidents||[])];
     toast('Signalement envoyé ✓');
+    // Notifier l'admin
+    if (currentUser?.role !== 'admin' && typeof s33SendPush === 'function') {
+      const by = obj.reported_by || currentUser?.name || 'Équipe';
+      s33SendPush({ roles: ['admin'] }, '🔔 Signalement bureau', by + ' — ' + obj.category + ' : ' + title, '/', 'incident_' + Date.now());
+    }
   }
   closeModal('incident-modal');
   renderSignalements();
@@ -9268,6 +9282,12 @@ async function saveLibraryItem() {
     const ins = Array.isArray(res) ? res[0] : res;
     if (ins?.id) db.library = [...(db.library || []), ins];
     toast('Document ajouté ✓');
+    // Notifier l'équipe du nouveau document
+    if (typeof s33SendPush === 'function') {
+      const catLabels = { normes: 'Normes marocaines', details: 'Détails techniques', peinture: 'Références peinture', cahiers: 'Cahiers des charges' };
+      const catLabel = catLabels[obj.cat] || obj.cat;
+      s33SendPush({ roles: ['staff'] }, '📄 Bibliothèque', obj.title + ' — ' + catLabel, '/', 'lib_' + Date.now());
+    }
   }
 
   btn.disabled = false; btn.textContent = 'Enregistrer';
@@ -11846,7 +11866,12 @@ function renderRapport() {
   const isAdmin = currentUser.role === 'admin';
   const reports = (db.dailyReports || []);
   const uid = String(currentUser.id);
-  const todayReports = reports.filter(r => String(r.user_id) === uid && r.date === today);
+  // Exclure les faux objets locaux (ID flottant) — seuls les vrais enregistrements DB comptent
+  const todayReports = reports.filter(r =>
+    String(r.user_id) === uid &&
+    r.date === today &&
+    r.id && Number.isInteger(Number(r.id)) && !String(r.id).includes('.')
+  );
   const todayReport = todayReports[0] || null;
   // Admin voit TOUS les rapports dans l'historique; les autres voient seulement les leurs
   const pastReports = isAdmin
@@ -11897,26 +11922,31 @@ function renderRapport() {
     </div>`;
 
   // Bloc "Équipe aujourd'hui" visible uniquement par l'admin
-  const TEAM_MEMBERS = ['Nadia', 'Nezha', 'Oumaima', 'Zineb', 'Chaima'];
+  // Utiliser db.teamMembers (depuis la DB) plutôt qu'un tableau codé en dur
   let teamTodayHtml = '';
   if (isAdmin) {
-    const memberStatus = TEAM_MEMBERS.map(name => {
+    const activeMembers = (db.teamMembers || []).filter(m => m.role !== 'admin' && m.active !== false);
+    const memberStatus  = activeMembers.map(member => {
+      // Comparer par user_id (fiable) en priorité, puis par nom
       const submitted = teamTodayReports.filter(r =>
-        (r.user_name || '').split(' ')[0].toLowerCase() === name.toLowerCase() ||
-        (r.user_name || '').toLowerCase() === name.toLowerCase()
+        String(r.user_id) === String(member.user_id) ||
+        (r.user_name || '').toLowerCase() === (member.display_name || '').toLowerCase()
       );
       const totalH = submitted.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
-      return { name, submitted: submitted.length > 0, hours: totalH, reports: submitted };
+      return { name: member.display_name || member.username, submitted: submitted.length > 0, hours: totalH, reports: submitted };
     });
     const submittedCount = memberStatus.filter(m => m.submitted).length;
+    const totalMembers   = memberStatus.length;
     teamTodayHtml = `
       <div class="card" style="margin-bottom:20px;border-left:3px solid var(--gold);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
           <div class="section-title" style="margin:0;">Équipe — rapports du jour</div>
-          <span class="badge badge-gold">${submittedCount} / ${TEAM_MEMBERS.length} soumis</span>
+          <span class="badge badge-gold">${submittedCount} / ${totalMembers} soumis</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;">
-          ${memberStatus.map(m => `
+          ${memberStatus.length === 0
+            ? `<div style="font-size:12px;color:var(--text-faint);font-style:italic;">Aucun collaborateur actif trouvé</div>`
+            : memberStatus.map(m => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid ${m.submitted ? 'var(--green)' : 'var(--border)'};">
               <div style="display:flex;align-items:center;gap:8px;">
                 <span class="mi" style="color:${m.submitted ? 'var(--green)' : 'var(--text-faint)'};font-size:18px;">${m.submitted ? 'check_circle' : 'radio_button_unchecked'}</span>
@@ -11931,21 +11961,47 @@ function renderRapport() {
       </div>`;
   }
 
-  const historyHtml = pastReports.length === 0 ? '' : `
+  // ── Grouper l'historique par (user_id, date) ──
+  const _histSlice = pastReports.slice(0, isAdmin ? 200 : 30);
+  const _histGroups = [];
+  const _histSeen   = {};
+  for (const r of _histSlice) {
+    const key = r.user_id + '|' + r.date;
+    if (!_histSeen[key]) {
+      _histSeen[key] = { date: r.date, user_name: r.user_name, user_id: r.user_id, rows: [] };
+      _histGroups.push(_histSeen[key]);
+    }
+    _histSeen[key].rows.push(r);
+  }
+
+  const historyHtml = _histGroups.length === 0 ? '' : `
     <div class="section-title" style="margin-bottom:14px;">${isAdmin ? 'Historique — toute l\'équipe' : 'Historique'}</div>
-    ${pastReports.slice(0, isAdmin ? 60 : 10).map(r => `
-      <div class="card" style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;">
-          <div style="font-size:12px;color:var(--text);">${new Date(r.date).toLocaleDateString('fr-MA',{weekday:'long',day:'numeric',month:'long'})}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            ${isAdmin ? `<span class="badge" style="background:var(--surface3);color:var(--text);font-weight:700;">${escHTML(r.user_name || '—')}</span>` : ''}
-            <span class="badge badge-gold">${escHTML(r.project_name || '—')}</span>
-            <span class="badge badge-dim">${r.hours}h</span>
+    ${_histGroups.map(g => {
+      const totalH    = g.rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
+      const dateLabel = new Date(g.date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
+      const hasBlockers = g.rows.some(r => r.blockers);
+      return `<div class="card" style="margin-bottom:10px;">
+        <!-- En-tête de la carte : date + nom + total heures -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            ${isAdmin ? `<span style="font-size:13px;font-weight:700;color:var(--text);">${escHTML(g.user_name || '—')}</span><span style="color:var(--border2)">·</span>` : ''}
+            <span style="font-size:12px;color:var(--text-dim);text-transform:capitalize;">${dateLabel}</span>
+            ${hasBlockers ? `<span class="mi" style="font-size:14px;color:var(--red);" title="Blocage signalé">warning</span>` : ''}
           </div>
+          <span class="badge badge-gold">${totalH % 1 === 0 ? totalH : totalH.toFixed(1)}h au total</span>
         </div>
-        <div style="font-size:12px;color:var(--text-dim);white-space:pre-wrap;">${escHTML(r.tasks || '')}</div>
-        ${r.blockers ? `<div style="font-size:11px;color:var(--red);margin-top:8px;">${escHTML(r.blockers)}</div>` : ''}
-      </div>`).join('')}`;
+        <!-- Ligne par projet -->
+        ${g.rows.map(r => `
+          <div style="padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+              <span class="badge badge-gold" style="font-size:11px;">${escHTML(r.project_name || '—')}</span>
+              <span class="badge badge-dim" style="font-size:11px;">${r.hours}h</span>
+            </div>
+            <div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;">${escHTML(r.tasks || '')}</div>
+            ${r.blockers ? `<div style="font-size:11px;color:var(--red);margin-top:6px;padding:5px 8px;background:#fee2e2;border-radius:4px;"><span class="mi" style="font-size:12px;vertical-align:-2px;">warning</span> ${escHTML(r.blockers)}</div>` : ''}
+          </div>`).join('')}
+      </div>`;
+    }).join('')}`;
 
   // ── Mes heures cette semaine ──
   const now = new Date();
@@ -13050,18 +13106,26 @@ function updateUIForUser() {
     if (window._reportPollInterval) { clearInterval(window._reportPollInterval); window._reportPollInterval = null; }
     // Use polling fallback: check for new reports every 30s when page is on equipe
     window._reportPollInterval = setInterval(async () => {
-      if (currentPage === 'equipe' || currentPage === 'dashboard') {
-        const latest = await sbGet('daily_reports', '?order=submitted_at.desc&limit=20');
-        if (latest) {
-          // Check for truly new reports (not in db yet)
-          const newOnes = latest.filter(r => !(db.dailyReports||[]).find(x => x.id === r.id));
+      if (currentPage === 'equipe' || currentPage === 'dashboard' || currentPage === 'rapport') {
+        const latest = await sbGet('daily_reports', '?order=submitted_at.desc&limit=30');
+        if (latest && Array.isArray(latest)) {
+          // Purger les faux objets locaux (ID non-entier) avant comparaison
+          db.dailyReports = (db.dailyReports || []).filter(r => Number.isInteger(Number(r.id)) && !String(r.id).includes('.'));
+          // Trouver les vrais nouveaux rapports (par ID entier strict)
+          const knownIds = new Set((db.dailyReports || []).map(r => Number(r.id)));
+          const newOnes  = latest.filter(r => !knownIds.has(Number(r.id)));
           if (newOnes.length > 0) {
             newOnes.forEach(r => {
               db.dailyReports = db.dailyReports || [];
               db.dailyReports.unshift(r);
-              toast(`📋 ${r.user_name} a soumis son rapport — ${r.project_name}`);
+              // Toast uniquement pour les rapports du jour soumis par l'équipe
+              const today = new Date().toISOString().slice(0, 10);
+              if (r.date === today && String(r.user_id) !== String(currentUser.id)) {
+                toast(r.user_name + ' a soumis son rapport — ' + r.project_name);
+              }
             });
             if (currentPage === 'equipe') renderEquipe();
+            if (currentPage === 'rapport') renderRapport();
           }
         }
       }
@@ -13072,9 +13136,13 @@ function updateUIForUser() {
 function checkDailyReport() {
   if (!currentUser) return;
   const today = new Date().toISOString().slice(0, 10);
-  const reports = (db.dailyReports || []);
-  const uid = String(currentUser.id);
-  const done = reports.find(r => String(r.user_id) === uid && r.date === today);
+  const uid   = String(currentUser.id);
+  // Seuls les vrais rapports DB (ID entier) comptent comme "soumis"
+  const done  = (db.dailyReports || []).find(r =>
+    String(r.user_id) === uid &&
+    r.date === today &&
+    r.id && Number.isInteger(Number(r.id)) && !String(r.id).includes('.')
+  );
   if (!done) openDailyReportModal();
 }
 
@@ -16201,87 +16269,137 @@ function escHTML(str) {
   }
 
   window.mrSubmit = async function(prefix, type) {
+    // ── VERROU ANTI-DOUBLE-CLIC ──────────────────────────────────
+    if (window._mrSubmitting) { toast('Envoi déjà en cours…'); return; }
+    window._mrSubmitting = true;
+
+    const releaseLock = () => { window._mrSubmitting = false; };
+
     type = type || 'daily';
     const entries = window.mrCollect(prefix);
-    if (!entries.length) { toast('Ajoutez au moins un projet'); return; }
+    if (!entries.length) { toast('Ajoutez au moins un projet'); releaseLock(); return; }
 
     // Validate each entry
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      if (!e.projectId) { expandEntry(prefix, e.uid); toast('Projet #' + (i+1) + ' : sélectionnez un projet'); return; }
-      if (!e.tasks)     { expandEntry(prefix, e.uid); toast('Projet #' + (i+1) + ' : décrivez les tâches'); return; }
-      if (!e.hours || e.hours <= 0) { expandEntry(prefix, e.uid); toast('Projet #' + (i+1) + ' : indiquez le temps'); return; }
+      if (!e.projectId) { expandEntry(prefix, e.uid); toast('Projet #' + (i+1) + ' : sélectionnez un projet'); releaseLock(); return; }
+      if (!e.tasks)     { expandEntry(prefix, e.uid); toast('Projet #' + (i+1) + ' : décrivez les tâches'); releaseLock(); return; }
+      if (!e.hours || e.hours <= 0) { expandEntry(prefix, e.uid); toast('Projet #' + (i+1) + ' : indiquez le temps'); releaseLock(); return; }
     }
 
-    // Check no duplicate project
+    // Check no duplicate project within same submission
     const seen = {};
     for (const e of entries) {
       if (seen[e.projectId]) {
         expandEntry(prefix, e.uid);
         toast('Le même projet apparaît deux fois — fusionnez-les');
-        return;
+        releaseLock(); return;
       }
       seen[e.projectId] = true;
     }
 
     const totalHours = entries.reduce((s, e) => s + e.hours, 0);
     if (totalHours > 24) {
-      if (!confirm('Total : ' + totalHours + 'h sur une journée — confirmer ?')) return;
+      if (!confirm('Total : ' + totalHours + 'h sur une journée — confirmer ?')) { releaseLock(); return; }
     }
 
     const today = new Date().toISOString().slice(0, 10);
+    const uid   = String(currentUser.id);
+
+    // Désactiver le bouton
     const submitBtn = document.getElementById(prefix + '-submit-btn');
     const origLabel = submitBtn ? submitBtn.textContent : '';
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Envoi…'; }
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Envoi en cours…'; }
 
     let ok = 0, failed = 0;
     for (const e of entries) {
-      const project = (db.projects || []).find(p => String(p.id) === String(e.projectId));
-      const newReport = {
-        user_id: String(currentUser.id),
-        user_name: currentUser.name,
-        user_avatar: currentUser.avatar,
-        date: today,
+      const project    = (db.projects || []).find(p => String(p.id) === String(e.projectId));
+      const projId     = parseInt(e.projectId);
+      const nowIso     = new Date().toISOString();
+
+      // Vérifier si un rapport existe déjà pour cet user + date + projet
+      const existing = (db.dailyReports || []).find(r =>
+        String(r.user_id) === uid &&
+        r.date === today &&
+        parseInt(r.project_id) === projId &&
+        Number.isInteger(r.id)   // ignorer les faux objets locaux (ID non-entier)
+      );
+
+      const reportData = {
+        user_id:      uid,
+        user_name:    currentUser.name,
+        user_avatar:  currentUser.avatar || null,
+        date:         today,
         type,
-        project_id: parseInt(e.projectId),
+        project_id:   projId,
         project_name: project ? project.name : '—',
-        tasks: e.tasks,
-        hours: e.hours,
-        blockers: e.blockers || null
+        tasks:        e.tasks,
+        hours:        e.hours,
+        blockers:     e.blockers || null,
+        submitted_at: nowIso
       };
+
       try {
-        const res = await sbInsertOrThrow('daily_reports', newReport);
-        if (Array.isArray(res) && res[0]) {
-          db.dailyReports = db.dailyReports || [];
-          db.dailyReports.unshift(res[0]);
+        if (existing) {
+          // MISE À JOUR — rapport du jour pour ce projet déjà en DB
+          const updated = await sbFetch('daily_reports', 'PATCH', reportData,
+            `?user_id=eq.${encodeURIComponent(uid)}&date=eq.${today}&project_id=eq.${projId}`,
+            true);
+          db.dailyReports = (db.dailyReports || []).map(r =>
+            (String(r.user_id) === uid && r.date === today && parseInt(r.project_id) === projId)
+              ? { ...r, ...reportData }
+              : r
+          );
         } else {
-          db.dailyReports = db.dailyReports || [];
-          db.dailyReports.unshift({ ...newReport, id: Date.now() + Math.random(), submitted_at: new Date().toISOString() });
+          // INSERTION normale
+          const res = await sbInsertOrThrow('daily_reports', reportData);
+          const inserted = Array.isArray(res) && res[0] ? res[0] : null;
+          if (inserted && inserted.id) {
+            // Purger tout éventuel faux objet local pour ce projet/date
+            db.dailyReports = (db.dailyReports || []).filter(r =>
+              !(String(r.user_id) === uid && r.date === today && parseInt(r.project_id) === projId && !Number.isInteger(r.id))
+            );
+            db.dailyReports.unshift(inserted);
+          } else {
+            // Réponse inattendue — ne pas créer de faux objet, recharger depuis DB
+            console.warn('mrSubmit: insert ok mais pas de retour — rechargement DB');
+            const fresh = await sbGet('daily_reports',
+              `?user_id=eq.${encodeURIComponent(uid)}&date=eq.${today}&project_id=eq.${projId}&limit=1`);
+            if (fresh && fresh[0]) {
+              db.dailyReports = (db.dailyReports || []).filter(r =>
+                !(String(r.user_id) === uid && r.date === today && parseInt(r.project_id) === projId)
+              );
+              db.dailyReports.unshift(fresh[0]);
+            }
+          }
         }
         ok++;
       } catch(err) {
-        console.warn('Échec insert rapport:', err.message);
-        db.dailyReports = db.dailyReports || [];
-        db.dailyReports.unshift({ ...newReport, id: Date.now() + Math.random(), submitted_at: new Date().toISOString() });
+        console.error('Échec enregistrement rapport:', err.message);
+        // Ne PAS créer de faux objet local — afficher une vraie erreur
         failed++;
+        toast('Erreur enregistrement projet ' + (project ? project.name : '#' + projId) + ' — réessayez', 'error');
       }
     }
 
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origLabel; }
-    toast('Rapport soumis ✓ — ' + entries.length + ' projet' + (entries.length > 1 ? 's' : '') + ' · ' + totalHours + 'h' + (failed ? ' (' + failed + ' en local)' : ''));
+    releaseLock();
 
-    // Push notify admin (only if the submitter isn't the admin)
-    if (ok && currentUser.role !== 'admin' && typeof s33SendPush === 'function') {
-      const label = entries.length > 1
-        ? (entries.length + ' projets · ' + totalHours + 'h')
-        : (((db.projects || []).find(p => String(p.id) === String(entries[0].projectId)) || {}).name || 'projet') + ' · ' + totalHours + 'h';
-      s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + label, '/', 'report_' + Date.now());
+    if (ok > 0) {
+      toast('Rapport soumis ✓ — ' + ok + ' projet' + (ok > 1 ? 's' : '') + ' · ' + totalHours + 'h');
+      // Notification push admin (une seule fois par soumission)
+      if (currentUser.role !== 'admin' && typeof s33SendPush === 'function') {
+        const label = ok > 1
+          ? (ok + ' projets · ' + totalHours + 'h')
+          : (((db.projects || []).find(p => String(p.id) === String(entries[0].projectId)) || {}).name || 'projet') + ' · ' + totalHours + 'h';
+        s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + label, '/', 'report_' + Date.now());
+      }
     }
 
-    // Close modal if open
+    // Fermer le modal si ouvert
     const modal = document.getElementById('daily-report-modal');
     if (modal && modal.style.display === 'flex') modal.style.display = 'none';
-    // Refresh the rapport page
+    // Rafraîchir la page rapport
     if (typeof renderRapport === 'function') {
       try { renderRapport(); } catch(e) {}
     }

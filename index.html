@@ -60,7 +60,7 @@
     --gold-light:#FB923C;
     --text:      #FAFAFA;
     --text-dim:  #A1A1AA;
-    --text-faint:#52525B;
+    --text-faint:#8A8A96;
     --accent:    #F97316;
     --red:       #EF4444;
     --green:     #22C55E;
@@ -854,11 +854,41 @@
   /* EMPTY STATE */
   .empty-state {
     text-align: center;
-    padding: 60px 40px;
+    padding: 52px 32px;
     color: var(--text-faint);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
   }
-
-  .empty-state .icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-state .es-icon {
+    font-size: 38px;
+    opacity: 0.25;
+    display: block;
+    margin-bottom: 14px;
+    color: var(--text-dim);
+  }
+  .empty-state .es-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 5px;
+  }
+  .empty-state .es-sub {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-bottom: 18px;
+    line-height: 1.6;
+  }
+  .empty-state .es-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 8px 18px;
+    background: var(--gold); color: #fff;
+    border: none; border-radius: var(--radius-pill);
+    font-family: inherit; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: opacity .15s;
+  }
+  .empty-state .es-btn:hover { opacity: .88; }
   .empty-state p { font-size: 13px; }
 
   /* NOTIFICATION */
@@ -5860,25 +5890,52 @@ function renderProjectDetailPage() {
     <!-- Stats -->
     ${(function(){
       const totalLoggedMins = tasks.reduce((sum, t) => sum + (t.timeLog || []).reduce((a, l) => a + (l.minutes || 0), 0), 0);
-      return `<div class="${isAdmin ? 'grid-3' : 'grid-2'}" style="margin-bottom:24px;">
+      const projInvoices = (db.invoices || []).filter(inv => inv.projectId === p.id && inv.status !== 'Annulé');
+      const totalInvoiced = projInvoices.reduce((s, inv) => s + (inv.amount || 0), 0);
+      const hasBudget = isAdmin && p.budget && p.budget > 0;
+      const burnPct = hasBudget ? Math.round(totalInvoiced / p.budget * 100) : 0;
+      const burnColor = burnPct > 100 ? 'var(--red)' : burnPct > 85 ? 'var(--yellow)' : 'var(--green)';
+      const burnBarW = Math.min(burnPct, 100);
+      const cols = isAdmin ? (hasBudget ? 'grid-4' : 'grid-3') : 'grid-2';
+      return `<div class="${cols}" style="margin-bottom:24px;">
       <div class="stat-card">
         <div class="stat-label">Client</div>
         <div style="font-size:16px;font-weight:600;color:var(--text);margin-top:6px;">${client ? client.name : '—'}</div>
         ${(()=>{ const names=getAssignees(p); if(!names.length) return ''; return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">'+names.map(n=>{const u=USERS.find(x=>x.name===n);return `<span style="display:inline-flex;align-items:center;gap:5px;">${u?avatarHTML(u.id,20):''}<span style="font-size:12px;color:var(--text-dim);">${n}</span></span>`;}).join('')+'</div>'; })()}
       </div>
       <div class="stat-card">
-        <div class="stat-label">Avancement</div>
+        <div class="stat-label">Avancement tâches</div>
         <div style="font-size:26px;font-weight:800;color:var(--gold);margin-top:4px;">${pct}%</div>
         <div style="height:6px;background:var(--surface3);border-radius:99px;margin-top:8px;overflow:hidden;">
           <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:99px;transition:width .4s;"></div>
         </div>
-        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">${done}/${tasks.length} tâches</div>
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">${done}/${tasks.length} tâches complètes</div>
       </div>
+      ${hasBudget ? `
+      <div class="stat-card" style="position:relative;overflow:hidden;">
+        <div class="stat-label">Budget brûlé</div>
+        <div style="font-size:26px;font-weight:800;color:${burnColor};margin-top:4px;">${burnPct}%</div>
+        <div style="height:6px;background:var(--surface3);border-radius:99px;margin-top:8px;overflow:hidden;">
+          <div style="height:100%;width:${burnBarW}%;background:${burnColor};border-radius:99px;transition:width .4s;"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;display:flex;justify-content:space-between;">
+          <span>${formatNum(totalInvoiced)} facturé</span>
+          <span>/ ${formatNum(p.budget)} MAD</span>
+        </div>
+        ${burnPct > 85 ? `<div style="position:absolute;top:10px;right:10px;"><span class="mi" style="font-size:16px;color:${burnColor};">${burnPct > 100 ? 'error' : 'warning'}</span></div>` : ''}
+      </div>
+      ` : isAdmin ? `
+      <div class="stat-card" style="cursor:pointer;border:1px dashed var(--border);" onclick="editProject(${p.id})">
+        <div class="stat-label">Budget</div>
+        <div style="font-size:13px;color:var(--text-faint);margin-top:8px;">Non défini</div>
+        <div style="font-size:11px;color:var(--gold);margin-top:4px;font-weight:600;">+ Ajouter →</div>
+      </div>
+      ` : ''}
       ${isAdmin ? `
       <div class="stat-card">
         <div class="stat-label">Heures loguées</div>
         <div style="font-size:22px;font-weight:800;color:var(--gold);margin-top:4px;">${totalLoggedMins > 0 ? formatTime(totalLoggedMins) : '—'}</div>
-        <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">${p.type || '—'}</div>
+        <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">${projInvoices.length} facture${projInvoices.length !== 1 ? 's' : ''} liée${projInvoices.length !== 1 ? 's' : ''}</div>
       </div>
       ` : ''}
     </div>`;
@@ -6041,7 +6098,7 @@ function renderDashboard() {
   if (da) {
     const allLogs = (db.activityLog || []);
     if (!allLogs.length) {
-      da.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-faint);font-size:13px;">Aucune activité récente.</div>';
+      da.innerHTML = emptyStateHTML('Aucune activité récente', { icon: 'history', sub: 'Les actions de l\'équipe apparaîtront ici.' });
     } else {
       const icons = {
         add_project: 'folder', add_client: 'person', add_invoice: 'receipt',
@@ -6085,7 +6142,7 @@ function renderDashboard() {
   // Recent projects (active only)
   const dp = document.getElementById('dash-projects');
   if (activeProjects.length === 0) {
-    dp.innerHTML = `<div class="empty-state"><p>Aucun projet</p></div>`;
+    dp.innerHTML = emptyStateHTML('Aucun projet actif', { icon: 'folder_open', sub: 'Créez votre premier projet.', btnLabel: 'Nouveau projet', btnAction: "navigate('projects')" });
   } else {
     dp.innerHTML = activeProjects.slice(0, 4).map(p => {
       const client = db.clients.find(c => c.id === p.clientId);
@@ -6102,7 +6159,7 @@ function renderDashboard() {
   // Urgent tasks
   const dt = document.getElementById('dash-tasks');
   if (urgent.length === 0) {
-    dt.innerHTML = `<div class="empty-state"><p>Aucune tâche urgente</p></div>`;
+    dt.innerHTML = emptyStateHTML('Aucune tâche urgente', { icon: 'check_circle', sub: 'Tout est sous contrôle.' });
   } else {
     dt.innerHTML = urgent.slice(0,5).map(t => {
       const proj = db.projects.find(p => p.tasks.some(tk => tk.id === t.id));
@@ -6174,7 +6231,7 @@ function renderProjectsGantt() {
     </div>`;
 
   if (projects.length === 0) {
-    html += `<div class="empty-state"><p>Aucun projet à afficher.</p></div>`;
+    html += emptyStateHTML('Aucun projet à afficher', { icon: 'search_off', sub: 'Essayez de modifier les filtres.' });
     container.innerHTML = html;
     return;
   }
@@ -6449,9 +6506,23 @@ function makeProjectCard(p, small) {
     ${total > 0 ? `
       <div class="proj-progress-bar"><div class="proj-progress-fill" style="width:${progress}%"></div></div>
     ` : ''}
+    ${(()=>{
+      if (!p.budget || p.budget <= 0 || currentUser?.role !== 'admin') return '';
+      const invoiced = (db.invoices||[]).filter(inv=>inv.projectId===p.id&&inv.status!=='Annulé').reduce((s,inv)=>s+(inv.amount||0),0);
+      const bp = Math.round(invoiced/p.budget*100);
+      const bc = bp>100?'var(--red)':bp>85?'var(--yellow)':'var(--green)';
+      return `<div style="margin-top:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+          <span style="font-size:9px;color:var(--text-faint);font-weight:600;letter-spacing:.04em;">BUDGET</span>
+          <span style="font-size:10px;font-weight:700;color:${bc};">${bp}%</span>
+        </div>
+        <div style="height:3px;background:var(--surface3);border-radius:99px;overflow:hidden;">
+          <div style="height:100%;width:${Math.min(bp,100)}%;background:${bc};border-radius:99px;"></div>
+        </div>
+      </div>`;
+    })()}
     <div class="proj-card-footer">
       <span>${total > 0 ? done+'/'+total+' tâches' : 'Aucune tâche'}</span>
-      ${p.budget && currentUser?.role === 'admin' ? `<span>${formatNum(p.budget)} MAD</span>` : ''}
     </div>
   </div>`;
 }
@@ -6476,7 +6547,7 @@ function renderProjectsCards() {
   if (!grid) return;
 
   if (list.length === 0 && pinned.length === 0) {
-    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text-faint);font-size:13px;">${showArchivedProjects ? 'Aucun projet archivé.' : 'Aucun projet. Créez-en un.'}</div>`;
+    grid.innerHTML = `<div style="grid-column:1/-1">${emptyStateHTML(showArchivedProjects ? 'Aucun projet archivé' : 'Aucun projet pour le moment', { icon: showArchivedProjects ? 'inventory_2' : 'folder_open', sub: showArchivedProjects ? '' : 'Commencez par créer votre premier projet.', btnLabel: showArchivedProjects ? '' : 'Nouveau projet', btnAction: "document.getElementById('project-edit-id').value='';openModal('project-modal')" })}</div>`;
   } else {
     grid.innerHTML = displayed.map(p => makeProjectCard(p)).join('');
   }
@@ -6562,7 +6633,7 @@ function renderProjectsList() {
   if (!tbody) return;
   const list = getFilteredProjects();
   if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-faint);padding:40px;">Aucun projet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8">${emptyStateHTML('Aucun projet', { icon: 'folder_open', sub: 'Modifiez les filtres ou créez un nouveau projet.' })}</td></tr>`;
     return;
   }
   tbody.innerHTML = list.map(p => {
@@ -7348,7 +7419,7 @@ function renderMateriaux() {
       return okCat && okQ;
     });
 
-    if (!filtered.length) { grid.innerHTML=`<div style="text-align:center;padding:48px;color:var(--text-faint);font-size:13px;">${items.length?'Aucun matériau correspond.':'Aucun matériau. Cliquez sur « + Matériau ».'}  </div>`; return; }
+    if (!filtered.length) { grid.innerHTML=emptyStateHTML(items.length?'Aucun matériau correspond':'Aucun matériau', { icon:'layers', sub:items.length?'Modifiez la recherche ou le filtre.':'Ajoutez votre premier matériau.', btnLabel:items.length?'':'Nouveau matériau', btnAction:"openMatModal()" }); return; }
 
     grid.innerHTML = `<div class="mat-grid">${filtered.map(m=>{
       const sup      = m.supplier_id ? (db.matSuppliers||[]).find(s=>s.id===parseInt(m.supplier_id)) : null;
@@ -7390,7 +7461,7 @@ function renderMateriaux() {
       return okCat && okQ;
     });
 
-    if (!filtered.length) { grid.innerHTML=`<div style="text-align:center;padding:48px;color:var(--text-faint);font-size:13px;">${sups.length?'Aucun fournisseur correspond.':'Aucun fournisseur. Cliquez sur « + Fournisseur ».'}</div>`; return; }
+    if (!filtered.length) { grid.innerHTML=emptyStateHTML(sups.length?'Aucun fournisseur correspond':'Aucun fournisseur', { icon:'local_shipping', sub:sups.length?'Modifiez la recherche.':'Ajoutez votre premier fournisseur.', btnLabel:sups.length?'':'Nouveau fournisseur', btnAction:"openSupModal()" }); return; }
 
     grid.innerHTML = `<div class="mat-grid">${filtered.map(s=>{
       const mats   = (db.matMaterials||[]).filter(m=>parseInt(m.supplier_id)===s.id);
@@ -8103,7 +8174,7 @@ function renderContacts() {
   if (!grid) return;
 
   if (!filtered.length) {
-    grid.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-faint);font-size:13px;">${contacts.length ? 'Aucun contact correspond à la recherche.' : 'Aucun contact. Cliquez sur « + Ajouter ».'}</div>`;
+    grid.innerHTML = emptyStateHTML(contacts.length ? 'Aucun contact correspond' : 'Aucun contact', { icon: 'contacts', sub: contacts.length ? 'Modifiez la recherche.' : 'Ajoutez vos premiers contacts.', btnLabel: contacts.length ? '' : 'Ajouter un contact', btnAction: "openModal('contact-modal')" });
     return;
   }
 
@@ -8240,7 +8311,7 @@ function renderClients(filter) {
   }
 
   if (list.length === 0) {
-    container.innerHTML = `<div class="empty-state"><p>${showArchivedClients ? 'Aucun client archivé.' : 'Aucun client trouvé.'}</p></div>`;
+    container.innerHTML = emptyStateHTML(showArchivedClients ? 'Aucun client archivé' : 'Aucun client trouvé', { icon: 'people', sub: showArchivedClients ? '' : 'Ajoutez votre premier client pour commencer.', btnLabel: showArchivedClients ? '' : 'Nouveau client', btnAction: "openModal('client-modal')" });
     return;
   }
 
@@ -9047,7 +9118,7 @@ function renderInvoices() {
   if (!container) return;
 
   if (db.invoices.length === 0) {
-    container.innerHTML = `<div style="text-align:center;color:var(--text-faint);padding:60px;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);">Aucune facture pour le moment.</div>`;
+    container.innerHTML = emptyStateHTML('Aucune facture', { icon: 'receipt_long', sub: 'Créez votre première facture client.', btnLabel: 'Nouvelle facture', btnAction: "openModal('invoice-modal')" });
     return;
   }
 
@@ -10082,7 +10153,7 @@ function renderDevisList() {
   const tbody = document.getElementById('devis-saved-table');
   if (!tbody) return;
   if (db.devis.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-faint);padding:24px;">Aucun devis sauvegardé.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7">${emptyStateHTML('Aucun devis sauvegardé', { icon: 'description', sub: 'Créez un devis et enregistrez-le pour le retrouver ici.' })}</td></tr>`;
     return;
   }
   tbody.innerHTML = [...db.devis].reverse().map(d => {
@@ -11095,6 +11166,15 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function emptyStateHTML(title, { icon = 'inbox', sub = '', btnLabel = '', btnAction = '' } = {}) {
+  return `<div class="empty-state">
+    <span class="mi es-icon">${icon}</span>
+    <div class="es-title">${title}</div>
+    ${sub ? `<div class="es-sub">${sub}</div>` : ''}
+    ${btnLabel ? `<button class="es-btn" onclick="${btnAction}"><span class="mi" style="font-size:13px;">add</span>${btnLabel}</button>` : ''}
+  </div>`;
 }
 
 // Pre-fill date

@@ -2644,6 +2644,10 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
             Filtres <span id="proj-filter-badge" style="display:none;background:var(--gold);color:#fff;font-size:9px;font-weight:700;border-radius:99px;padding:1px 6px;margin-left:2px;"></span>
           </button>
+          <select onchange="setProjSort(this.value)" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,sans-serif;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;">
+            <option value="recent">Plus récent</option>
+            <option value="alpha">A – Z</option>
+          </select>
           <button id="proj-filter-reset" onclick="resetProjFilters()" style="display:none;font-size:11px;color:var(--text-faint);background:none;border:none;cursor:pointer;text-decoration:underline;font-family:'Inter',system-ui,sans-serif;">Réinitialiser</button>
         </div>
         <div id="proj-filters-panel" style="display:none;margin-top:12px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);flex-wrap:wrap;gap:20px;align-items:flex-start;">
@@ -6120,6 +6124,7 @@ function renderProjectsGantt() {
 }
 let projTypeFilter = 'Tout';
 let projUrgencyFilter = 'Tout';
+let projSortOrder = 'recent';
 let showAllProjects = false;
 let showArchivedProjects = false;
 
@@ -6193,10 +6198,15 @@ function getFilteredProjects() {
         || (p.notes || '').toLowerCase().includes(q);
     });
   }
-  // Sort: pinned first, then alphabetical
+  // Sort: pinned first, then by selected order
   list.sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
+    if (projSortOrder === 'recent') {
+      const da = new Date(a.created_at || 0);
+      const db2 = new Date(b.created_at || 0);
+      return db2 - da;
+    }
     return a.name.localeCompare(b.name, 'fr');
   });
   return list;
@@ -6228,6 +6238,12 @@ function renderProjectFilters() {
 function setProjFilter(type, val) {
   if (type === 'phase') projPhaseFilter = val;
   if (type === 'type') projTypeFilter = val;
+  showAllProjects = false;
+  renderProjects();
+}
+
+function setProjSort(val) {
+  projSortOrder = val;
   showAllProjects = false;
   renderProjects();
 }

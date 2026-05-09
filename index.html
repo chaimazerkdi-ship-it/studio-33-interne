@@ -12557,6 +12557,7 @@ async function deleteAdminTask(taskId) {
 
 // ===== CALENDRIER =====
 let calendarMonth = new Date(); // module-level month state
+let _calShowTemplateTasks = localStorage.getItem('s33_cal_show_template') === 'true'; // OFF par défaut
 
 // Moroccan public holidays 2026 (hardcoded)
 // Note: Ramadan/Eid dates for 2026 are variable (approx. Mar 18 – Apr 16 for Ramadan,
@@ -12690,6 +12691,12 @@ function navigateCalendar(delta) {
   renderCalendar();
 }
 
+function toggleCalTemplateTasks() {
+  _calShowTemplateTasks = !_calShowTemplateTasks;
+  localStorage.setItem('s33_cal_show_template', _calShowTemplateTasks ? 'true' : 'false');
+  renderCalendar();
+}
+
 function renderCalendar() {
   if (!currentUser) return;
   const isAdmin = currentUser.role === 'admin';
@@ -12707,11 +12714,13 @@ function renderCalendar() {
   (db.projects || []).forEach(p => {
     (p.tasks || []).forEach(t => {
       if (t.deadline && !isTaskDone(t)) {
+        const assignedTo = (t.assignedTo || t.assigned_to || '').trim();
+        // Si toggle OFF, ignorer les tâches sans assignation (auto-template)
+        if (!_calShowTemplateTasks && !assignedTo) return;
         if (!tasksByDate[t.deadline]) tasksByDate[t.deadline] = [];
-        // Détecter si la tâche est assignée au user courant
-        const assignedTo = (t.assignedTo || t.assigned_to || '').toLowerCase();
-        const isMyTask = myName && (assignedTo === myName || assignedTo.startsWith(myName + ' ') || assignedTo.includes(' ' + myName));
-        tasksByDate[t.deadline].push({ name: t.name, proj: p.name, mine: isMyTask });
+        const assignedToLower = assignedTo.toLowerCase();
+        const isMyTask = myName && (assignedToLower === myName || assignedToLower.startsWith(myName + ' ') || assignedToLower.includes(' ' + myName));
+        tasksByDate[t.deadline].push({ name: t.name, proj: p.name, mine: isMyTask, assignedTo });
       }
     });
   });
@@ -12896,6 +12905,7 @@ function renderCalendar() {
       <span class="cal-event cal-event-rokha" style="display:inline-block;">Rokha</span>
       <span class="cal-event cal-event-anniversaire" style="display:inline-block;">Anniversaire</span>
       <span style="font-size:11px;color:var(--text-faint);margin-left:4px;">• Cliquer sur une case pour ajouter</span>
+      <button onclick="toggleCalTemplateTasks()" style="margin-left:auto;padding:4px 12px;border-radius:99px;border:1px solid var(--border);background:${_calShowTemplateTasks ? 'var(--gold)' : 'var(--surface2)'};color:${_calShowTemplateTasks ? '#fff' : 'var(--text-dim)'};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;" title="${_calShowTemplateTasks ? 'Masquer les tâches template' : 'Afficher toutes les tâches projet'}">📋 Tâches template : ${_calShowTemplateTasks ? 'ON' : 'OFF'}</button>
     </div>
     ${gridHTML}
     ${(function(){

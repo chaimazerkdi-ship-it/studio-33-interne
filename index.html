@@ -12046,7 +12046,10 @@ function renderRapport() {
   // ── Rapport d'équipe (admin only) ──
   let teamHtml = '';
   if (isAdmin) {
-    const members = TEAM_MEMBERS;
+    const members = (db.teamMembers || [])
+      .filter(m => m.role !== 'admin' && m.active !== false)
+      .map(m => m.display_name || m.username || '')
+      .filter(Boolean);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
     const rows = members.map(name => {
       let done = 0, inprogress = 0, mins = 0;

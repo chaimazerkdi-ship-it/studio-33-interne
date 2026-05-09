@@ -6331,6 +6331,7 @@ function renderProjectsList() {
 
 // ===== TASK CRUD =====
 function openTaskModal(projectId) {
+  const isAdmin = currentUser?.role === 'admin';
   document.getElementById('task-project-id').value = projectId;
   document.getElementById('task-name').value = '';
   document.getElementById('task-priority').value = 'normal';
@@ -6340,9 +6341,12 @@ function openTaskModal(projectId) {
   const sel = document.getElementById('task-assigned');
   if (sel) {
     sel.innerHTML = '<option value="">— Non assigné —</option>';
-    const members = (db.teamMembers && db.teamMembers.length > 0)
+    const allTeam = (db.teamMembers && db.teamMembers.length > 0)
       ? db.teamMembers.map(t => t.display_name || t.username).filter(Boolean)
       : USERS.map(u => u.name);
+    // Co-admins and admins can assign to everyone including admin
+    const canAssignToAdmin = isAdmin || currentUser?.permissions?.is_co_admin;
+    const members = canAssignToAdmin ? allTeam : allTeam.filter(n => n !== (currentUser?.name || ''));
     members.forEach(name => {
       const opt = document.createElement('option');
       opt.value = name;
@@ -11992,7 +11996,7 @@ function renderRapport() {
   const pageTitleEl = document.querySelector('#page-rapport .page-title');
   if (pageTitleEl) pageTitleEl.textContent = (currentUser.role === 'admin') ? 'Rapports de l\'équipe' : 'Mon Rapport';
 
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = currentUser.role === 'admin' || currentUser.permissions?.is_co_admin === true;
   const reports = (db.dailyReports || []);
   const uid = String(currentUser.id);
   // Exclure les faux objets locaux (ID flottant) — seuls les vrais enregistrements DB comptent
@@ -12340,7 +12344,7 @@ function renderMesTaches() {
   // Filtre membre (admin uniquement)
   const memberSel = document.getElementById('taches-filter-member');
   if (memberSel) {
-    if (isAdmin) {
+    if (isAdmin || currentUser?.permissions?.is_co_admin) {
       memberSel.style.display = '';
       const curMember = memberSel.value;
       memberSel.innerHTML = '<option value="">Tous les membres</option>' +
@@ -12354,7 +12358,7 @@ function renderMesTaches() {
       memberSel.style.display = 'none';
     }
   }
-  const filterMember = (isAdmin && memberSel) ? memberSel.value : '';
+  const filterMember = ((isAdmin || currentUser?.permissions?.is_co_admin) && memberSel) ? memberSel.value : '';
 
   // Populate project filter (avec nom client + option Administratif)
   const sel = document.getElementById('taches-filter-project');
@@ -12397,11 +12401,11 @@ function renderMesTaches() {
       ...p,
       tasks: (p.tasks || []).filter(t => {
         // Admin avec filtre membre → montrer seulement les tâches de ce membre
-        if (isAdmin && filterMember) {
+        if ((isAdmin || currentUser?.permissions?.is_co_admin) && filterMember) {
           return (t.assignedTo || '').toLowerCase() === filterMember.toLowerCase();
         }
         // Admin sans filtre → toutes les tâches
-        if (isAdmin) return true;
+        if (isAdmin || currentUser?.permissions?.is_co_admin) return true;
         // Staff → seulement ses tâches
         return !t.assignedUserId || t.assignedUserId === currentUser.id || (t.assignedTo||'').toLowerCase() === currentUser.name.toLowerCase();
       })
@@ -13195,8 +13199,10 @@ function openAddTaskModal() {
   if (canAssign) {
     assigneeRow.style.display = '';
     const memberList = (db.teamMembers && db.teamMembers.length > 0)
-      ? db.teamMembers.filter(t => t.role !== 'admin')
-      : USERS.filter(u => u.role === 'member');
+      ? (canAssign && currentUser?.permissions?.is_co_admin
+          ? db.teamMembers  // co-admin: all members including admin
+          : db.teamMembers.filter(t => t.role !== 'admin'))
+      : USERS;
     assigneeSel.innerHTML = '<option value="">— Non assigné (moi-même) —</option>' +
       memberList.map(m => {
         const uid = m.user_id || m.id;
@@ -13328,32 +13334,64 @@ function updateUIForUser() {
   if (!currentUser) return;
   const isAdmin = currentUser.role === 'admin';
 
-  // Vérifier si l'accès à Administratif est bloqué (même pour un admin co-admin)
   const noAdministratif = isAdmin && currentUser.permissions?.no_administratif === true;
+  const isCoAdmin = !isAdmin && currentUser.permissions?.is_co_admin === true;
+  const p = currentUser.permissions || {};
 
-  // Admin-only items
-  const adminOnly = ['nav-equipe','nav-clients','nav-invoices','nav-devis',
-    'nav-finance','nav-library','nav-section-finance','nav-section-ressources',
-    'mnav-more-equipe','mnav-more-devis','mnav-more-invoices',
-    'mnav-more-finance','mnav-more-library','mnav-more-mediatheque','mnav-clients'];
-  adminOnly.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = isAdmin ? '' : 'none';
-  });
+  function _canSee(key) {
+    const sec = p.sections || {};
+    if (isAdmin) {
+      if (key === 'administratif') return !p.no_administratif;
+      return true;
+    }
+    if (isCoAdmin) {
+      if (key === 'administratif') return sec[key] === true;
+      return sec[key] !== false;
+    }
+    return sec[key] === true;
+  }
+  function _setVis(ids, visible) {
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = visible ? '' : 'none';
+    });
+  }
 
-  // Administratif : visible admin sauf si no_administratif
-  const adminOnlyAdm = ['nav-administratif','mnav-more-administratif'];
-  adminOnlyAdm.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = (isAdmin && !noAdministratif) ? '' : 'none';
-  });
+  // Reset gated items
+  _setVis(['nav-clients','mnav-clients'], false);
+  _setVis(['nav-invoices','mnav-more-invoices'], false);
+  _setVis(['nav-devis','mnav-more-devis'], false);
+  _setVis(['nav-finance','mnav-more-finance'], false);
+  _setVis(['nav-section-finance'], false);
+  _setVis(['nav-contacts'], false);
+  _setVis(['nav-administratif','mnav-more-administratif'], false);
+  _setVis(['nav-mediatheque','mnav-more-mediatheque'], false);
+  _setVis(['nav-library','mnav-more-library'], false);
+  _setVis(['nav-equipe','mnav-more-equipe'], false);
 
-  // "Mes Tâches" visible pour tous (admin et membres)
-  const memberOnly = ['nav-taches','mnav-taches'];
-  memberOnly.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = '';
-  });
+  // Show based on permissions
+  if (_canSee('equipe'))        _setVis(['nav-equipe','mnav-more-equipe'], true);
+  if (_canSee('finance'))       _setVis(['nav-finance','mnav-more-finance'], true);
+  if (_canSee('invoices'))      _setVis(['nav-invoices','mnav-more-invoices'], true);
+  if (_canSee('devis'))         _setVis(['nav-devis','mnav-more-devis'], true);
+  if (_canSee('clients'))       _setVis(['nav-clients','mnav-clients'], true);
+  if (_canSee('contacts'))      _setVis(['nav-contacts'], true);
+  if (_canSee('administratif')) _setVis(['nav-administratif','mnav-more-administratif'], true);
+  if (_canSee('mediatheque'))   _setVis(['nav-mediatheque','mnav-more-mediatheque'], true);
+  if (_canSee('library'))       _setVis(['nav-library','mnav-more-library'], true);
+
+  // Section headers
+  const showFinSec = _canSee('finance') || _canSee('invoices') || _canSee('devis');
+  _setVis(['nav-section-finance'], showFinSec);
+  _setVis(['nav-section-ressources'], true); // always show (materiaux + signalements visible for all)
+
+  // Mes Tâches visible for all
+  _setVis(['nav-taches','mnav-taches'], true);
+
+  // Co-admin gets can_assign automatically
+  if (isCoAdmin && currentUser.permissions) {
+    currentUser.permissions.can_assign = true;
+  }
 
   // Update user badge in sidebar footer
   const footer = document.querySelector('.sidebar-footer');
@@ -13905,7 +13943,7 @@ function closeMemberProfile() {
 }
 
 function renderEquipe() {
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.is_co_admin === true;
 
   // Show tabs for all users (photos tab is for everyone)
   const tabsEl = document.getElementById('equipe-tabs');
@@ -14351,18 +14389,39 @@ function renderPPEquipe() {
       <div class="pp-form-row">
         <label class="pp-label">Permissions</label>
         <div style="margin-top:4px;">
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
-            <input type="checkbox" id="me-perm-assign-${m.id}" ${(m.permissions?.can_assign) ? 'checked' : ''}> Peut assigner des tâches
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--border);margin-bottom:8px;padding-bottom:10px;">
+            <input type="checkbox" id="me-perm-coadmin-${m.id}" ${(m.permissions?.is_co_admin) ? 'checked' : ''} onchange="onCoAdminToggle(${m.id}, this.checked)">
+            <span><strong>Co-administrateur</strong> — accès étendu à toutes les sections <em style="font-size:10px;color:var(--text-faint);">(reste visible comme membre)</em></span>
           </label>
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
-            <input type="checkbox" id="me-perm-invoice-${m.id}" ${(m.permissions?.can_create_invoice) ? 'checked' : ''}> Peut créer des factures
+          <label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+            <input type="checkbox" id="me-perm-assign-${m.id}" ${(m.permissions?.can_assign) ? 'checked' : ''} onchange="savePermissionToggle(${m.id})">
+            Peut assigner des tâches
           </label>
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
-            <input type="checkbox" id="me-perm-finance-${m.id}" ${(m.permissions?.can_see_finance) ? 'checked' : ''}> Voir les finances
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;${m.role !== 'admin' ? 'opacity:.4;pointer-events:none;' : ''}">
-            <input type="checkbox" id="me-perm-noadmin-${m.id}" ${(m.permissions?.no_administratif) ? 'checked' : ''}> <span>Bloquer l'accès à <strong>Administratif</strong> <em style="font-size:10px;color:var(--text-faint);">(co-admin uniquement)</em></span>
-          </label>
+          <div style="font-size:11px;font-weight:700;color:var(--text-dim);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.5px;">Accès aux sections</div>
+          ${[
+            ['equipe',       '👥 Équipe (rapports d\'équipe)'],
+            ['finance',      '💰 Finance'],
+            ['invoices',     '🧾 Facturation'],
+            ['devis',        '📦 Devis'],
+            ['clients',      '👤 Clients'],
+            ['contacts',     '📋 Contacts Pro'],
+            ['mediatheque',  '🖼️ Médiathèque'],
+            ['library',      '📚 Bibliothèque'],
+            ['administratif','🗂️ Administratif'],
+          ].map(([key, label]) => {
+            const isCoAdm = m.permissions?.is_co_admin === true;
+            const sec = m.permissions?.sections || {};
+            let checked;
+            if (isCoAdm) {
+              checked = key === 'administratif' ? sec[key] === true : sec[key] !== false;
+            } else {
+              checked = sec[key] === true;
+            }
+            return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;">
+              <input type="checkbox" id="me-sec-${key}-${m.id}" ${checked ? 'checked' : ''} onchange="savePermissionToggle(${m.id})">
+              <span style="font-size:12px;">${label}</span>
+            </label>`;
+          }).join('')}
         </div>
       </div>
       <div class="pp-form-row">
@@ -14435,10 +14494,13 @@ async function saveMemberEdit(id) {
   const displayName = (document.getElementById(`me-name-${id}`)?.value || '').trim();
   const jobTitle    = (document.getElementById(`me-title-${id}`)?.value || '').trim();
   const role        = document.getElementById(`me-role-${id}`)?.value || 'member';
+  const isCoAdmin      = document.getElementById(`me-perm-coadmin-${id}`)?.checked || false;
   const canAssign      = document.getElementById(`me-perm-assign-${id}`)?.checked || false;
-  const canInvoice     = document.getElementById(`me-perm-invoice-${id}`)?.checked || false;
-  const canFinance     = document.getElementById(`me-perm-finance-${id}`)?.checked || false;
-  const noAdministratif = document.getElementById(`me-perm-noadmin-${id}`)?.checked || false;
+  const sections = {};
+  ['equipe','finance','invoices','devis','clients','contacts','administratif','mediatheque','library'].forEach(s => {
+    const el = document.getElementById(`me-sec-${s}-${id}`);
+    if (el) sections[s] = el.checked;
+  });
   const newPass        = (document.getElementById(`me-pass-${id}`)?.value || '').trim();
 
   try {
@@ -14446,7 +14508,7 @@ async function saveMemberEdit(id) {
       display_name: displayName,
       job_title: jobTitle,
       role: role,
-      permissions: { can_assign: canAssign, can_create_invoice: canInvoice, can_see_finance: canFinance, no_administratif: noAdministratif }
+      permissions: { is_co_admin: isCoAdmin, can_assign: canAssign, sections }
     }, `?id=eq.${id}`);
 
     if (newPass) {
@@ -14460,6 +14522,43 @@ async function saveMemberEdit(id) {
   } catch(e) {
     toast('Erreur : ' + e.message);
     console.error(e);
+  }
+}
+
+function onCoAdminToggle(id, checked) {
+  ['equipe','finance','invoices','devis','clients','contacts','mediatheque','library'].forEach(s => {
+    const el = document.getElementById(`me-sec-${s}-${id}`);
+    if (el) el.checked = checked;
+  });
+  if (!checked) {
+    const admEl = document.getElementById(`me-sec-administratif-${id}`);
+    if (admEl) admEl.checked = false;
+  }
+  savePermissionToggle(id);
+}
+
+async function savePermissionToggle(id) {
+  const tm = (db.teamMembers || []).find(m => m.id === id);
+  if (!tm) return;
+  const isCoAdmin = document.getElementById(`me-perm-coadmin-${id}`)?.checked || false;
+  const canAssign = document.getElementById(`me-perm-assign-${id}`)?.checked || false;
+  const sections = {};
+  ['equipe','finance','invoices','devis','clients','contacts','administratif','mediatheque','library'].forEach(s => {
+    const el = document.getElementById(`me-sec-${s}-${id}`);
+    if (el) sections[s] = el.checked;
+  });
+  const newPerms = { is_co_admin: isCoAdmin, can_assign: canAssign, sections };
+  try {
+    await sbFetch('team_members', 'PATCH', { permissions: newPerms }, `?id=eq.${id}`);
+    const idx = (db.teamMembers || []).findIndex(m => m.id === id);
+    if (idx >= 0) db.teamMembers[idx].permissions = newPerms;
+    if (currentUser && currentUser.username === tm.username) {
+      currentUser.permissions = newPerms;
+      updateUIForUser();
+    }
+    toast('✓ Sauvegardé');
+  } catch(e) {
+    toast('Erreur: ' + e.message);
   }
 }
 

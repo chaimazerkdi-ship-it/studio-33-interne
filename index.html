@@ -6203,9 +6203,11 @@ function getFilteredProjects() {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
     if (projSortOrder === 'recent') {
-      const da = new Date(a.created_at || 0);
-      const db2 = new Date(b.created_at || 0);
-      return db2 - da;
+      // Primary: id descending (Supabase auto-increment = insertion order)
+      const idDiff = (Number(b.id) || 0) - (Number(a.id) || 0);
+      if (idDiff !== 0) return idDiff;
+      // Fallback: created_at
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
     }
     return a.name.localeCompare(b.name, 'fr');
   });

@@ -7988,9 +7988,16 @@ async function openConcoursDoc(id, doc) {
   const fp = co?.['file_'+doc];
   if (!fp) return;
   toast('Chargement…');
+  // Open window synchronously before await — required by iOS Safari (async breaks user gesture)
+  const _newTab = window.open('', '_blank');
   const url = await _mediaStorageUrl(fp, 3600);
-  if (url) window.open(url, '_blank');
-  else toast('Impossible d\'ouvrir le fichier','error');
+  if (url) {
+    if (_newTab) _newTab.location.href = url;
+    else { const _a = document.createElement('a'); _a.href=url; _a.target='_blank'; _a.rel='noopener'; document.body.appendChild(_a); _a.click(); document.body.removeChild(_a); }
+  } else {
+    if (_newTab) _newTab.close();
+    toast('Impossible d\'ouvrir le fichier', 'error');
+  }
 }
 
 // ══════════════════════════════════════════
@@ -16976,6 +16983,16 @@ function escHTML(str) {
     .mr-combo-item mark {
       background: #fde68a; color: var(--text); padding: 0 2px; border-radius: 2px;
     }
+    .mr-combo-sep {
+      padding: 6px 12px 3px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-faint);
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+    }
     .mr-combo-empty {
       padding: 14px 12px; font-size: 12px; color: var(--text-faint); text-align: center;
     }
@@ -17196,20 +17213,40 @@ function escHTML(str) {
     const q = searchEl.value;
     const results = filterProjects(q);
     const hiddenVal = (document.getElementById(prefix + '-project-' + uid) || {}).value;
-    if (!results.length) {
-      menuEl.innerHTML = '<div class="mr-combo-empty">Aucun projet trouvé pour « ' + escHTML(q) + ' »</div>';
+    // Concours matching the query
+    const allConcours = db.concours || [];
+    const coResults = q
+      ? allConcours.filter(co => (co.title||'').toLowerCase().includes(q) || (co.maitre_ouvrage||'').toLowerCase().includes(q))
+      : allConcours;
+    const coSlice = coResults.slice(0, 10);
+
+    if (!results.length && !coSlice.length) {
+      menuEl.innerHTML = '<div class="mr-combo-empty">Aucun résultat pour « ' + escHTML(q) + ' »</div>';
     } else {
-      menuEl.innerHTML = results.map((r, i) => {
+      let html = results.map((r, i) => {
         const archived = r.p.archived ? ' <span style="font-size:10px;color:var(--text-faint);">(archivé)</span>' : '';
         const sel = String(r.p.id) === String(hiddenVal) ? ' active' : '';
         return '<div class="mr-combo-item' + sel + '" data-idx="' + i + '" data-pid="' + r.p.id + '" ' +
-          'onmousedown="event.preventDefault();mrComboPick(\'' + prefix + '\',\'' + uid + '\',' + r.p.id + ')">' +
+          'onmousedown="event.preventDefault();mrComboPick('' + prefix + '','' + uid + '',' + r.p.id + ')">' +
           '<span class="mi mi-sm" style="color:var(--gold);">folder</span>' +
           '<span class="mr-combo-name">' + highlightMatch(r.p.name, q) + '</span>' +
           (r.clientName ? '<span class="mr-combo-client">· ' + highlightMatch(r.clientName, q) + '</span>' : '') +
           archived +
         '</div>';
       }).join('');
+      if (coSlice.length) {
+        html += '<div class="mr-combo-sep">Concours</div>';
+        html += coSlice.map(co => {
+          const coKey = 'concours_' + co.id;
+          const sel = hiddenVal === coKey ? ' active' : '';
+          return '<div class="mr-combo-item' + sel + '" onmousedown="event.preventDefault();mrConcoursPickWrapper('' + prefix + '','' + uid + '',' + co.id + ')">' +
+            '<span class="mi mi-sm" style="color:var(--gold);">workspace_premium</span>' +
+            '<span class="mr-combo-name">' + highlightMatch(co.title||'', q) + '</span>' +
+            (co.maitre_ouvrage ? '<span class="mr-combo-client">· ' + escHTML(co.maitre_ouvrage) + '</span>' : '') +
+          '</div>';
+        }).join('');
+      }
+      menuEl.innerHTML = html;
     }
     menuEl.classList.add('open');
   }
@@ -17235,6 +17272,31 @@ function escHTML(str) {
     }
     renderComboDropdown(prefix, uid);
     window.mrUpdateTitle(prefix, uid);
+  };
+
+  window.mrConcoursPickWrapper = function(prefix, uid, concoursId) {
+    const co = (db.concours || []).find(c => c.id === concoursId || String(c.id) === String(concoursId));
+    if (!co) return;
+    const label = co.title || 'Concours';
+    const coKey = 'concours_' + co.id;
+    const searchEl = document.getElementById(prefix + '-projectsearch-' + uid);
+    const hiddenEl = document.getElementById(prefix + '-project-' + uid);
+    const menuEl   = document.getElementById(prefix + '-projectmenu-' + uid);
+    if (searchEl) searchEl.value = label;
+    if (hiddenEl) hiddenEl.value = coKey;
+    if (menuEl) menuEl.classList.remove('open');
+    if (searchEl && searchEl.parentElement) {
+      const caret = searchEl.parentElement.querySelector('.mr-combo-caret');
+      if (caret) {
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'mr-combo-clear'; btn.title = 'Effacer'; btn.textContent = '×';
+        btn.onclick = () => window.mrComboClear(prefix, uid);
+        caret.replaceWith(btn);
+      }
+    }
+    window.mrUpdateTitle(prefix, uid);
+    const tasksEl = document.getElementById(prefix + '-tasks-' + uid);
+    if (tasksEl) setTimeout(() => tasksEl.focus(), 50);
   };
 
   window.mrComboPick = function(prefix, uid, projectId) {
@@ -17413,16 +17475,19 @@ function escHTML(str) {
 
     let ok = 0, failed = 0;
     for (const e of entries) {
-      const project    = (db.projects || []).find(p => String(p.id) === String(e.projectId));
-      const projId     = parseInt(e.projectId);
+      const isConcours = String(e.projectId).startsWith('concours_');
+      const project    = isConcours ? null : (db.projects || []).find(p => String(p.id) === String(e.projectId));
+      const concours   = isConcours ? (db.concours || []).find(c => 'concours_' + c.id === String(e.projectId)) : null;
+      const projId     = isConcours ? null : parseInt(e.projectId);
+      const projName   = isConcours ? (concours?.title || 'Concours') : (project ? project.name : '—');
       const nowIso     = new Date().toISOString();
 
       // Vérifier si un rapport existe déjà pour cet user + date + projet
       const existing = (db.dailyReports || []).find(r =>
         String(r.user_id) === uid &&
         r.date === today &&
-        parseInt(r.project_id) === projId &&
-        Number.isInteger(r.id)   // ignorer les faux objets locaux (ID non-entier)
+        (isConcours ? r.project_name === projName : parseInt(r.project_id) === projId) &&
+        Number.isInteger(r.id)
       );
 
       const reportData = {
@@ -17432,7 +17497,7 @@ function escHTML(str) {
         date:         today,
         type,
         project_id:   projId,
-        project_name: project ? project.name : '—',
+        project_name: projName,
         tasks:        e.tasks,
         hours:        e.hours,
         blockers:     e.blockers || null,

@@ -20937,10 +20937,9 @@ function escHTML(str) {
         if (typeof toast === 'function') toast('Permission refusée');
         return false;
       }
-      let reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) reg = await navigator.serviceWorker.register('./sw.js');
-      // Wait for the SW to be active
-      if (!reg.active) await new Promise(function(resolve){ setTimeout(resolve, 500); });
+      await navigator.serviceWorker.register('./sw.js');
+      // Wait until a SW is fully active (correct way — no arbitrary timeout)
+      const reg = await navigator.serviceWorker.ready;
 
       let sub = await reg.pushManager.getSubscription();
       if (!sub) {

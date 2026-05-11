@@ -2440,27 +2440,25 @@
 .task-subpanel { background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px;margin-top:6px; }
 
 /* Calendar */
-.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--border); border-radius:var(--radius); overflow:hidden; }
-.cal-cell { background:var(--surface); min-height:80px; padding:6px 8px; vertical-align:top; }
-.cal-cell.other-month { background:var(--surface2); opacity:.45; }
-.cal-cell.today { background:var(--surface2); box-shadow:inset 0 0 0 2px var(--gold); }
-.cal-cell.weekend { background:var(--surface2); }
-.cal-day-num { font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px; }
-.cal-cell.today .cal-day-num { color:var(--gold); }
-.cal-event { font-size:11px; padding:3px 7px; border-radius:6px; margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.4; font-weight:500; }
-.cal-event-task { background:#dbeafe; color:#1d4ed8; border:1px solid #bfdbfe; }
-.cal-event-conge { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
-.cal-event-ferie { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; font-weight:700; }
-.cal-event-echeance { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
-.cal-event-commission { background:#ede9fe; color:#5b21b6; border:1px solid #ddd6fe; }
-.cal-event-rokha      { background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
-.cal-event-anniversaire { background:#fdf2f8; color:#9d174d; border:1px solid #fbcfe8; }
-.cal-event-autre      { background:#f3f4f6; color:#374151; border:1px solid #e5e7eb; }
-[data-theme=dark] .cal-event-commission { background:rgba(109,40,217,.2); color:#c4b5fd; border-color:rgba(109,40,217,.3); }
-[data-theme=dark] .cal-event-rokha     { background:rgba(194,65,12,.2); color:#fdba74; border-color:rgba(194,65,12,.3); }
-[data-theme=dark] .cal-event-anniversaire { background:rgba(157,23,77,.2); color:#f9a8d4; border-color:rgba(157,23,77,.3); }
-[data-theme=dark] .cal-event-autre     { background:rgba(55,65,81,.3); color:#d1d5db; border-color:rgba(55,65,81,.4); }
-.cal-weekday-header { font-size:11px; font-weight:700; color:var(--text-dim); text-align:center; padding:8px 0; background:var(--surface2); }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; background:var(--border); gap:1px; }
+.cal-cell { background:var(--surface); min-height:120px; padding:4px 6px 6px; vertical-align:top; cursor:pointer; transition:background .1s; }
+.cal-cell:hover { background:var(--surface2); }
+.cal-cell.other-month { background:var(--surface); }
+.cal-cell.other-month .cal-day-num { color:var(--text-faint); font-weight:400; }
+.cal-cell.today { background:var(--surface); }
+.cal-cell.weekend .cal-day-num { color:var(--text-dim); }
+.cal-day-num { font-size:13px; font-weight:400; color:var(--text); margin-bottom:4px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:50%; }
+.cal-cell.today .cal-day-num { background:#1a73e8; color:#fff !important; font-weight:600; }
+.cal-event { font-size:12px; padding:2px 8px; border-radius:4px; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.7; font-weight:500; display:block; border:none; }
+.cal-event-task        { background:#1a73e8; color:#fff; }
+.cal-event-conge       { background:#33b679; color:#fff; }
+.cal-event-ferie       { background:#d50000; color:#fff; font-weight:700; }
+.cal-event-echeance    { background:#f4511e; color:#fff; }
+.cal-event-commission  { background:#8e24aa; color:#fff; }
+.cal-event-rokha       { background:#e67c73; color:#fff; }
+.cal-event-anniversaire{ background:#f6bf26; color:#333; }
+.cal-event-autre       { background:#616161; color:#fff; }
+.cal-weekday-header { font-size:11px; font-weight:500; color:var(--text-dim); text-align:center; padding:10px 0 8px; background:var(--surface); text-transform:uppercase; letter-spacing:.5px; }
 
 /* Gantt */
 .gantt-wrap { overflow-x:auto; }
@@ -13332,6 +13330,11 @@ function navigateCalendar(delta) {
   calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + delta, 1);
   renderCalendar();
 }
+function goCalToday() {
+  calendarMonth = new Date();
+  calendarMonth.setDate(1);
+  renderCalendar();
+}
 
 function toggleCalTemplateTasks() {
   _calShowTemplateTasks = !_calShowTemplateTasks;
@@ -13443,7 +13446,7 @@ function renderCalendar() {
         eventsHTML += `<div class="cal-event cal-event-task" title="${t.proj}: ${t.name}" style="${style}display:flex;align-items:center;">${dot}${t.name}</div>`;
       });
       if (sortedTasks.length > 2) {
-        eventsHTML += `<div class="cal-event cal-event-task">+${sortedTasks.length - 2} tâche(s)</div>`;
+        eventsHTML += `<div style="font-size:11px;color:var(--text-dim);padding:1px 8px;cursor:pointer;">+${sortedTasks.length - 2} de plus</div>`;
       }
     }
 
@@ -13534,20 +13537,22 @@ function renderCalendar() {
   }
 
   document.getElementById('calendar-content').innerHTML = `
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
-      <button onclick="navigateCalendar(-1)" style="padding:8px 16px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-pill);font-size:13px;font-weight:600;cursor:pointer;">← Mois précédent</button>
-      <div style="font-size:17px;font-weight:700;color:var(--text);text-transform:capitalize;flex:1;text-align:center;">${monthName}</div>
-      <button onclick="navigateCalendar(1)" style="padding:8px 16px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-pill);font-size:13px;font-weight:600;cursor:pointer;">Mois suivant →</button>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;font-size:11px;align-items:center;">
-      <span class="cal-event cal-event-ferie" style="display:inline-block;">Férié</span>
-      <span class="cal-event cal-event-conge" style="display:inline-block;">Congé</span>
-      <span class="cal-event cal-event-task" style="display:inline-block;">Tâche</span>
-      <span class="cal-event cal-event-commission" style="display:inline-block;">Commission</span>
-      <span class="cal-event cal-event-rokha" style="display:inline-block;">Rokha</span>
-      <span class="cal-event cal-event-anniversaire" style="display:inline-block;">Anniversaire</span>
-      <span style="font-size:11px;color:var(--text-faint);margin-left:4px;">• Cliquer sur une case pour ajouter</span>
-      <button onclick="toggleCalTemplateTasks()" style="margin-left:auto;padding:4px 12px;border-radius:99px;border:1px solid var(--border);background:${_calShowTemplateTasks ? 'var(--gold)' : 'var(--surface2)'};color:${_calShowTemplateTasks ? '#fff' : 'var(--text-dim)'};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;" title="${_calShowTemplateTasks ? 'Masquer les tâches template' : 'Afficher toutes les tâches projet'}">📋 Tâches template : ${_calShowTemplateTasks ? 'ON' : 'OFF'}</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+      <button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Aujourd'hui</button>
+      <button onclick="navigateCalendar(-1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);" title="Mois précédent"><span class="mi">chevron_left</span></button>
+      <button onclick="navigateCalendar(1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);" title="Mois suivant"><span class="mi">chevron_right</span></button>
+      <div style="font-size:20px;font-weight:400;color:var(--text);text-transform:capitalize;margin-left:4px;">${monthName}</div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px;align-items:center;">
+          <span class="cal-event cal-event-ferie" style="display:inline-block;">Férié</span>
+          <span class="cal-event cal-event-conge" style="display:inline-block;">Congé</span>
+          <span class="cal-event cal-event-task" style="display:inline-block;">Tâche</span>
+          <span class="cal-event cal-event-commission" style="display:inline-block;">Commission</span>
+          <span class="cal-event cal-event-rokha" style="display:inline-block;">Rokha</span>
+          <span class="cal-event cal-event-anniversaire" style="display:inline-block;">Anniversaire</span>
+        </div>
+        <button onclick="toggleCalTemplateTasks()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:${_calShowTemplateTasks ? '#1a73e8' : 'var(--surface)'};color:${_calShowTemplateTasks ? '#fff' : 'var(--text-dim)'};font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;">Tâches auto : ${_calShowTemplateTasks ? 'ON' : 'OFF'}</button>
+      </div>
     </div>
     ${gridHTML}
     ${(function(){

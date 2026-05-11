@@ -2490,19 +2490,22 @@
 .gcal-view-btn { padding:6px 14px; background:none; border:none; border-right:1px solid var(--border); font-size:13px; color:var(--text-dim); cursor:pointer; font-family:inherit; transition:background .1s; }
 .gcal-view-btn:last-child { border-right:none; }
 .gcal-view-btn.active { background:var(--surface2); color:var(--text); font-weight:500; }
-.gcal-week-header { display:grid; border-bottom:1px solid var(--border); background:var(--surface); }
-.gcal-week-day-head { text-align:center; padding:8px 4px; cursor:pointer; transition:background .1s; }
+.gcal-week-header { display:grid; padding-left:56px; box-sizing:border-box; border-bottom:1px solid var(--border); background:var(--surface); }
+.gcal-week-day-head { text-align:center; padding:8px 4px; cursor:pointer; transition:background .1s; border-left:1px solid var(--border); box-sizing:border-box; }
+.gcal-week-day-head:first-child { border-left:none; }
 .gcal-week-day-head:hover { background:var(--surface2); }
 .gcal-week-day-name { font-size:11px; text-transform:uppercase; color:var(--text-dim); font-weight:500; letter-spacing:.5px; }
 .gcal-week-day-num { width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:50%; font-size:22px; font-weight:300; color:var(--text); margin:2px auto; }
 .gcal-week-day-num.today { background:#1a73e8; color:#fff !important; font-weight:400; }
-.gcal-allday-bar { display:grid; border-bottom:2px solid var(--border); background:var(--surface); }
+.gcal-allday-bar { display:grid; padding-left:56px; box-sizing:border-box; border-bottom:2px solid var(--border); background:var(--surface); }
 .gcal-allday-cell { border-left:1px solid var(--border); padding:3px 4px; min-height:36px; cursor:pointer; transition:background .1s; }
+.gcal-allday-cell:first-child { border-left:none; }
 .gcal-allday-cell:hover { background:var(--surface2); }
 .gcal-time-scroll { overflow-y:auto; max-height:540px; position:relative; scroll-behavior:smooth; }
 .gcal-time-inner { position:relative; display:flex; }
 .gcal-hours-col { width:56px; flex-shrink:0; }
-.gcal-hour-label { height:64px; display:flex; align-items:flex-start; justify-content:flex-end; padding-right:8px; font-size:10px; color:var(--text-faint); padding-top:-2px; box-sizing:border-box; margin-top:-7px; }
+.gcal-hour-label { height:64px; position:relative; padding-right:8px; font-size:10px; color:var(--text-faint); box-sizing:border-box; text-align:right; }
+.gcal-hour-label[data-label]::before { content:attr(data-label); position:absolute; top:-7px; right:8px; background:var(--surface); padding:0 2px; line-height:1; }
 .gcal-day-cols { flex:1; display:grid; position:relative; }
 .gcal-day-col { border-left:1px solid var(--border); position:relative; }
 .gcal-day-col-today { background:rgba(26,115,232,.03); }
@@ -14205,7 +14208,7 @@ function _buildWeekHTML(singleDay) {
   }
 
   const HOUR_LBLS = ['', '1h', '2h', '3h', '4h', '5h', '6h', '7h', '8h', '9h', '10h', '11h', '12h', '13h', '14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'];
-  const hourLabels = HOUR_LBLS.map(function(h) { return '<div class="gcal-hour-label">' + h + '</div>'; }).join('');
+  const hourLabels = HOUR_LBLS.map(function(h) { return '<div class="gcal-hour-label"' + (h ? ' data-label="' + h + '"' : '') + '></div>'; }).join('');
   const cg = _buildCongesHTML();
   const vBtn = function(v, lbl) { return '<button class="gcal-view-btn' + (calView === v ? ' active' : '') + '" onclick="setCalView(\'' + v + '\')">' + lbl + '</button>'; };
   const viewBtns = '<div class="gcal-view-btns">' + vBtn('month', 'Mois') + vBtn('week', 'Semaine') + vBtn('day', 'Jour') + vBtn('agenda', 'Agenda') + '</div>';

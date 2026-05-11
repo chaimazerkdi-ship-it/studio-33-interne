@@ -7882,6 +7882,11 @@ function coHandleFile(doc, file) {
 async function _uploadCoDoc(doc, concoursId) {
   const file = _coPendingFiles[doc];
   if (!file) return null;
+  const sizeMb = file.size / 1024 / 1024;
+  if (sizeMb > 49) {
+    toast(`Fichier trop lourd (${sizeMb.toFixed(1)} Mo) — limite 49 Mo`, 'error');
+    return null;
+  }
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const path = `concours/${concoursId}/${doc}_${Date.now()}_${safeName}`;
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${S33_STORAGE_BUCKET}/${path}`, {
@@ -7895,7 +7900,9 @@ async function _uploadCoDoc(doc, concoursId) {
     body: file
   });
   if (res.ok) return path;
-  console.error('Upload concours doc failed:', await res.text().catch(()=>''));
+  const errText = await res.text().catch(() => '');
+  console.error('Upload concours doc failed:', errText);
+  toast(`Erreur upload ${CO_DOC_LABEL[doc]} (${res.status})`, 'error');
   return null;
 }
 

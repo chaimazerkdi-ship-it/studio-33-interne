@@ -2489,7 +2489,8 @@
 .gcal-day-col { border-left:1px solid var(--border); position:relative; }
 .gcal-day-col-today { background:rgba(26,115,232,.03); }
 [data-theme=dark] .gcal-day-col-today { background:rgba(26,115,232,.06); }
-.gcal-hour-slot { height:64px; border-top:1px solid var(--border); box-sizing:border-box; }
+.gcal-hour-slot { height:64px; border-top:1px solid var(--border); box-sizing:border-box; cursor:pointer; transition:background .1s; }
+.gcal-hour-slot:hover { background:rgba(26,115,232,.07); }
 .gcal-current-time { position:absolute; left:-1px; right:0; height:2px; background:#ea4335; pointer-events:none; z-index:3; }
 .gcal-current-time::before { content:''; position:absolute; left:-4px; top:-4px; width:10px; height:10px; background:#ea4335; border-radius:50%; }
 
@@ -13392,7 +13393,15 @@ function navigateCalendar(delta) {
 
 function goCalToday() {
   calendarMonth = new Date(); calendarMonth.setDate(1);
-  calWeekStart = _getWeekMonday(new Date());
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  calWeekStart = calView === 'day' ? now : _getWeekMonday(new Date());
+  renderCalendar();
+}
+
+function _goToDay(ds) {
+  calView = 'day';
+  localStorage.setItem('s33_cal_view', 'day');
+  calWeekStart = new Date(ds + 'T00:00:00');
   renderCalendar();
 }
 
@@ -13509,7 +13518,7 @@ function _buildWeekHTML(singleDay) {
     const ds = d.toISOString().split('T')[0];
     const isToday = ds === todayStr;
     if (isToday) todayColIdx = i;
-    headerCols += '<div class="gcal-week-day-head" onclick="openCalEventModal(\'' + ds + '\')">' +
+    headerCols += '<div class="gcal-week-day-head" onclick="_goToDay(\'' + ds + '\')">' +
       '<div class="gcal-week-day-name">' + DAY_NAMES[d.getDay()] + '</div>' +
       '<div class="' + (isToday ? 'gcal-week-day-num today' : 'gcal-week-day-num') + '">' + d.getDate() + '</div></div>';
 
@@ -13527,7 +13536,7 @@ function _buildWeekHTML(singleDay) {
     alldayCols += '<div class="gcal-allday-cell" onclick="openCalEventModal(\'' + ds + '\')">' + evs + '</div>';
 
     let slots = '';
-    for (let h = 0; h < 24; h++) slots += '<div class="gcal-hour-slot"></div>';
+    for (let h = 0; h < 24; h++) slots += '<div class="gcal-hour-slot" onclick="openCalEventModal(\'' + ds + '\')"></div>';
     dayCols += '<div class="gcal-day-col' + (isToday ? ' gcal-day-col-today' : '') + '">' + slots + (isToday ? '<div class="gcal-current-time" id="gcal-tl-' + i + '"></div>' : '') + '</div>';
   }
 
@@ -13609,7 +13618,7 @@ function _buildMonthHTML() {
       const canDel = isAdmin || (ev.created_by || '').toLowerCase() === (currentUser ? currentUser.name || '' : '').toLowerCase();
       evs += '<div class="cal-event ' + ti.cls + '" title="' + escHTML(ev.note ? ev.title + ' — ' + ev.note : ev.title) + '" style="cursor:' + (canDel ? 'pointer' : 'default') + ';display:flex;align-items:center;gap:3px;"' + (canDel ? ' onclick="event.stopPropagation();deleteCalEvent(' + ev.id + ')"' : '') + '><span class="mi" style="font-size:10px;">' + ti.icon + '</span>' + escHTML(ev.title) + '</div>';
     });
-    gridHTML += '<div class="' + cls + '" onclick="openCalEventModal(\'' + ds + '\')"><div class="cal-day-num">' + day + '</div>' + evs + '</div>';
+    gridHTML += '<div class="' + cls + '" onclick="openCalEventModal(\'' + ds + '\')"><div class="cal-day-num" onclick="event.stopPropagation();_goToDay(\'' + ds + '\')" style="cursor:pointer;" title="Voir ce jour">' + day + '</div>' + evs + '</div>';
   }
   const remaining = (7 - ((startDow + lastDay.getDate()) % 7)) % 7;
   for (let i = 1; i <= remaining; i++) gridHTML += '<div class="cal-cell other-month"><div class="cal-day-num">' + i + '</div></div>';

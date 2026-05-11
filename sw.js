@@ -6,7 +6,8 @@ const APP_ICON = '/logo S33.png';
 
 // ── Lifecycle ───────────────────────────────────────────────
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // Skip pre-caching — assets use absolute paths that break on GitHub Pages subfolders
+  e.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', e => {

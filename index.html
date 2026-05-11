@@ -15957,7 +15957,7 @@ function escHTML(str) {
     block.id = 's33-reminders-block';
     block.style.marginBottom = '24px';
     block.innerHTML =
-      '<div class="section-title" style="margin-top:0;margin-bottom:10px;">🔔 Rappels (' + reminders.length + ')</div>' +
+      '<div class="section-title" style="margin-top:0;margin-bottom:10px;">Rappels (' + reminders.length + ')</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">' +
         reminders.slice(0, 12).map(r =>
           '<div class="s33-reminder-card" style="border-left:3px solid ' + r.color + ';" onclick="' + r.action + '">' +
@@ -19475,22 +19475,28 @@ function escHTML(str) {
     const in2daysISO = in2days.toISOString().slice(0, 10);
     const items = [];
 
-    // 1. Overdue tasks
+    // 1. Overdue tasks — grouped by project for admin, individual for members
+    const _overdueByProject = {};
     (db.projects || []).forEach(function(p) {
       (p.tasks || []).forEach(function(t) {
         if (isTaskDone(t) || !t.deadline) return;
         const mine = (t.assignedTo || '').toLowerCase() === userName || String(t.assignedUserId || '') === userId;
         if (!isAdmin && !mine) return;
         if (t.deadline < today) {
-          items.push({
-            kind: 'task_overdue', severity: 'danger',
-            icon: 'schedule', color: '#e74c3c',
-            title: 'Tâche en retard',
-            desc: t.name + ' — ' + p.name,
-            extra: 'Échéance : ' + t.deadline + ' (' + Math.abs(daysBetween(today, t.deadline)) + ' j de retard)',
-            action: "openProjectDetail(" + p.id + ")",
-            key: 'task_' + t.id
-          });
+          if (isAdmin) {
+            if (!_overdueByProject[p.id]) _overdueByProject[p.id] = { p, tasks: [] };
+            _overdueByProject[p.id].tasks.push(t);
+          } else {
+            items.push({
+              kind: 'task_overdue', severity: 'danger',
+              icon: 'schedule', color: '#e74c3c',
+              title: 'Tâche en retard',
+              desc: t.name + ' — ' + p.name,
+              extra: 'Échéance : ' + t.deadline + ' (' + Math.abs(daysBetween(today, t.deadline)) + ' j de retard)',
+              action: "openProjectDetail(" + p.id + ")",
+              key: 'task_' + t.id
+            });
+          }
         } else if (t.deadline >= today && t.deadline <= in2daysISO) {
           items.push({
             kind: 'task_soon', severity: 'warn',
@@ -19502,6 +19508,20 @@ function escHTML(str) {
             key: 'tasksoon_' + t.id
           });
         }
+      });
+    });
+    // For admin: one card per project with overdue tasks
+    Object.values(_overdueByProject).forEach(function(entry) {
+      const n = entry.tasks.length;
+      const worst = entry.tasks.reduce(function(a, b) { return a.deadline < b.deadline ? a : b; });
+      items.push({
+        kind: 'task_overdue', severity: 'danger',
+        icon: 'schedule', color: '#e74c3c',
+        title: n === 1 ? 'Tâche en retard' : n + ' tâches en retard',
+        desc: n === 1 ? entry.tasks[0].name + ' — ' + entry.p.name : entry.p.name,
+        extra: 'Retard max : ' + Math.abs(daysBetween(today, worst.deadline)) + ' j',
+        action: "openProjectDetail(" + entry.p.id + ")",
+        key: 'task_proj_' + entry.p.id
       });
     });
 
@@ -19691,7 +19711,7 @@ function escHTML(str) {
       ? '<span class="reminders-count-badge" style="background:#fee2e2;color:#991b1b;">' + dangerCount + ' urgent' + (dangerCount > 1 ? 's' : '') + '</span>'
       : '';
     block.innerHTML =
-      '<div class="section-title" style="margin-top:0;margin-bottom:10px;display:flex;align-items:center;gap:6px;">🔔 Rappels (' + items.length + ')' + headerExtra + '</div>' +
+      '<div class="section-title" style="margin-top:0;margin-bottom:10px;display:flex;align-items:center;gap:6px;">Rappels (' + items.length + ')' + headerExtra + '</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">' +
         items.slice(0, 12).map(function(r){
           return '<div class="s33-reminder-card" style="border-left:3px solid ' + r.color + ';padding:10px 12px;background:var(--surface);border-radius:var(--radius-sm);cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.04);" onclick="' + r.action + '">' +

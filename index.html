@@ -20836,7 +20836,7 @@ function escHTML(str) {
   // If the app is served over file:// or http://localhost:X with no TLS, SW may still work on localhost.
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/sw.js').then(function(reg) {
+      navigator.serviceWorker.register('./sw.js').then(function(reg) {
         console.log('✓ Service worker registered', reg.scope);
       }).catch(function(err) {
         console.warn('SW register failed', err);
@@ -20938,7 +20938,7 @@ function escHTML(str) {
         return false;
       }
       let reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) reg = await navigator.serviceWorker.register('/sw.js');
+      if (!reg) reg = await navigator.serviceWorker.register('./sw.js');
       // Wait for the SW to be active
       if (!reg.active) await new Promise(function(resolve){ setTimeout(resolve, 500); });
 
@@ -21112,7 +21112,7 @@ let _installPromptEvent = null;
 // Enregistrement du service worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
   });
 }
 

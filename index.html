@@ -17227,7 +17227,7 @@ function escHTML(str) {
         const archived = r.p.archived ? ' <span style="font-size:10px;color:var(--text-faint);">(archivé)</span>' : '';
         const sel = String(r.p.id) === String(hiddenVal) ? ' active' : '';
         return '<div class="mr-combo-item' + sel + '" data-idx="' + i + '" data-pid="' + r.p.id + '" ' +
-          'onmousedown="event.preventDefault();mrComboPick('' + prefix + '','' + uid + '',' + r.p.id + ')">' +
+          'onmousedown="event.preventDefault();mrComboPick(\'' + prefix + '\',\'' + uid + '\',' + r.p.id + ')">' +
           '<span class="mi mi-sm" style="color:var(--gold);">folder</span>' +
           '<span class="mr-combo-name">' + highlightMatch(r.p.name, q) + '</span>' +
           (r.clientName ? '<span class="mr-combo-client">· ' + highlightMatch(r.clientName, q) + '</span>' : '') +
@@ -17239,7 +17239,7 @@ function escHTML(str) {
         html += coSlice.map(co => {
           const coKey = 'concours_' + co.id;
           const sel = hiddenVal === coKey ? ' active' : '';
-          return '<div class="mr-combo-item' + sel + '" onmousedown="event.preventDefault();mrConcoursPickWrapper('' + prefix + '','' + uid + '',' + co.id + ')">' +
+          return '<div class="mr-combo-item' + sel + '" onmousedown="event.preventDefault();mrConcoursPickWrapper(\'' + prefix + '\',\'' + uid + '\',' + co.id + ')">' +
             '<span class="mi mi-sm" style="color:var(--gold);">workspace_premium</span>' +
             '<span class="mr-combo-name">' + highlightMatch(co.title||'', q) + '</span>' +
             (co.maitre_ouvrage ? '<span class="mr-combo-client">· ' + escHTML(co.maitre_ouvrage) + '</span>' : '') +

@@ -2788,6 +2788,9 @@
         <div class="nav-item" id="nav-library" onclick="navigate('library')">
           <span class="nav-icon"><span class="mi">menu_book</span></span><span class="nav-text">Bibliothèque</span>
         </div>
+        <div class="nav-item" id="nav-generateurs" style="display:none;" onclick="navigate('generateurs')">
+          <span class="nav-icon"><span class="mi">auto_awesome</span></span><span class="nav-text">Générateurs</span>
+        </div>
         <div class="nav-item" id="nav-materiaux" onclick="navigate('materiaux')">
           <span class="nav-icon"><span class="mi">layers</span></span><span class="nav-text">Matériaux</span>
         </div>
@@ -3083,6 +3086,28 @@
       <div class="grid-3" style="margin-bottom:32px;" id="invoice-stats"></div>
 
       <div id="invoices-grouped"></div>
+    </div>
+
+    <!-- GÉNÉRATEURS -->
+    <div class="page" id="page-generateurs">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Générateurs <span>de documents</span></div>
+          <div class="page-subtitle" id="gen-subtitle">CPS · Planning · Questionnaire client</div>
+        </div>
+      </div>
+      <div id="generateurs-content"></div>
+    </div>
+
+    <!-- GÉNÉRATEUR EDITOR OVERLAY (iframe holder) -->
+    <div id="gen-editor-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9998;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeGenEditor()">
+      <div style="background:var(--surface);width:100%;max-width:1200px;height:92vh;border-radius:var(--radius);box-shadow:var(--shadow-lg);display:flex;flex-direction:column;overflow:hidden;" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--border);background:var(--surface);">
+          <div style="font-size:15px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;"><span class="mi">auto_awesome</span><span id="gen-editor-title">Nouveau CPS</span></div>
+          <button onclick="closeGenEditor()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-dim);line-height:1;">×</button>
+        </div>
+        <iframe id="gen-editor-iframe" src="" style="flex:1;width:100%;border:none;background:#f0ece3;"></iframe>
+      </div>
     </div>
 
     <!-- LIBRARY -->
@@ -5572,7 +5597,7 @@ async function loadDB() {
   try {
     showLoadingOverlay(true);
     // ── Promise.allSettled : une table en panne ne bloque plus le chargement ──
-    const TABLE_NAMES = ['clients','projects','invoices','library','devis','charges','entrees','media','app_config','user_tasks','daily_reports','conges','user_profiles','team_members','dashboard_config','contacts_pro','mat_suppliers','mat_materials','bureau_incidents','concours','calendar_events','activity_log'];
+    const TABLE_NAMES = ['clients','projects','invoices','library','devis','charges','entrees','media','app_config','user_tasks','daily_reports','conges','user_profiles','team_members','dashboard_config','contacts_pro','mat_suppliers','mat_materials','bureau_incidents','concours','calendar_events','activity_log','generated_documents'];
     const _settled = await Promise.allSettled([
       sbGet('clients', '?order=id'),
       sbGet('projects', '?order=id'),
@@ -5595,7 +5620,8 @@ async function loadDB() {
       sbGet('bureau_incidents', '?order=reported_at.desc'),
       sbGet('concours', '?order=created_at.desc'),
       sbGet('calendar_events', '?order=date'),
-      sbGet('activity_log', '?order=created_at.desc&limit=50')
+      sbGet('activity_log', '?order=created_at.desc&limit=50'),
+      sbGet('generated_documents', '?select=id,project_id,doc_type,version,title,metadata,created_by,created_at&order=created_at.desc')
     ]);
     const _vals = _settled.map((r, i) => {
       if (r.status === 'rejected') {
@@ -5604,7 +5630,7 @@ async function loadDB() {
       }
       return r.value || [];
     });
-    const [clients, projects, invoices, library, devis, charges, entrees, media, config, userTasks, dailyReports, conges, userProfiles, teamMembers, dashboardConfigRows, contactsPro, matSuppliers, matMaterials, bureauIncidents, concoursRows, calendarEventsRows, activityLogRows] = _vals;
+    const [clients, projects, invoices, library, devis, charges, entrees, media, config, userTasks, dailyReports, conges, userProfiles, teamMembers, dashboardConfigRows, contactsPro, matSuppliers, matMaterials, bureauIncidents, concoursRows, calendarEventsRows, activityLogRows, generatedDocsRows] = _vals;
 
     db.clients = clients.map(c => ({...c, id: c.id, links: c.links || [], communications: c.communications || []}));
     db.projects = projects.map(p => ({
@@ -5646,6 +5672,7 @@ async function loadDB() {
     db.concours      = (concoursRows   || []);
     db.calEvents     = (calendarEventsRows || []);
     db.activityLog   = (activityLogRows   || []);
+    db.generatedDocs = (generatedDocsRows  || []);
 
     // Pre-index finance data for fast month lookup
     db._chargesIdx = {};
@@ -6073,6 +6100,7 @@ function renderPage(page) {
   if (page === 'rapport') renderRapport();
   if (page === 'taches') renderMesTaches();
   if (page === 'calendar') renderCalendar();
+  if (page === 'generateurs') renderGenerateurs();
   if (page === 'project-detail') renderProjectDetailPage();
   if (page === 'panneau') { if (typeof window.initPanneauChantier === 'function') window.initPanneauChantier(); }
   if (page === 'pv') initPVChantier();
@@ -6235,6 +6263,9 @@ function renderProjectDetailPage() {
 
       <!-- Événements liés au projet -->
       ${_renderProjectCalendarEvents(p.id)}
+
+      <!-- CPS / Documents générés -->
+      ${_renderProjectGeneratedDocs(p.id)}
 
       <!-- Documents du projet -->
       <div>
@@ -13713,6 +13744,40 @@ function _calTimeToMin(t) {
   return (p[0] || 0) * 60 + (p[1] || 0);
 }
 
+function _renderProjectGeneratedDocs(projectId) {
+  if (!currentUser || currentUser.role !== 'admin') return '';
+  const docs = (db.generatedDocs || []).filter(function(d) { return String(d.project_id || '') === String(projectId); });
+  if (!docs.length) {
+    return '<div style="margin-top:32px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<div class="section-title" style="margin:0;">Documents générés</div>' +
+      '<button onclick="(function(){_genState.selectedProjectId=\'' + projectId + '\';navigate(\'generateurs\');})()" style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">auto_awesome</span> Générer un CPS</button>' +
+      '</div><div style="padding:24px;text-align:center;background:var(--surface2);border-radius:var(--radius);color:var(--text-faint);font-size:13px;">Aucun document généré pour ce projet.</div></div>';
+  }
+  const grouped = {};
+  docs.forEach(function(d) { (grouped[d.doc_type] = grouped[d.doc_type] || []).push(d); });
+  const typeLabels = { cps: 'CPS', planning: 'Planning', questionnaire: 'Questionnaire' };
+  let html = '<div style="margin-top:32px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+    '<div class="section-title" style="margin:0;">Documents générés (' + docs.length + ')</div>' +
+    '<button onclick="(function(){_genState.selectedProjectId=\'' + projectId + '\';navigate(\'generateurs\');})()" style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">auto_awesome</span> Nouveau CPS</button>' +
+    '</div>';
+  Object.keys(grouped).forEach(function(t) {
+    grouped[t].sort(function(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+    html += '<div style="font-size:11px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;">' + (typeLabels[t] || t) + ' (' + grouped[t].length + ')</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:8px;">' +
+      grouped[t].map(function(d) {
+        const dt = d.created_at ? new Date(d.created_at).toLocaleDateString('fr-MA', { day:'numeric', month:'short', year:'numeric' }) : '—';
+        return '<div onclick="(function(){_genState.selectedProjectId=\'' + projectId + '\';openGenEditor(\'' + t + '\',' + d.id + ');})()" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:background .12s;" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'var(--surface)\'">' +
+          '<span class="mi" style="font-size:18px;color:var(--gold);">description</span>' +
+          '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--text);">' + escHTML(d.title) + ' <span style="font-size:10px;color:var(--text-dim);">v' + d.version + '</span></div>' +
+          '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + dt + ' • par ' + escHTML(d.created_by || '—') + '</div></div>' +
+          '<span class="mi" style="color:var(--text-faint);">chevron_right</span></div>';
+      }).join('') +
+    '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
 function _renderProjectCalendarEvents(projectId) {
   if (typeof CAL_EVENT_TYPES === 'undefined') return '';
   const events = (db.calEvents || []).filter(function(ev) { return String(ev.project_id || '') === String(projectId); });
@@ -14089,6 +14154,240 @@ function toggleCalTemplateTasks() {
   _calShowTemplateTasks = !_calShowTemplateTasks;
   localStorage.setItem('s33_cal_show_template', _calShowTemplateTasks ? 'true' : 'false');
   renderCalendar();
+}
+
+// ──────────────────────────────────────────────────────
+// GÉNÉRATEURS DE DOCUMENTS (CPS · Planning · Questionnaire)
+// ──────────────────────────────────────────────────────
+let _genState = {
+  type: 'cps',           // active generator type
+  selectedProjectId: '', // '' = blank mode
+  editingId: null        // id of doc being edited (null = new)
+};
+
+function renderGenerateurs() {
+  if (!currentUser) return;
+  if (currentUser.role !== 'admin') {
+    document.getElementById('generateurs-content').innerHTML =
+      '<div class="card" style="padding:48px 24px;text-align:center;color:var(--text-faint);">Accès réservé à l\'administrateur.</div>';
+    return;
+  }
+
+  const projects = (db.projects || []).filter(function(p) { return !p.archived; })
+    .slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+
+  const projectOpts = '<option value="">— Sans projet (feuille blanche / test) —</option>' +
+    projects.map(function(p) { return '<option value="' + p.id + '"' + (String(_genState.selectedProjectId) === String(p.id) ? ' selected' : '') + '>' + escHTML(p.name || ('Projet ' + p.id)) + '</option>'; }).join('');
+
+  // Existing CPS docs for selected project (or all blank-mode docs if no project)
+  const allDocs = (db.generatedDocs || []).filter(function(d) { return d.doc_type === _genState.type; });
+  const docsForCtx = _genState.selectedProjectId
+    ? allDocs.filter(function(d) { return String(d.project_id) === String(_genState.selectedProjectId); })
+    : allDocs.filter(function(d) { return !d.project_id; });
+  docsForCtx.sort(function(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+
+  let versionsHTML = '';
+  if (!docsForCtx.length) {
+    versionsHTML = '<div class="card" style="padding:32px;text-align:center;color:var(--text-faint);font-size:13px;">Aucun document généré ' + (_genState.selectedProjectId ? 'pour ce projet' : 'en mode test') + '. Cliquez sur « Nouveau CPS » pour commencer.</div>';
+  } else {
+    versionsHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' +
+      docsForCtx.map(function(d) {
+        const dt = d.created_at ? new Date(d.created_at).toLocaleDateString('fr-MA', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+        const phase = (d.metadata && d.metadata.phase) ? ' • ' + d.metadata.phase : '';
+        return '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);">' +
+          '<span class="mi" style="font-size:22px;color:var(--gold);">description</span>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:14px;font-weight:600;color:var(--text);">' + escHTML(d.title) + ' <span style="font-size:11px;color:var(--text-dim);font-weight:500;">v' + d.version + '</span></div>' +
+            '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + dt + phase + ' • par ' + escHTML(d.created_by || '—') + '</div>' +
+          '</div>' +
+          '<button onclick="openGenEditor(\'cps\',' + d.id + ')" style="padding:6px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:12px;font-weight:600;cursor:pointer;color:var(--text);"><span class="mi mi-sm">edit</span> Ouvrir</button>' +
+          '<button onclick="duplicateGenDoc(' + d.id + ')" style="padding:6px 12px;background:none;border:1px solid var(--border);border-radius:var(--radius-pill);font-size:12px;font-weight:500;cursor:pointer;color:var(--text-dim);" title="Dupliquer en nouvelle version"><span class="mi mi-sm">content_copy</span></button>' +
+          '<button onclick="downloadGenDocHTML(' + d.id + ')" style="padding:6px 12px;background:none;border:1px solid var(--border);border-radius:var(--radius-pill);font-size:12px;font-weight:500;cursor:pointer;color:var(--text-dim);" title="Télécharger HTML"><span class="mi mi-sm">download</span></button>' +
+          '<button onclick="deleteGenDoc(' + d.id + ')" style="padding:6px 12px;background:none;border:none;cursor:pointer;color:#c62828;" title="Supprimer"><span class="mi mi-sm">delete</span></button>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  const tabs = [
+    { key: 'cps',           label: 'CPS',           icon: 'description', enabled: true },
+    { key: 'planning',      label: 'Planning',      icon: 'event_note',  enabled: false },
+    { key: 'questionnaire', label: 'Questionnaire', icon: 'quiz',        enabled: false }
+  ];
+  const tabsHTML = '<div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:24px;">' +
+    tabs.map(function(t) {
+      const active = _genState.type === t.key;
+      return '<button onclick="' + (t.enabled ? "_genSetType('"+t.key+"')" : '') + '"' + (t.enabled ? '' : ' disabled') +
+        ' style="padding:10px 22px;background:none;border:none;border-bottom:3px solid ' + (active ? 'var(--gold)' : 'transparent') + ';font-size:13px;font-weight:600;cursor:' + (t.enabled ? 'pointer' : 'not-allowed') + ';color:' + (active ? 'var(--text)' : (t.enabled ? 'var(--text-dim)' : 'var(--text-faint)')) + ';display:flex;align-items:center;gap:6px;font-family:inherit;">' +
+        '<span class="mi mi-sm">' + t.icon + '</span>' + t.label + (t.enabled ? '' : ' <span style="font-size:9px;background:var(--surface2);padding:2px 6px;border-radius:999px;margin-left:4px;">Bientôt</span>') +
+      '</button>';
+    }).join('') + '</div>';
+
+  document.getElementById('generateurs-content').innerHTML =
+    tabsHTML +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">' +
+      '<label style="font-size:12px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Projet :</label>' +
+      '<select onchange="_genSetProject(this.value)" style="flex:1;max-width:340px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);font-family:inherit;outline:none;cursor:pointer;">' + projectOpts + '</select>' +
+      '<button onclick="openGenEditor(\'cps\',null)" style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">add</span> Nouveau CPS</button>' +
+    '</div>' +
+    '<div class="section-title" style="margin-top:24px;margin-bottom:12px;">' + (_genState.selectedProjectId ? 'Versions enregistrées' : 'Brouillons de test') + '</div>' +
+    versionsHTML;
+}
+
+function _genSetType(t) { _genState.type = t; renderGenerateurs(); }
+function _genSetProject(id) { _genState.selectedProjectId = id; renderGenerateurs(); }
+
+// Pre-fill map: project → CPS form fields
+function _genBuildPreloadFromProject(projectId) {
+  if (!projectId) return null;
+  const p = (db.projects || []).find(function(x) { return String(x.id) === String(projectId); });
+  if (!p) return null;
+  const client = (db.clients || []).find(function(c) { return String(c.id) === String(p.clientId); });
+  const today = new Date().toISOString().slice(0, 10);
+  const year = new Date().getFullYear();
+  const ref = 'S33-' + year + '-' + String(p.id).padStart(3, '0');
+  const phaseMap = { ESQ:'ESQ', APS:'APS', APD:'APD', PRO:'PRO', DCE:'DCE', EXE:'EXE', Chantier:'EXE' };
+  return {
+    proj_nom: p.name || '',
+    proj_moa: client ? client.name || '' : '',
+    proj_moa_adr: client ? client.address || '' : '',
+    proj_moa_rc: client ? (client.rc || client.ice || '') : '',
+    proj_lieu: p.address || p.location || '',
+    proj_commune: p.commune || '',
+    proj_date: today,
+    proj_ref: ref,
+    proj_phase: phaseMap[p.phase] || 'PRO',
+    prog_surface: p.surface || '',
+    prog_terrain: p.terrain || '',
+    prog_unites: p.unites || '',
+    interv_archi: 'Studio 33 Architects'
+  };
+}
+
+async function openGenEditor(type, docId) {
+  _genState.editingId = docId || null;
+  const overlay = document.getElementById('gen-editor-overlay');
+  const iframe  = document.getElementById('gen-editor-iframe');
+  const titleEl = document.getElementById('gen-editor-title');
+  if (!overlay || !iframe) return;
+  let preload = null;
+  if (docId) {
+    let doc = (db.generatedDocs || []).find(function(d) { return String(d.id) === String(docId); });
+    // Fetch full row (with form_data) since initial load is metadata-only
+    try {
+      const full = await sbGet('generated_documents', '?id=eq.' + docId);
+      if (full && full[0]) {
+        doc = Object.assign({}, doc, full[0]);
+        const idx = (db.generatedDocs || []).findIndex(function(d) { return String(d.id) === String(docId); });
+        if (idx >= 0) db.generatedDocs[idx] = doc;
+      }
+    } catch(e) { console.warn('fetch full gendoc', e); }
+    if (doc && doc.form_data) preload = doc.form_data;
+    titleEl.textContent = 'Modifier : ' + (doc ? doc.title + ' (v' + doc.version + ')' : 'CPS');
+  } else if (_genState.selectedProjectId) {
+    preload = _genBuildPreloadFromProject(_genState.selectedProjectId);
+    titleEl.textContent = 'Nouveau CPS — ' + (preload && preload.proj_nom ? preload.proj_nom : '');
+  } else {
+    titleEl.textContent = 'Nouveau CPS (test)';
+  }
+  iframe.dataset.preload = preload ? JSON.stringify(preload) : '';
+  iframe.src = 'generators/cps.html';
+  overlay.style.display = 'flex';
+}
+
+function closeGenEditor() {
+  const overlay = document.getElementById('gen-editor-overlay');
+  const iframe  = document.getElementById('gen-editor-iframe');
+  if (overlay) overlay.style.display = 'none';
+  if (iframe) { iframe.src = 'about:blank'; iframe.dataset.preload = ''; }
+  _genState.editingId = null;
+}
+
+// Receive messages from the CPS iframe
+window.addEventListener('message', function(e) {
+  if (!e.data || typeof e.data !== 'object') return;
+  if (e.data.type === 'cps:ready') {
+    const iframe = document.getElementById('gen-editor-iframe');
+    if (iframe && iframe.dataset.preload) {
+      try {
+        const preload = JSON.parse(iframe.dataset.preload);
+        e.source.postMessage({ type: 'cps:preload', data: preload }, '*');
+      } catch(_) {}
+    }
+  } else if (e.data.type === 'cps:save') {
+    _genSaveDoc(e.data.data);
+  }
+});
+
+async function _genSaveDoc(payload) {
+  if (!payload) return;
+  const projectId = _genState.selectedProjectId ? Number(_genState.selectedProjectId) : null;
+  // Compute next version: max+1 for this project+doc_type
+  const existing = (db.generatedDocs || []).filter(function(d) {
+    return d.doc_type === 'cps' && String(d.project_id || '') === String(projectId || '');
+  });
+  const nextVersion = existing.reduce(function(m, d) { return Math.max(m, d.version || 0); }, 0) + 1;
+  const obj = {
+    project_id: projectId,
+    doc_type: 'cps',
+    version: nextVersion,
+    title: payload.title || 'CPS sans titre',
+    form_data: payload.form_data || {},
+    html_content: payload.html_content || '',
+    metadata: payload.metadata || {},
+    created_by: currentUser && currentUser.name || ''
+  };
+  try {
+    const res = await sbInsert('generated_documents', obj);
+    const ins = Array.isArray(res) ? res[0] : res;
+    if (ins && ins.id) {
+      db.generatedDocs = (db.generatedDocs || []).concat([ins]);
+    }
+    toast('CPS enregistré (v' + nextVersion + ')');
+    closeGenEditor();
+    renderGenerateurs();
+  } catch(err) {
+    console.error('_genSaveDoc error', err);
+    toast('Erreur enregistrement : ' + (err.message || ''), 'error');
+  }
+}
+
+async function deleteGenDoc(id) {
+  if (!confirm('Supprimer ce document ? (Action irréversible)')) return;
+  try {
+    const idStr = String(id);
+    await sbDelete('generated_documents', id);
+    db.generatedDocs = (db.generatedDocs || []).filter(function(d) { return String(d.id) !== idStr; });
+    renderGenerateurs();
+    toast('Document supprimé');
+  } catch(err) {
+    console.error('deleteGenDoc error', err);
+    toast('Erreur suppression', 'error');
+  }
+}
+
+async function duplicateGenDoc(id) {
+  const doc = (db.generatedDocs || []).find(function(d) { return String(d.id) === String(id); });
+  if (!doc) return;
+  // Open editor with this doc's form_data but as NEW (no editing id) → save creates a new version
+  _genState.selectedProjectId = doc.project_id ? String(doc.project_id) : '';
+  openGenEditor('cps', null);
+  // Manually set preload from this doc
+  const iframe = document.getElementById('gen-editor-iframe');
+  if (iframe) iframe.dataset.preload = JSON.stringify(doc.form_data || {});
+}
+
+function downloadGenDocHTML(id) {
+  const doc = (db.generatedDocs || []).find(function(d) { return String(d.id) === String(id); });
+  if (!doc) return;
+  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escHTML(doc.title) + '</title></head><body>' + doc.html_content + '</body></html>';
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (doc.title || 'CPS').replace(/[^a-zA-Z0-9_-]/g, '_') + '_v' + doc.version + '.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 }
 
 function renderCalendar() {
@@ -15203,6 +15502,8 @@ function updateUIForUser() {
   if (_canSee('administratif')) _setVis(['nav-administratif','mnav-more-administratif'], true);
   if (_canSee('mediatheque'))   _setVis(['nav-mediatheque','mnav-more-mediatheque'], true);
   if (_canSee('library'))       _setVis(['nav-library','mnav-more-library'], true);
+  // Générateurs : admin uniquement (pour l'instant)
+  _setVis(['nav-generateurs'], !!isAdmin);
 
   // Section headers
   const showFinSec = _canSee('finance') || _canSee('invoices') || _canSee('devis');

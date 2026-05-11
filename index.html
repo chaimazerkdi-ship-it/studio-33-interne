@@ -13401,6 +13401,27 @@ function _calEventPassesFilter(ev) {
   return true;
 }
 
+function _calRenderToolbar(periodLabel) {
+  // Unified toolbar used by ALL views (Mois, Semaine, Jour, Agenda).
+  // Position des boutons constante : [Today < > Label]  …  [ViewBtns | Tâches auto]
+  const vBtn = function(v, lbl) { return '<button class="gcal-view-btn' + (calView === v ? ' active' : '') + '" onclick="setCalView(\'' + v + '\')">' + lbl + '</button>'; };
+  const viewBtns = '<div class="gcal-view-btns">' + vBtn('month', 'Mois') + vBtn('week', 'Semaine') + vBtn('day', 'Jour') + vBtn('agenda', 'Agenda') + '</div>';
+  const chevronBtn = function(delta, icon) {
+    return '<button onclick="navigateCalendar(' + delta + ')" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">' + icon + '</span></button>';
+  };
+  const tachesAutoBtn = '<button onclick="toggleCalTemplateTasks()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:' + (_calShowTemplateTasks ? '#1a73e8' : 'var(--surface)') + ';color:' + (_calShowTemplateTasks ? '#fff' : 'var(--text-dim)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;">Tâches auto : ' + (_calShowTemplateTasks ? 'ON' : 'OFF') + '</button>';
+  return '<div class="gcal-toolbar-unified" style="display:flex;align-items:center;gap:8px;padding:12px 16px;margin-bottom:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius) var(--radius) 0 0;flex-wrap:wrap;">' +
+    '<button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;">Aujourd\'hui</button>' +
+    chevronBtn(-1, 'chevron_left') +
+    chevronBtn(1, 'chevron_right') +
+    '<span style="font-size:18px;font-weight:400;color:var(--text);text-transform:capitalize;flex:1;min-width:0;">' + periodLabel + '</span>' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">' +
+    viewBtns +
+    tachesAutoBtn +
+    '</div>' +
+    '</div>';
+}
+
 function _renderCalLegend() {
   // Compact legend with all main event types (auto-hides on tiny screens via overflow scroll)
   const items = [
@@ -14254,13 +14275,9 @@ function _buildWeekHTML(singleDay) {
   const gridCols = 'grid-template-columns:repeat(' + numDays + ',1fr);';
 
   document.getElementById('calendar-content').innerHTML =
-    '<div class="gcal-wrap">' +
-    '<div class="gcal-toolbar">' +
-    '<button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Aujourd\'hui</button>' +
-    '<button onclick="navigateCalendar(-1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">chevron_left</span></button>' +
-    '<button onclick="navigateCalendar(1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">chevron_right</span></button>' +
-    '<span style="font-size:18px;font-weight:400;color:var(--text);text-transform:capitalize;">' + periodLabel + '</span>' +
-    viewBtns +
+    _calRenderToolbar(periodLabel) +
+    '<div class="gcal-wrap" style="border-radius:0 0 var(--radius) var(--radius);border-top:none;">' +
+    '<div class="gcal-old-hidden" style="display:none;">' +
     '<button onclick="toggleCalTemplateTasks()" style="margin-left:auto;padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:' + (_calShowTemplateTasks ? '#1a73e8' : 'var(--surface)') + ';color:' + (_calShowTemplateTasks ? '#fff' : 'var(--text-dim)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;">Tâches auto : ' + (_calShowTemplateTasks ? 'ON' : 'OFF') + '</button>' +
     '</div>' +
     _calRenderFilterBar() +
@@ -14354,13 +14371,8 @@ function _buildMonthHTML() {
   const viewBtns = '<div class="gcal-view-btns">' + vBtn('month', 'Mois') + vBtn('week', 'Semaine') + vBtn('day', 'Jour') + vBtn('agenda', 'Agenda') + '</div>';
 
   document.getElementById('calendar-content').innerHTML =
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">' +
-    '<button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Aujourd\'hui</button>' +
-    '<button onclick="navigateCalendar(-1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">chevron_left</span></button>' +
-    '<button onclick="navigateCalendar(1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">chevron_right</span></button>' +
-    '<div style="font-size:20px;font-weight:400;color:var(--text);text-transform:capitalize;margin-left:4px;">' + monthName + '</div>' +
-    '<div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
-    viewBtns +
+    _calRenderToolbar(monthName) +
+    '<div style="display:none;">' +
     '<button onclick="toggleCalTemplateTasks()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:' + (_calShowTemplateTasks ? '#1a73e8' : 'var(--surface)') + ';color:' + (_calShowTemplateTasks ? '#fff' : 'var(--text-dim)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;">Tâches auto : ' + (_calShowTemplateTasks ? 'ON' : 'OFF') + '</button>' +
     '</div></div>' +
     '<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);">' + _calRenderFilterBar() + '</div>' +
@@ -14487,13 +14499,10 @@ function _buildAgendaHTML() {
   }
 
   const cg = _buildCongesHTML();
+  const agendaLabel = 'Prochains événements <span style="color:var(--text-dim);font-size:13px;font-weight:400;">(60 jours)</span>';
   document.getElementById('calendar-content').innerHTML =
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">' +
-    '<button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Aujourd\'hui</button>' +
-    '<div style="font-size:20px;font-weight:400;color:var(--text);margin-left:4px;">Prochains événements <span style="color:var(--text-dim);font-size:13px;">(60 jours)</span></div>' +
-    '<div style="margin-left:auto;">' + viewBtns + '</div>' +
-    '</div>' +
-    '<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);">' + _calRenderFilterBar() + '</div>' +
+    _calRenderToolbar(agendaLabel) +
+    '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;background:var(--surface);">' + _calRenderFilterBar() + '</div>' +
     '<div style="height:16px;"></div>' +
     listHTML +
     _renderCalLegend() +

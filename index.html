@@ -2459,6 +2459,39 @@
 .cal-event-anniversaire{ background:#f6bf26; color:#333; }
 .cal-event-autre       { background:#616161; color:#fff; }
 .cal-weekday-header { font-size:11px; font-weight:500; color:var(--text-dim); text-align:center; padding:10px 0 8px; background:var(--surface); text-transform:uppercase; letter-spacing:.5px; }
+[data-theme=dark] .cal-event-commission { background:rgba(109,40,217,.2); color:#c4b5fd; border-color:rgba(109,40,217,.3); }
+[data-theme=dark] .cal-event-rokha     { background:rgba(194,65,12,.2); color:#fdba74; border-color:rgba(194,65,12,.3); }
+[data-theme=dark] .cal-event-anniversaire { background:rgba(157,23,77,.2); color:#f9a8d4; border-color:rgba(157,23,77,.3); }
+[data-theme=dark] .cal-event-autre     { background:rgba(55,65,81,.3); color:#d1d5db; border-color:rgba(55,65,81,.4); }
+.cal-weekday-header { font-size:11px; font-weight:700; color:var(--text-dim); text-align:center; padding:8px 0; background:var(--surface2); }
+
+/* Google-Calendar week/day view */
+.gcal-wrap { display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; background:var(--surface); }
+.gcal-toolbar { display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--border); flex-wrap:wrap; background:var(--surface); }
+.gcal-view-btns { display:flex; border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.gcal-view-btn { padding:6px 14px; background:none; border:none; border-right:1px solid var(--border); font-size:13px; color:var(--text-dim); cursor:pointer; font-family:inherit; transition:background .1s; }
+.gcal-view-btn:last-child { border-right:none; }
+.gcal-view-btn.active { background:var(--surface2); color:var(--text); font-weight:500; }
+.gcal-week-header { display:grid; border-bottom:1px solid var(--border); background:var(--surface); }
+.gcal-week-day-head { text-align:center; padding:8px 4px; cursor:pointer; transition:background .1s; }
+.gcal-week-day-head:hover { background:var(--surface2); }
+.gcal-week-day-name { font-size:11px; text-transform:uppercase; color:var(--text-dim); font-weight:500; letter-spacing:.5px; }
+.gcal-week-day-num { width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:50%; font-size:22px; font-weight:300; color:var(--text); margin:2px auto; }
+.gcal-week-day-num.today { background:#1a73e8; color:#fff !important; font-weight:400; }
+.gcal-allday-bar { display:grid; border-bottom:2px solid var(--border); background:var(--surface); }
+.gcal-allday-cell { border-left:1px solid var(--border); padding:3px 4px; min-height:36px; cursor:pointer; transition:background .1s; }
+.gcal-allday-cell:hover { background:var(--surface2); }
+.gcal-time-scroll { overflow-y:auto; max-height:540px; position:relative; scroll-behavior:smooth; }
+.gcal-time-inner { position:relative; display:flex; }
+.gcal-hours-col { width:56px; flex-shrink:0; }
+.gcal-hour-label { height:64px; display:flex; align-items:flex-start; justify-content:flex-end; padding-right:8px; font-size:10px; color:var(--text-faint); padding-top:-2px; box-sizing:border-box; margin-top:-7px; }
+.gcal-day-cols { flex:1; display:grid; position:relative; }
+.gcal-day-col { border-left:1px solid var(--border); position:relative; }
+.gcal-day-col-today { background:rgba(26,115,232,.03); }
+[data-theme=dark] .gcal-day-col-today { background:rgba(26,115,232,.06); }
+.gcal-hour-slot { height:64px; border-top:1px solid var(--border); box-sizing:border-box; }
+.gcal-current-time { position:absolute; left:-1px; right:0; height:2px; background:#ea4335; pointer-events:none; z-index:3; }
+.gcal-current-time::before { content:''; position:absolute; left:-4px; top:-4px; width:10px; height:10px; background:#ea4335; border-radius:50%; }
 
 /* Gantt */
 .gantt-wrap { overflow-x:auto; }
@@ -13196,8 +13229,11 @@ async function deleteAdminTask(taskId) {
 }
 
 // ===== CALENDRIER =====
-let calendarMonth = new Date(); // module-level month state
-let _calShowTemplateTasks = localStorage.getItem('s33_cal_show_template') === 'true'; // OFF par défaut
+let calendarMonth = new Date();
+let _calShowTemplateTasks = localStorage.getItem('s33_cal_show_template') === 'true';
+let calView = localStorage.getItem('s33_cal_view') || 'week';
+let calWeekStart = null;
+let _calTimerInterval = null;
 
 // Moroccan public holidays 2026 (hardcoded)
 // Note: Ramadan/Eid dates for 2026 are variable (approx. Mar 18 – Apr 16 for Ramadan,
@@ -13326,13 +13362,37 @@ async function deleteCalEvent(id) {
   }
 }
 
-function navigateCalendar(delta) {
-  calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + delta, 1);
+function _getWeekMonday(d) {
+  const day = new Date(d);
+  const dow = day.getDay();
+  day.setDate(day.getDate() + (dow === 0 ? -6 : 1 - dow));
+  day.setHours(0, 0, 0, 0);
+  return day;
+}
+
+function setCalView(v) {
+  calView = v;
+  localStorage.setItem('s33_cal_view', v);
+  if (!calWeekStart) calWeekStart = _getWeekMonday(new Date());
   renderCalendar();
 }
+
+function navigateCalendar(delta) {
+  if (calView === 'month') {
+    calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + delta, 1);
+  } else if (calView === 'week') {
+    if (!calWeekStart) calWeekStart = _getWeekMonday(new Date());
+    calWeekStart = new Date(calWeekStart.getTime() + delta * 7 * 86400000);
+  } else {
+    if (!calWeekStart) calWeekStart = new Date(); calWeekStart.setHours(0,0,0,0);
+    calWeekStart = new Date(calWeekStart.getTime() + delta * 86400000);
+  }
+  renderCalendar();
+}
+
 function goCalToday() {
-  calendarMonth = new Date();
-  calendarMonth.setDate(1);
+  calendarMonth = new Date(); calendarMonth.setDate(1);
+  calWeekStart = _getWeekMonday(new Date());
   renderCalendar();
 }
 
@@ -13343,6 +13403,252 @@ function toggleCalTemplateTasks() {
 }
 
 function renderCalendar() {
+  if (!currentUser) return;
+  if (calView === 'week') {
+    if (!calWeekStart) calWeekStart = _getWeekMonday(new Date());
+    _buildWeekHTML(false);
+  } else if (calView === 'day') {
+    if (!calWeekStart) { calWeekStart = new Date(); calWeekStart.setHours(0,0,0,0); }
+    _buildWeekHTML(true);
+  } else {
+    _buildMonthHTML();
+  }
+}
+
+function _collectCalEvents() {
+  const myName = (currentUser ? currentUser.name || '' : '').toLowerCase();
+  const tasksByDate = {};
+  (db.projects || []).forEach(function(p) {
+    (p.tasks || []).forEach(function(t) {
+      if (!t.deadline || isTaskDone(t)) return;
+      const assignedTo = (t.assignedTo || t.assigned_to || '').trim();
+      if (!_calShowTemplateTasks && !assignedTo) return;
+      if (!tasksByDate[t.deadline]) tasksByDate[t.deadline] = [];
+      const al = assignedTo.toLowerCase();
+      const mine = !!(myName && (al === myName || al.startsWith(myName + ' ') || al.includes(' ' + myName)));
+      tasksByDate[t.deadline].push({ name: t.name, proj: p.name, mine: mine, assignedTo: assignedTo });
+    });
+  });
+  const congesByDate = {};
+  (db.conges || []).filter(function(c) { return c.status === 'approved'; }).forEach(function(c) {
+    let d = new Date(c.start_date); const end = new Date(c.end_date);
+    while (d <= end) {
+      const ds = d.toISOString().split('T')[0];
+      if (!congesByDate[ds]) congesByDate[ds] = [];
+      congesByDate[ds].push(c.user_name);
+      d.setDate(d.getDate() + 1);
+    }
+  });
+  const feriesByDate = {};
+  FERIES_2026.forEach(function(f) { feriesByDate[f.date] = f.label; });
+  const customByDate = {};
+  getCalCustomEvents().forEach(function(ev) {
+    const start = new Date(ev.date);
+    const end = ev.date_end ? new Date(ev.date_end) : new Date(ev.date);
+    let d = new Date(start);
+    while (d <= end) {
+      const ds = d.toISOString().split('T')[0];
+      if (!customByDate[ds]) customByDate[ds] = [];
+      customByDate[ds].push(ev);
+      d.setDate(d.getDate() + 1);
+    }
+  });
+  return { tasksByDate: tasksByDate, congesByDate: congesByDate, feriesByDate: feriesByDate, customByDate: customByDate };
+}
+
+function _buildCongesHTML() {
+  const isAdmin = currentUser.role === 'admin';
+  const myConges = (db.conges || []).filter(function(c) { return String(c.user_id) === String(currentUser.id); });
+  const pendingConges = (db.conges || []).filter(function(c) { return c.status === 'pending'; });
+  const statusBadge = function(s) {
+    if (s === 'approved') return '<span style="background:#061a0e;color:#3dd68c;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">Approuvé</span>';
+    if (s === 'refused') return '<span style="background:#1a0505;color:#f07070;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">Refusé</span>';
+    return '<span style="background:#2a1f00;color:#f5c842;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">En attente</span>';
+  };
+  let congesHTML = '<div class="section-title" style="margin-top:32px;margin-bottom:14px;">Mes demandes de congé</div>';
+  if (!myConges.length) {
+    congesHTML += '<div class="card" style="padding:20px;color:var(--text-faint);font-size:13px;text-align:center;">Aucune demande.</div>';
+  } else {
+    congesHTML += '<div class="card" style="padding:0;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:var(--surface2);"><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Début</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Fin</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Motif</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Statut</th></tr></thead><tbody>' +
+      myConges.map(function(c) { return '<tr style="border-top:1px solid var(--surface2);"><td style="padding:10px 14px;">' + c.start_date + '</td><td style="padding:10px 14px;">' + c.end_date + '</td><td style="padding:10px 14px;color:var(--text-dim);">' + (c.motif || '—') + '</td><td style="padding:10px 14px;">' + statusBadge(c.status) + '</td></tr>'; }).join('') +
+      '</tbody></table></div>';
+  }
+  let adminHTML = '';
+  if (isAdmin && pendingConges.length > 0) {
+    adminHTML = '<div class="section-title" style="margin-top:28px;margin-bottom:14px;">Demandes en attente (' + pendingConges.length + ')</div><div class="card" style="padding:0;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:var(--surface2);"><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Employé</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Début</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Fin</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Motif</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Actions</th></tr></thead><tbody>' +
+      pendingConges.map(function(c) { return '<tr style="border-top:1px solid var(--surface2);"><td style="padding:10px 14px;font-weight:600;">' + c.user_name + '</td><td style="padding:10px 14px;">' + c.start_date + '</td><td style="padding:10px 14px;">' + c.end_date + '</td><td style="padding:10px 14px;color:var(--text-dim);">' + (c.motif || '—') + '</td><td style="padding:10px 14px;display:flex;gap:8px;"><button onclick="approveConge(' + c.id + ')" style="padding:5px 12px;background:#061a0e;color:#3dd68c;border:none;border-radius:var(--radius-pill);font-size:11px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">check</span> Approuver</button><button onclick="refuseConge(' + c.id + ')" style="padding:5px 12px;background:#1a0505;color:#f07070;border:none;border-radius:var(--radius-pill);font-size:11px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">close</span> Refuser</button></td></tr>'; }).join('') +
+      '</tbody></table></div>';
+  }
+  return { congesHTML: congesHTML, adminHTML: adminHTML };
+}
+
+function _buildWeekHTML(singleDay) {
+  const evData = _collectCalEvents();
+  const tasksByDate = evData.tasksByDate, congesByDate = evData.congesByDate, feriesByDate = evData.feriesByDate, customByDate = evData.customByDate;
+  const isAdmin = currentUser.role === 'admin';
+  const todayStr = new Date().toISOString().split('T')[0];
+  const base = calWeekStart;
+  const numDays = singleDay ? 1 : 7;
+
+  let periodLabel;
+  if (singleDay) {
+    periodLabel = base.toLocaleDateString('fr-MA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  } else {
+    const weekEnd = new Date(base.getTime() + 6 * 86400000);
+    const mA = base.toLocaleDateString('fr-MA', { month: 'long' }), mB = weekEnd.toLocaleDateString('fr-MA', { month: 'long' });
+    periodLabel = mA === mB
+      ? base.getDate() + ' – ' + weekEnd.toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' })
+      : base.toLocaleDateString('fr-MA', { day: 'numeric', month: 'long' }) + ' – ' + weekEnd.toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  const DAY_NAMES = ['DIM', 'LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM'];
+  let headerCols = '', alldayCols = '', dayCols = '', todayColIdx = -1;
+
+  for (let i = 0; i < numDays; i++) {
+    const d = new Date(base.getTime() + i * 86400000);
+    const ds = d.toISOString().split('T')[0];
+    const isToday = ds === todayStr;
+    if (isToday) todayColIdx = i;
+    headerCols += '<div class="gcal-week-day-head" onclick="openCalEventModal(\'' + ds + '\')">' +
+      '<div class="gcal-week-day-name">' + DAY_NAMES[d.getDay()] + '</div>' +
+      '<div class="' + (isToday ? 'gcal-week-day-num today' : 'gcal-week-day-num') + '">' + d.getDate() + '</div></div>';
+
+    let evs = '';
+    if (feriesByDate[ds]) evs += '<div class="cal-event cal-event-ferie" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + feriesByDate[ds] + '</div>';
+    (congesByDate[ds] || []).forEach(function(n) { evs += '<div class="cal-event cal-event-conge" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">● ' + n + '</div>'; });
+    const tasks = tasksByDate[ds] || [];
+    tasks.slice(0, 3).forEach(function(t) { evs += '<div class="cal-event cal-event-task" title="' + escHTML(t.proj + ': ' + t.name) + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHTML(t.name) + '</div>'; });
+    if (tasks.length > 3) evs += '<div style="font-size:10px;color:var(--text-dim);padding:1px 4px;">+' + (tasks.length - 3) + ' de plus</div>';
+    (customByDate[ds] || []).forEach(function(ev) {
+      const ti = CAL_EVENT_TYPES[ev.type] || CAL_EVENT_TYPES.autre;
+      const canDel = isAdmin || (ev.created_by || '').toLowerCase() === (currentUser ? currentUser.name || '' : '').toLowerCase();
+      evs += '<div class="cal-event ' + ti.cls + '" title="' + escHTML(ev.title) + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;"' + (canDel ? ' onclick="event.stopPropagation();deleteCalEvent(' + ev.id + ')"' : '') + '><span class="mi" style="font-size:10px;">' + ti.icon + '</span> ' + escHTML(ev.title) + '</div>';
+    });
+    alldayCols += '<div class="gcal-allday-cell" onclick="openCalEventModal(\'' + ds + '\')">' + evs + '</div>';
+
+    let slots = '';
+    for (let h = 0; h < 24; h++) slots += '<div class="gcal-hour-slot"></div>';
+    dayCols += '<div class="gcal-day-col' + (isToday ? ' gcal-day-col-today' : '') + '">' + slots + (isToday ? '<div class="gcal-current-time" id="gcal-tl-' + i + '"></div>' : '') + '</div>';
+  }
+
+  const HOUR_LBLS = ['', '1h', '2h', '3h', '4h', '5h', '6h', '7h', '8h', '9h', '10h', '11h', '12h', '13h', '14h', '15h', '16h', '17h', '18h', '19h', '20h', '21h', '22h', '23h'];
+  const hourLabels = HOUR_LBLS.map(function(h) { return '<div class="gcal-hour-label">' + h + '</div>'; }).join('');
+  const cg = _buildCongesHTML();
+  const vBtn = function(v, lbl) { return '<button class="gcal-view-btn' + (calView === v ? ' active' : '') + '" onclick="setCalView(\'' + v + '\')">' + lbl + '</button>'; };
+  const viewBtns = '<div class="gcal-view-btns">' + vBtn('month', 'Mois') + vBtn('week', 'Semaine') + vBtn('day', 'Jour') + '</div>';
+  const gridCols = 'grid-template-columns:repeat(' + numDays + ',1fr);';
+
+  document.getElementById('calendar-content').innerHTML =
+    '<div class="gcal-wrap">' +
+    '<div class="gcal-toolbar">' +
+    '<button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Aujourd\'hui</button>' +
+    '<button onclick="navigateCalendar(-1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">chevron_left</span></button>' +
+    '<button onclick="navigateCalendar(1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">chevron_right</span></button>' +
+    '<span style="font-size:18px;font-weight:400;color:var(--text);text-transform:capitalize;">' + periodLabel + '</span>' +
+    viewBtns +
+    '<button onclick="toggleCalTemplateTasks()" style="margin-left:auto;padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:' + (_calShowTemplateTasks ? '#1a73e8' : 'var(--surface)') + ';color:' + (_calShowTemplateTasks ? '#fff' : 'var(--text-dim)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;">Tâches auto : ' + (_calShowTemplateTasks ? 'ON' : 'OFF') + '</button>' +
+    '</div>' +
+    '<div class="gcal-week-header" style="' + gridCols + '">' + headerCols + '</div>' +
+    '<div class="gcal-allday-bar" style="' + gridCols + '">' + alldayCols + '</div>' +
+    '<div class="gcal-time-scroll" id="gcal-scroll"><div class="gcal-time-inner">' +
+    '<div class="gcal-hours-col">' + hourLabels + '</div>' +
+    '<div class="gcal-day-cols" style="' + gridCols + '">' + dayCols + '</div>' +
+    '</div></div></div>' +
+    cg.congesHTML + cg.adminHTML;
+
+  _updateCalTimeLine(numDays, todayColIdx);
+  if (_calTimerInterval) clearInterval(_calTimerInterval);
+  _calTimerInterval = setInterval(function() { _updateCalTimeLine(numDays, todayColIdx); }, 60000);
+  const scrollEl = document.getElementById('gcal-scroll');
+  if (scrollEl) scrollEl.scrollTop = todayColIdx >= 0 ? Math.max(0, (new Date().getHours() - 1) * 64) : 8 * 64;
+}
+
+function _updateCalTimeLine(numDays, todayIdx) {
+  if (todayIdx < 0) return;
+  const now = new Date();
+  const top = Math.round((now.getHours() * 60 + now.getMinutes()) / 1440 * 1536);
+  const el = document.getElementById('gcal-tl-' + todayIdx);
+  if (el) el.style.top = top + 'px';
+}
+
+function _buildMonthHTML() {
+  const isAdmin = currentUser.role === 'admin';
+  const year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
+  const todayStr = new Date().toISOString().split('T')[0];
+  const monthName = calendarMonth.toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
+  const evData = _collectCalEvents();
+  const tasksByDate = evData.tasksByDate, congesByDate = evData.congesByDate, feriesByDate = evData.feriesByDate, customByDate = evData.customByDate;
+
+  const firstDay = new Date(year, month, 1), lastDay = new Date(year, month + 1, 0);
+  let startDow = firstDay.getDay(); startDow = startDow === 0 ? 6 : startDow - 1;
+
+  let gridHTML = '<div class="cal-grid" style="margin-bottom:8px;">';
+  ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].forEach(function(d) { gridHTML += '<div class="cal-weekday-header">' + d + '</div>'; });
+  for (let i = 0; i < startDow; i++) {
+    const prev = new Date(year, month, 1 - (startDow - i));
+    gridHTML += '<div class="cal-cell other-month"><div class="cal-day-num">' + prev.getDate() + '</div></div>';
+  }
+  for (let day = 1; day <= lastDay.getDate(); day++) {
+    const dateObj = new Date(year, month, day);
+    const ds = dateObj.toISOString().split('T')[0];
+    const dow = dateObj.getDay();
+    let cls = 'cal-cell' + (dow === 0 || dow === 6 ? ' weekend' : '') + (ds === todayStr ? ' today' : '');
+    let evs = '';
+    if (feriesByDate[ds]) evs += '<div class="cal-event cal-event-ferie">' + feriesByDate[ds] + '</div>';
+    (congesByDate[ds] || []).slice(0, 2).forEach(function(n) { evs += '<div class="cal-event cal-event-conge">● ' + n + '</div>'; });
+    const sortedTasks = (tasksByDate[ds] || []).slice().sort(function(a, b) { return (b.mine ? 1 : 0) - (a.mine ? 1 : 0); });
+    sortedTasks.slice(0, 2).forEach(function(t) {
+      const dot = t.mine
+        ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-right:4px;vertical-align:middle;flex-shrink:0;"></span>'
+        : '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#4a90e2;margin-right:4px;vertical-align:middle;flex-shrink:0;"></span>';
+      evs += '<div class="cal-event cal-event-task" title="' + t.proj + ': ' + t.name + '" style="' + (t.mine ? 'font-weight:600;' : '') + 'display:flex;align-items:center;">' + dot + t.name + '</div>';
+    });
+    if (sortedTasks.length > 2) evs += '<div style="font-size:11px;color:var(--text-dim);padding:1px 8px;">+' + (sortedTasks.length - 2) + ' de plus</div>';
+    (customByDate[ds] || []).forEach(function(ev) {
+      const ti = CAL_EVENT_TYPES[ev.type] || CAL_EVENT_TYPES.autre;
+      const canDel = isAdmin || (ev.created_by || '').toLowerCase() === (currentUser ? currentUser.name || '' : '').toLowerCase();
+      evs += '<div class="cal-event ' + ti.cls + '" title="' + escHTML(ev.note ? ev.title + ' — ' + ev.note : ev.title) + '" style="cursor:' + (canDel ? 'pointer' : 'default') + ';display:flex;align-items:center;gap:3px;"' + (canDel ? ' onclick="event.stopPropagation();deleteCalEvent(' + ev.id + ')"' : '') + '><span class="mi" style="font-size:10px;">' + ti.icon + '</span>' + escHTML(ev.title) + '</div>';
+    });
+    gridHTML += '<div class="' + cls + '" onclick="openCalEventModal(\'' + ds + '\')"><div class="cal-day-num">' + day + '</div>' + evs + '</div>';
+  }
+  const remaining = (7 - ((startDow + lastDay.getDate()) % 7)) % 7;
+  for (let i = 1; i <= remaining; i++) gridHTML += '<div class="cal-cell other-month"><div class="cal-day-num">' + i + '</div></div>';
+  gridHTML += '</div>';
+
+  const customEvts = getCalCustomEvents().sort(function(a, b) { return a.date.localeCompare(b.date); });
+  let customListHTML = '';
+  if (customEvts.length) {
+    customListHTML = '<div class="section-title" style="margin-top:28px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;"><span>Événements personnalisés (' + customEvts.length + ')</span><button onclick="openCalEventModal()" style="padding:5px 14px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-size:11px;font-weight:600;cursor:pointer;font-family:\'Inter\',system-ui,sans-serif;">+ Ajouter</button></div><div style="display:flex;flex-direction:column;gap:8px;">' +
+      customEvts.map(function(ev) {
+        const ti = CAL_EVENT_TYPES[ev.type] || CAL_EVENT_TYPES.autre;
+        const dateLabel = ev.date_end && ev.date_end !== ev.date
+          ? new Date(ev.date).toLocaleDateString('fr-MA', { day: 'numeric', month: 'short' }) + ' → ' + new Date(ev.date_end).toLocaleDateString('fr-MA', { day: 'numeric', month: 'short', year: 'numeric' })
+          : new Date(ev.date).toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' });
+        return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);"><span class="mi" style="font-size:18px;flex-shrink:0;">' + ti.icon + '</span><div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--text);">' + escHTML(ev.title) + '</div><div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + ti.label + ' · ' + dateLabel + (ev.note ? ' · ' + ev.note : '') + '</div></div><button onclick="deleteCalEvent(\'' + ev.id + '\')" style="background:none;border:none;cursor:pointer;color:var(--text-faint);padding:4px;"><span class="mi mi-sm">delete</span></button></div>';
+      }).join('') + '</div>';
+  }
+
+  const cg = _buildCongesHTML();
+  const vBtn = function(v, lbl) { return '<button class="gcal-view-btn' + (calView === v ? ' active' : '') + '" onclick="setCalView(\'' + v + '\')">' + lbl + '</button>'; };
+  const viewBtns = '<div class="gcal-view-btns">' + vBtn('month', 'Mois') + vBtn('week', 'Semaine') + vBtn('day', 'Jour') + '</div>';
+
+  document.getElementById('calendar-content').innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">' +
+    '<button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Aujourd\'hui</button>' +
+    '<button onclick="navigateCalendar(-1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">chevron_left</span></button>' +
+    '<button onclick="navigateCalendar(1)" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">chevron_right</span></button>' +
+    '<div style="font-size:20px;font-weight:400;color:var(--text);text-transform:capitalize;margin-left:4px;">' + monthName + '</div>' +
+    '<div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+    viewBtns +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px;align-items:center;"><span class="cal-event cal-event-ferie" style="display:inline-block;">Férié</span><span class="cal-event cal-event-conge" style="display:inline-block;">Congé</span><span class="cal-event cal-event-task" style="display:inline-block;">Tâche</span><span class="cal-event cal-event-commission" style="display:inline-block;">Commission</span><span class="cal-event cal-event-rokha" style="display:inline-block;">Rokha</span><span class="cal-event cal-event-anniversaire" style="display:inline-block;">Anniversaire</span></div>' +
+    '<button onclick="toggleCalTemplateTasks()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:' + (_calShowTemplateTasks ? '#1a73e8' : 'var(--surface)') + ';color:' + (_calShowTemplateTasks ? '#fff' : 'var(--text-dim)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;">Tâches auto : ' + (_calShowTemplateTasks ? 'ON' : 'OFF') + '</button>' +
+    '</div></div>' +
+    gridHTML + customListHTML + cg.congesHTML + cg.adminHTML;
+
+  if (_calTimerInterval) { clearInterval(_calTimerInterval); _calTimerInterval = null; }
+}
+
+function _old_renderCalendar() {
   if (!currentUser) return;
   const isAdmin = currentUser.role === 'admin';
   const year = calendarMonth.getFullYear();

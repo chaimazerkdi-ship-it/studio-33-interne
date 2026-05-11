@@ -13401,6 +13401,34 @@ function _calEventPassesFilter(ev) {
   return true;
 }
 
+function _renderCalLegend() {
+  // Compact legend with all main event types (auto-hides on tiny screens via overflow scroll)
+  const items = [
+    { cls: 'cal-event-ferie',         label: 'Férié' },
+    { cls: 'cal-event-conge',         label: 'Congé' },
+    { cls: 'cal-event-task',          label: 'Tâche' },
+    { cls: 'cal-event-rdv-client',    label: 'RDV Client' },
+    { cls: 'cal-event-rdv-admin',     label: 'RDV Admin' },
+    { cls: 'cal-event-visite',        label: 'Visite chantier' },
+    { cls: 'cal-event-reun-chantier', label: 'Réun. chantier' },
+    { cls: 'cal-event-bet',           label: 'BET' },
+    { cls: 'cal-event-depot',         label: 'Dépôt' },
+    { cls: 'cal-event-suivi',         label: 'Suivi' },
+    { cls: 'cal-event-livraison',     label: 'Livraison' },
+    { cls: 'cal-event-paiement',      label: 'Paiement' },
+    { cls: 'cal-event-echeance',      label: 'Échéance' },
+    { cls: 'cal-event-presentation',  label: 'Présentation' },
+    { cls: 'cal-event-appel',         label: 'Appel' },
+    { cls: 'cal-event-commission',    label: 'Commission' },
+    { cls: 'cal-event-rokha',         label: 'Rokha' },
+    { cls: 'cal-event-anniversaire',  label: 'Anniversaire' }
+  ];
+  return '<div class="cal-legend" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:14px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:10px;color:var(--text-dim);">' +
+    '<span style="font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-right:6px;">Légende</span>' +
+    items.map(function(it) { return '<span class="' + it.cls + '" style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;line-height:1.4;">' + it.label + '</span>'; }).join('') +
+    '</div>';
+}
+
 function _calRenderFilterBar() {
   const active = _calFilterActiveCount();
   const projOpts = '<option value="">Tous les projets</option>' + (db.projects || []).slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).map(function(p){return '<option value="'+p.id+'"'+(String(calFilter.project)===String(p.id)?' selected':'')+'>'+escHTML(p.name||('Projet '+p.id))+'</option>';}).join('');
@@ -14242,6 +14270,7 @@ function _buildWeekHTML(singleDay) {
     '<div class="gcal-hours-col">' + hourLabels + '</div>' +
     '<div class="gcal-day-cols" style="' + gridCols + '">' + dayCols + '</div>' +
     '</div></div></div>' +
+    _renderCalLegend() +
     cg.congesHTML + cg.adminHTML;
 
   _updateCalTimeLine(numDays, todayColIdx);
@@ -14332,12 +14361,11 @@ function _buildMonthHTML() {
     '<div style="font-size:20px;font-weight:400;color:var(--text);text-transform:capitalize;margin-left:4px;">' + monthName + '</div>' +
     '<div style="margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
     viewBtns +
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:11px;align-items:center;"><span class="cal-event cal-event-ferie" style="display:inline-block;">Férié</span><span class="cal-event cal-event-conge" style="display:inline-block;">Congé</span><span class="cal-event cal-event-task" style="display:inline-block;">Tâche</span><span class="cal-event cal-event-commission" style="display:inline-block;">Commission</span><span class="cal-event cal-event-rokha" style="display:inline-block;">Rokha</span><span class="cal-event cal-event-anniversaire" style="display:inline-block;">Anniversaire</span></div>' +
     '<button onclick="toggleCalTemplateTasks()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:' + (_calShowTemplateTasks ? '#1a73e8' : 'var(--surface)') + ';color:' + (_calShowTemplateTasks ? '#fff' : 'var(--text-dim)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;">Tâches auto : ' + (_calShowTemplateTasks ? 'ON' : 'OFF') + '</button>' +
     '</div></div>' +
     '<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);">' + _calRenderFilterBar() + '</div>' +
     '<div style="height:12px;"></div>' +
-    gridHTML + customListHTML + cg.congesHTML + cg.adminHTML;
+    gridHTML + _renderCalLegend() + customListHTML + cg.congesHTML + cg.adminHTML;
 
   if (_calTimerInterval) { clearInterval(_calTimerInterval); _calTimerInterval = null; }
 }
@@ -14468,6 +14496,7 @@ function _buildAgendaHTML() {
     '<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);">' + _calRenderFilterBar() + '</div>' +
     '<div style="height:16px;"></div>' +
     listHTML +
+    _renderCalLegend() +
     cg.congesHTML + cg.adminHTML;
 }
 

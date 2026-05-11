@@ -13557,11 +13557,11 @@ async function _calDropOnMonthCell(e, ds) {
   const ev = _calDragOrigEv;
   let newDateEnd = null;
   if (ev.date_end && ev.date_end !== ev.date) {
-    const origStart = new Date(ev.date + 'T00:00:00');
-    const origEnd   = new Date(ev.date_end + 'T00:00:00');
-    const newStart  = new Date(ds + 'T00:00:00');
+    const origStart = _parseLocalDate(ev.date);
+    const origEnd   = _parseLocalDate(ev.date_end);
+    const newStart  = _parseLocalDate(ds);
     const durMs = origEnd.getTime() - origStart.getTime();
-    newDateEnd = new Date(newStart.getTime() + durMs).toISOString().split('T')[0];
+    newDateEnd = _toLocalDateStr(new Date(newStart.getTime() + durMs));
   }
   await _calApplyDrop(ev, { date: ds, date_end: newDateEnd });
 }
@@ -13667,7 +13667,7 @@ function _calTimeToMin(t) {
 function _renderProjectCalendarEvents(projectId) {
   if (typeof CAL_EVENT_TYPES === 'undefined') return '';
   const events = (db.calEvents || []).filter(function(ev) { return String(ev.project_id || '') === String(projectId); });
-  const today = new Date().toISOString().split('T')[0];
+  const today = _toLocalDateStr(new Date());
   const upcoming = events.filter(function(e) { return (e.date_end || e.date) >= today; }).sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
   const past     = events.filter(function(e) { return (e.date_end || e.date) <  today; }).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
 
@@ -13700,7 +13700,7 @@ function _renderClientCalendarEvents(clientId) {
   if (typeof CAL_EVENT_TYPES === 'undefined') return '';
   const events = (db.calEvents || []).filter(function(ev) { return String(ev.client_id || '') === String(clientId); });
   if (!events.length) return '';
-  const today = new Date().toISOString().split('T')[0];
+  const today = _toLocalDateStr(new Date());
   const sorted = events.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
   const renderRow = function(ev) {
     const ti = CAL_EVENT_TYPES[ev.type] || CAL_EVENT_TYPES.autre;
@@ -13784,7 +13784,7 @@ function _calCollectAttendees() {
 function onCalEventTypeChange() { /* placeholder for future side-effects */ }
 
 function openCalEventModal(dateStr, hourHint) {
-  const today = dateStr || new Date().toISOString().split('T')[0];
+  const today = dateStr || _toLocalDateStr(new Date());
   _calPopulateSelects();
   document.getElementById('cal-event-id').value = '';
   document.getElementById('cal-event-type').value = '';
@@ -13977,12 +13977,13 @@ function _maybeScheduleReminder(ev) {
 async function deleteCalEvent(id) {
   if (!confirm('Supprimer cet événement ?')) return;
   try {
+    const idStr = String(id);
     await sbDelete('calendar_events', id);
-    db.calEvents = (db.calEvents || []).filter(e => e.id !== id);
+    db.calEvents = (db.calEvents || []).filter(function(e) { return String(e.id) !== idStr; });
     // Nettoyer aussi localStorage si présent
     try {
       const legacy = JSON.parse(localStorage.getItem('s33_cal_events') || '[]');
-      const filtered = legacy.filter(e => e.id !== id);
+      const filtered = legacy.filter(function(e) { return String(e.id) !== idStr; });
       if (filtered.length !== legacy.length) localStorage.setItem('s33_cal_events', JSON.stringify(filtered));
     } catch(e) {}
     renderCalendar();
@@ -14076,6 +14077,16 @@ function renderCalendar() {
   }
 }
 
+// Timezone-safe local YYYY-MM-DD formatting (avoids UTC drift from toISOString)
+function _toLocalDateStr(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+// Parse "YYYY-MM-DD" as LOCAL midnight (instead of UTC midnight which JS does by default)
+function _parseLocalDate(s) {
+  const p = String(s).split('-').map(Number);
+  return new Date(p[0], (p[1] || 1) - 1, p[2] || 1);
+}
+
 function _collectCalEvents() {
   const myName = (currentUser ? currentUser.name || '' : '').toLowerCase();
   const tasksByDate = {};
@@ -14092,9 +14103,9 @@ function _collectCalEvents() {
   });
   const congesByDate = {};
   (db.conges || []).filter(function(c) { return c.status === 'approved'; }).forEach(function(c) {
-    let d = new Date(c.start_date); const end = new Date(c.end_date);
+    let d = _parseLocalDate(c.start_date); const end = _parseLocalDate(c.end_date);
     while (d <= end) {
-      const ds = d.toISOString().split('T')[0];
+      const ds = _toLocalDateStr(d);
       if (!congesByDate[ds]) congesByDate[ds] = [];
       congesByDate[ds].push(c.user_name);
       d.setDate(d.getDate() + 1);
@@ -14105,11 +14116,11 @@ function _collectCalEvents() {
   const customByDate = {};
   getCalCustomEvents().forEach(function(ev) {
     if (!_calEventPassesFilter(ev)) return;
-    const start = new Date(ev.date);
-    const end = ev.date_end ? new Date(ev.date_end) : new Date(ev.date);
+    const start = _parseLocalDate(ev.date);
+    const end = ev.date_end ? _parseLocalDate(ev.date_end) : _parseLocalDate(ev.date);
     let d = new Date(start);
     while (d <= end) {
-      const ds = d.toISOString().split('T')[0];
+      const ds = _toLocalDateStr(d);
       if (!customByDate[ds]) customByDate[ds] = [];
       customByDate[ds].push(ev);
       d.setDate(d.getDate() + 1);
@@ -14148,7 +14159,7 @@ function _buildWeekHTML(singleDay) {
   const evData = _collectCalEvents();
   const tasksByDate = evData.tasksByDate, congesByDate = evData.congesByDate, feriesByDate = evData.feriesByDate, customByDate = evData.customByDate;
   const isAdmin = currentUser.role === 'admin';
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = _toLocalDateStr(new Date());
   const base = calWeekStart;
   const numDays = singleDay ? 1 : 7;
 
@@ -14167,8 +14178,8 @@ function _buildWeekHTML(singleDay) {
   let headerCols = '', alldayCols = '', dayCols = '', todayColIdx = -1;
 
   for (let i = 0; i < numDays; i++) {
-    const d = new Date(base.getTime() + i * 86400000);
-    const ds = d.toISOString().split('T')[0];
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+    const ds = _toLocalDateStr(d);
     const isToday = ds === todayStr;
     if (isToday) todayColIdx = i;
     headerCols += '<div class="gcal-week-day-head" onclick="_goToDay(\'' + ds + '\')">' +
@@ -14251,7 +14262,7 @@ function _updateCalTimeLine(numDays, todayIdx) {
 function _buildMonthHTML() {
   const isAdmin = currentUser.role === 'admin';
   const year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = _toLocalDateStr(new Date());
   const monthName = calendarMonth.toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
   const evData = _collectCalEvents();
   const tasksByDate = evData.tasksByDate, congesByDate = evData.congesByDate, feriesByDate = evData.feriesByDate, customByDate = evData.customByDate;
@@ -14267,7 +14278,7 @@ function _buildMonthHTML() {
   }
   for (let day = 1; day <= lastDay.getDate(); day++) {
     const dateObj = new Date(year, month, day);
-    const ds = dateObj.toISOString().split('T')[0];
+    const ds = _toLocalDateStr(dateObj);
     const dow = dateObj.getDay();
     let cls = 'cal-cell' + (dow === 0 || dow === 6 ? ' weekend' : '') + (ds === todayStr ? ' today' : '');
     let evs = '';
@@ -14394,9 +14405,10 @@ function _buildAgendaHTML() {
     listHTML = '<div class="cal-empty-state"><span class="mi" style="font-size:48px;color:var(--text-faint);">event_available</span><div style="font-size:15px;font-weight:600;color:var(--text);margin-top:12px;">Aucun événement à venir</div><div style="font-size:13px;color:var(--text-dim);margin-top:4px;">Cliquez sur "+ Nouvel événement" pour planifier votre prochain RDV.</div></div>';
   } else {
     listHTML = dates.map(function(ds) {
-      const dt = new Date(ds + 'T00:00:00');
-      const isToday = ds === today.toISOString().split('T')[0];
-      const tomorrow = new Date(today.getTime() + 86400000).toISOString().split('T')[0];
+      const dt = _parseLocalDate(ds);
+      const isToday = ds === _toLocalDateStr(today);
+      const tomorrowDate = new Date(today.getTime() + 86400000);
+      const tomorrow = _toLocalDateStr(tomorrowDate);
       const isTomorrow = ds === tomorrow;
       const dayLabel = isToday ? "Aujourd'hui" : (isTomorrow ? 'Demain' : dt.toLocaleDateString('fr-MA', { weekday: 'long', day: 'numeric', month: 'long' }));
       const dayNum = dt.getDate();
@@ -14535,7 +14547,7 @@ function _old_renderCalendar() {
 
   for (let day = 1; day <= lastDay.getDate(); day++) {
     const dateObj = new Date(year, month, day);
-    const ds = dateObj.toISOString().split('T')[0];
+    const ds = _toLocalDateStr(dateObj);
     const dow = dateObj.getDay(); // 0=Sun, 6=Sat
     const isWeekend = (dow === 0 || dow === 6);
     const isToday = ds === todayStr;

@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brief Client — Studio 33 Architects</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html-docx-js/dist/html-docx.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#f5f0e8;--card:#ffffff;--border:#d4c9b0;--gold:#b8860b;--gold-light:#c9a84c;
+    --text:#1a1a1a;--muted:#8a7d6a;--input-bg:#faf7f2;
+  }
+  body{background:var(--bg);color:var(--text);font-family:'Jost',sans-serif;font-weight:300;min-height:100vh;padding:40px 20px}
+  .wrap{max-width:820px;margin:0 auto}
+  header{text-align:center;margin-bottom:50px;padding-bottom:30px;border-bottom:1px solid var(--border)}
+  .logo{font-family:'Cormorant Garamond',serif;font-size:11px;letter-spacing:6px;color:var(--gold);text-transform:uppercase;margin-bottom:8px}
+  header h1{font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:300;letter-spacing:2px;margin-bottom:6px;color:var(--text)}
+  header p{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+  .section{background:var(--card);border:1px solid var(--border);border-radius:2px;padding:32px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)}
+  .section-title{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:400;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:24px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .grid.three{grid-template-columns:1fr 1fr 1fr}
+  .full{grid-column:1/-1}
+  .field{display:flex;flex-direction:column;gap:8px}
+  label{font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+  input,select,textarea{
+    background:var(--input-bg);border:1px solid var(--border);color:var(--text);
+    font-family:'Jost',sans-serif;font-size:14px;font-weight:300;
+    padding:12px 14px;border-radius:1px;outline:none;transition:border-color .2s;width:100%
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--gold)}
+  textarea{resize:vertical;min-height:90px}
+  select option{background:#fff}
+  .checkbox-group{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+  .cb-item{display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid var(--border);border-radius:1px;transition:all .2s;font-size:13px;color:var(--text)}
+  .cb-item:hover{border-color:var(--gold)}
+  .cb-item input[type=checkbox]{width:auto;padding:0;accent-color:var(--gold)}
+  .cb-item.checked{border-color:var(--gold);color:var(--gold);background:#fdf8ee}
+  .dynamic-section{display:none}
+  .dynamic-section.visible{display:block}
+  .range-row{display:flex;align-items:center;gap:16px}
+  input[type=range]{flex:1;accent-color:var(--gold);padding:0;height:auto;background:transparent;border:none}
+  .range-val{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--gold);min-width:80px;text-align:right}
+  .btn-row{display:flex;justify-content:center;gap:16px;margin-top:40px;flex-wrap:wrap}
+  button{
+    font-family:'Jost',sans-serif;font-size:11px;letter-spacing:3px;text-transform:uppercase;
+    padding:14px 28px;cursor:pointer;border-radius:1px;transition:all .2s;border:none
+  }
+  .btn-primary{background:var(--gold);color:#fff;border:1px solid var(--gold)}
+  .btn-primary:hover{background:var(--gold-light);border-color:var(--gold-light)}
+  .btn-secondary{background:transparent;color:var(--gold);border:1px solid var(--gold)}
+  .btn-secondary:hover{background:rgba(184,134,11,.06)}
+  .btn-save{background:#1a4d3a;color:#fff;border:1px solid #1a4d3a}
+  .btn-save:hover{background:#2a6a52;border-color:#2a6a52}
+  .embed-only{display:none}
+  body.is-embed .embed-only{display:inline-flex}
+
+  @media print{
+    body{background:#fff;padding:20px}
+    .section{border:1px solid #ddd;break-inside:avoid;box-shadow:none}
+    .btn-row{display:none}
+    input,select,textarea{border:none;padding:4px 0;font-size:13px;background:transparent}
+    .cb-item{border:none;padding:0 8px 0 0}
+    .cb-item:not(.checked){display:none}
+    .dynamic-section{display:block!important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">Studio 33 Architects</div>
+    <h1>Brief Client</h1>
+    <p>Fiche de cadrage de projet</p>
+  </header>
+
+  <!-- 1. IDENTIFICATION -->
+  <div class="section">
+    <div class="section-title">01 — Identification</div>
+    <div class="grid">
+      <div class="field"><label>Nom / Prénom</label><input type="text" id="client_nom" placeholder="Client"></div>
+      <div class="field"><label>Téléphone</label><input type="tel" id="client_tel" placeholder="+212 6 XX XX XX XX"></div>
+      <div class="field"><label>Email</label><input type="email" id="client_email" placeholder="email@exemple.com"></div>
+      <div class="field"><label>Date du brief</label><input type="date" id="brief_date"></div>
+      <div class="field full"><label>Adresse du projet</label><input type="text" id="proj_adresse" placeholder="Ville, quartier, adresse complète"></div>
+    </div>
+  </div>
+
+  <!-- 2. TYPE DE PROJET -->
+  <div class="section">
+    <div class="section-title">02 — Type de projet</div>
+    <div class="field">
+      <label>Catégorie</label>
+      <select id="proj_type" onchange="updateDynamic()">
+        <option value="">— Sélectionner —</option>
+        <option value="residentiel">Résidentiel privé (villa / appartement)</option>
+        <option value="collectif">Immeuble collectif / Mixte</option>
+        <option value="interieur">Aménagement intérieur</option>
+        <option value="commercial">Commercial / Bureau</option>
+        <option value="autre">Autre</option>
+      </select>
+    </div>
+    <div style="margin-top:16px" class="field">
+      <label>Mission souhaitée</label>
+      <div class="checkbox-group" id="missions">
+        <label class="cb-item"><input type="checkbox" id="mission_etudes" onchange="toggleCb(this)"> Études & conception</label>
+        <label class="cb-item"><input type="checkbox" id="mission_permis" onchange="toggleCb(this)"> Permis de construire</label>
+        <label class="cb-item"><input type="checkbox" id="mission_chantier" onchange="toggleCb(this)"> Suivi de chantier</label>
+        <label class="cb-item"><input type="checkbox" id="mission_interieur" onchange="toggleCb(this)"> Intérieur / Décor</label>
+        <label class="cb-item"><input type="checkbox" id="mission_3d" onchange="toggleCb(this)"> Rendu 3D uniquement</label>
+        <label class="cb-item"><input type="checkbox" id="mission_complete" onchange="toggleCb(this)"> Mission complète</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. PROGRAMME -->
+  <div class="section">
+    <div class="section-title">03 — Programme & Surface</div>
+    <div class="grid three">
+      <div class="field"><label>Surface estimée (m²)</label><input type="number" id="prog_surface" placeholder="Ex : 300"></div>
+      <div class="field"><label>Nombre de niveaux</label><input type="number" id="prog_niveaux" placeholder="Ex : 2"></div>
+      <div class="field"><label>Nombre de chambres</label><input type="number" id="prog_chambres" placeholder="Ex : 4"></div>
+    </div>
+    <div style="margin-top:20px" class="field">
+      <label>Espaces requis</label>
+      <div class="checkbox-group">
+        <label class="cb-item"><input type="checkbox" id="esp_salon" onchange="toggleCb(this)"> Salon</label>
+        <label class="cb-item"><input type="checkbox" id="esp_cuisine" onchange="toggleCb(this)"> Cuisine ouverte</label>
+        <label class="cb-item"><input type="checkbox" id="esp_bureau" onchange="toggleCb(this)"> Bureau / Bibliothèque</label>
+        <label class="cb-item"><input type="checkbox" id="esp_suite" onchange="toggleCb(this)"> Suite parentale</label>
+        <label class="cb-item"><input type="checkbox" id="esp_enfants" onchange="toggleCb(this)"> Espace enfants</label>
+        <label class="cb-item"><input type="checkbox" id="esp_musalla" onchange="toggleCb(this)"> Musalla / Espace prière</label>
+        <label class="cb-item"><input type="checkbox" id="esp_hammam" onchange="toggleCb(this)"> Hammam / SPA</label>
+        <label class="cb-item"><input type="checkbox" id="esp_piscine" onchange="toggleCb(this)"> Piscine</label>
+        <label class="cb-item"><input type="checkbox" id="esp_garage" onchange="toggleCb(this)"> Garage</label>
+        <label class="cb-item"><input type="checkbox" id="esp_rooftop" onchange="toggleCb(this)"> Rooftop</label>
+        <label class="cb-item"><input type="checkbox" id="esp_jardin" onchange="toggleCb(this)"> Jardin / Terrasse</label>
+        <label class="cb-item"><input type="checkbox" id="esp_personnel" onchange="toggleCb(this)"> Personnel de maison</label>
+      </div>
+    </div>
+    <div style="margin-top:20px" class="field full">
+      <label>Espaces spécifiques / Remarques programme</label>
+      <textarea id="prog_remarques" placeholder="Précisez tout espace particulier ou contrainte fonctionnelle…"></textarea>
+    </div>
+  </div>
+
+  <!-- 4A. RÉSIDENTIEL -->
+  <div class="section dynamic-section" id="sec-residentiel">
+    <div class="section-title">04A — Résidentiel</div>
+    <div class="grid">
+      <div class="field"><label>Composition familiale</label><input type="text" id="res_famille" placeholder="Ex : Couple + 3 enfants"></div>
+      <div class="field"><label>Mode de vie dominant</label>
+        <select id="res_mode"><option value="">—</option><option>Intimiste / Calme</option><option>Ouvert / Réceptions fréquentes</option><option>Mixte</option></select>
+      </div>
+      <div class="field full"><label>Habitudes importantes à intégrer</label><textarea id="res_habitudes" placeholder="Horaires, pratiques religieuses, télétravail, activités…"></textarea></div>
+    </div>
+  </div>
+
+  <!-- 4B. COLLECTIF -->
+  <div class="section dynamic-section" id="sec-collectif">
+    <div class="section-title">04B — Immeuble / Mixte</div>
+    <div class="grid three">
+      <div class="field"><label>Nombre d'étages</label><input type="number" id="col_etages" placeholder="Ex : 6"></div>
+      <div class="field"><label>Nombre d'appartements</label><input type="number" id="col_apparts" placeholder="Ex : 12"></div>
+      <div class="field"><label>Usage RDC</label>
+        <select id="col_rdc"><option value="">—</option><option>Commercial</option><option>Parking</option><option>Logement</option><option>Mixte</option></select>
+      </div>
+      <div class="field full"><label>Programme mixte / Notes</label><textarea id="col_notes" placeholder="Répartition des usages par niveau…"></textarea></div>
+    </div>
+  </div>
+
+  <!-- 4C. INTÉRIEUR -->
+  <div class="section dynamic-section" id="sec-interieur">
+    <div class="section-title">04C — Aménagement intérieur</div>
+    <div class="grid">
+      <div class="field"><label>Type de bien</label>
+        <select id="int_type"><option value="">—</option><option>Appartement</option><option>Villa</option><option>Bureau</option><option>Commerce</option></select>
+      </div>
+      <div class="field"><label>État actuel</label>
+        <select id="int_etat"><option value="">—</option><option>Brut / Neuf</option><option>À rénover</option><option>Existant à optimiser</option></select>
+      </div>
+      <div class="field full"><label>Pièces concernées</label><textarea id="int_pieces" placeholder="Ex : Salon + cuisine + suite parentale…"></textarea></div>
+    </div>
+  </div>
+
+  <!-- 5. ESTHÉTIQUE -->
+  <div class="section">
+    <div class="section-title">05 — Esthétique & Ambiance</div>
+    <div class="field">
+      <label>Style architectural préféré</label>
+      <div class="checkbox-group">
+        <label class="cb-item"><input type="checkbox" id="style_contemporain" onchange="toggleCb(this)"> Contemporain minimaliste</label>
+        <label class="cb-item"><input type="checkbox" id="style_luxe" onchange="toggleCb(this)"> Luxe moderne</label>
+        <label class="cb-item"><input type="checkbox" id="style_mediterraneen" onchange="toggleCb(this)"> Méditerranéen épuré</label>
+        <label class="cb-item"><input type="checkbox" id="style_biophilique" onchange="toggleCb(this)"> Biophilique / Nature</label>
+        <label class="cb-item"><input type="checkbox" id="style_industriel" onchange="toggleCb(this)"> Industriel chic</label>
+        <label class="cb-item"><input type="checkbox" id="style_autre" onchange="toggleCb(this)"> Autre / Pas de préférence</label>
+      </div>
+    </div>
+    <div style="margin-top:20px" class="grid">
+      <div class="field">
+        <label>Palette de couleurs</label>
+        <select id="palette"><option value="">—</option><option>Neutres chaleureux (beige, sable, terracotta)</option><option>Monochromatique blanc / gris</option><option>Sombres / Dramatiques</option><option>Naturels (vert, bois, pierre)</option><option>Pas de préférence</option></select>
+      </div>
+      <div class="field">
+        <label>Matériaux phares souhaités</label>
+        <input type="text" id="materiaux" placeholder="Ex : béton, bois, zellige, marbre…">
+      </div>
+      <div class="field full">
+        <label>Références visuelles (liens, inspirations, mots-clés)</label>
+        <textarea id="references" placeholder="Pinterest, Instagram, projets admirés, architectes de référence…"></textarea>
+      </div>
+    </div>
+    <div style="margin-top:20px" class="field">
+      <label>Importance de la lumière naturelle</label>
+      <div class="range-row">
+        <input type="range" id="lumiere" min="1" max="5" value="4" oninput="document.getElementById('lum-val').textContent=getLumLabel(this.value)">
+        <span class="range-val" id="lum-val">Essentielle</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. BUDGET & DÉLAIS -->
+  <div class="section">
+    <div class="section-title">06 — Budget & Délais</div>
+    <div class="grid">
+      <div class="field">
+        <label>Budget construction estimé</label>
+        <select id="budget_construction"><option value="">—</option><option>&lt; 1 M MAD</option><option>1 – 3 M MAD</option><option>3 – 6 M MAD</option><option>6 – 10 M MAD</option><option>&gt; 10 M MAD</option><option>À définir</option></select>
+      </div>
+      <div class="field">
+        <label>Flexibilité budgétaire</label>
+        <select id="budget_flex"><option value="">—</option><option>Budget strict</option><option>Légèrement flexible</option><option>Flexible si justifié</option></select>
+      </div>
+      <div class="field">
+        <label>Démarrage souhaité</label>
+        <select id="demarrage"><option value="">—</option><option>Immédiat (&lt; 1 mois)</option><option>Court terme (1–3 mois)</option><option>Moyen terme (3–6 mois)</option><option>Long terme (&gt; 6 mois)</option></select>
+      </div>
+      <div class="field">
+        <label>Livraison souhaitée</label>
+        <input type="month" id="livraison">
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. NOTES LIBRES -->
+  <div class="section">
+    <div class="section-title">07 — Informations complémentaires</div>
+    <div class="field">
+      <label>Contraintes particulières</label>
+      <textarea id="contraintes" placeholder="Contraintes légales, voisinage, topographie, règlement de lotissement…"></textarea>
+    </div>
+    <div style="margin-top:16px" class="field">
+      <label>Comment le client a connu Studio 33</label>
+      <select id="source"><option value="">—</option><option>Bouche à oreille</option><option>Instagram</option><option>Site web</option><option>LinkedIn</option><option>Ancien client</option><option>Autre</option></select>
+    </div>
+    <div style="margin-top:16px" class="field">
+      <label>Remarques libres</label>
+      <textarea id="remarques_libres" placeholder="Tout ce qui n'a pas été couvert ci-dessus…"></textarea>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn-secondary" onclick="clearForm()">Effacer</button>
+    <button class="btn-primary" onclick="window.print()">Exporter PDF</button>
+    <button class="btn-primary" onclick="exportDOCX()">Exporter DOCX</button>
+    <button class="btn-save embed-only" onclick="saveToProject()">Enregistrer dans le projet</button>
+  </div>
+
+</div>
+<script>
+const IS_EMBED = window.parent !== window;
+if (IS_EMBED) document.body.classList.add('is-embed');
+
+const FIELD_IDS = [
+  'client_nom','client_tel','client_email','brief_date','proj_adresse',
+  'proj_type',
+  'mission_etudes','mission_permis','mission_chantier','mission_interieur','mission_3d','mission_complete',
+  'prog_surface','prog_niveaux','prog_chambres',
+  'esp_salon','esp_cuisine','esp_bureau','esp_suite','esp_enfants','esp_musalla','esp_hammam','esp_piscine','esp_garage','esp_rooftop','esp_jardin','esp_personnel',
+  'prog_remarques',
+  'res_famille','res_mode','res_habitudes',
+  'col_etages','col_apparts','col_rdc','col_notes',
+  'int_type','int_etat','int_pieces',
+  'style_contemporain','style_luxe','style_mediterraneen','style_biophilique','style_industriel','style_autre',
+  'palette','materiaux','references','lumiere',
+  'budget_construction','budget_flex','demarrage','livraison',
+  'contraintes','source','remarques_libres'
+];
+
+function updateDynamic(){
+  const v=document.getElementById('proj_type').value;
+  document.querySelectorAll('.dynamic-section').forEach(el=>el.classList.remove('visible'));
+  if(v==='residentiel') document.getElementById('sec-residentiel').classList.add('visible');
+  if(v==='collectif') document.getElementById('sec-collectif').classList.add('visible');
+  if(v==='interieur') document.getElementById('sec-interieur').classList.add('visible');
+}
+function toggleCb(el){el.parentElement.classList.toggle('checked',el.checked)}
+function getLumLabel(v){return['','Secondaire','Utile','Importante','Essentielle','Fondamentale'][v]}
+
+function clearForm(){
+  if(!confirm('Effacer tout le formulaire ?')) return;
+  document.querySelectorAll('input,select,textarea').forEach(el=>{
+    if(el.type==='checkbox'){el.checked=false;el.parentElement.classList.remove('checked')}
+    else if(el.type==='range'){el.value=4;document.getElementById('lum-val').textContent='Essentielle'}
+    else el.value='';
+  });
+  document.querySelectorAll('.dynamic-section').forEach(el=>el.classList.remove('visible'));
+}
+
+function _collectFormData(){
+  const data = {};
+  FIELD_IDS.forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(el.type === 'checkbox') data[id] = !!el.checked;
+    else data[id] = el.value || '';
+  });
+  return data;
+}
+
+function _applyFormData(data){
+  if(!data || typeof data !== 'object') return;
+  Object.keys(data).forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(el.type === 'checkbox'){
+      el.checked = !!data[id];
+      el.parentElement.classList.toggle('checked', !!data[id]);
+    } else {
+      el.value = data[id] == null ? '' : data[id];
+    }
+  });
+  updateDynamic();
+  const lum = document.getElementById('lumiere');
+  if(lum) document.getElementById('lum-val').textContent = getLumLabel(lum.value);
+}
+
+function _buildTitle(){
+  const nom = document.getElementById('client_nom').value.trim();
+  const adr = document.getElementById('proj_adresse').value.trim();
+  if(nom && adr) return 'Brief — ' + nom + ' (' + adr + ')';
+  if(nom) return 'Brief — ' + nom;
+  if(adr) return 'Brief — ' + adr;
+  return 'Brief sans titre';
+}
+
+function _buildMetadata(){
+  return {
+    client: document.getElementById('client_nom').value || '',
+    type: document.getElementById('proj_type').value || '',
+    surface: document.getElementById('prog_surface').value || '',
+    budget: document.getElementById('budget_construction').value || ''
+  };
+}
+
+function _buildHTMLSnapshot(){
+  // Clone current document state so saved view reflects current values
+  const clone = document.documentElement.cloneNode(true);
+  // Mirror form values into DOM attributes so they persist
+  clone.querySelectorAll('input,select,textarea').forEach(el=>{
+    const src = document.getElementById(el.id);
+    if(!src) return;
+    if(el.type === 'checkbox'){
+      if(src.checked) el.setAttribute('checked','checked'); else el.removeAttribute('checked');
+    } else if(el.tagName === 'SELECT'){
+      const v = src.value;
+      Array.from(el.options).forEach(opt=>{ opt.removeAttribute('selected'); if(opt.value===v) opt.setAttribute('selected','selected'); });
+    } else if(el.tagName === 'TEXTAREA'){
+      el.textContent = src.value;
+    } else {
+      el.setAttribute('value', src.value);
+    }
+  });
+  // Strip scripts from snapshot
+  clone.querySelectorAll('script').forEach(s=>s.remove());
+  return '<!DOCTYPE html>\n' + clone.outerHTML;
+}
+
+function exportDOCX(){
+  try {
+    const html = _buildHTMLSnapshot();
+    const blob = window.htmlDocx.asBlob(html);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (_buildTitle() || 'Brief').replace(/[^a-zA-Z0-9_\- ]/g,'') + '.docx';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch(e){ alert('Export DOCX impossible : ' + e.message); }
+}
+
+function saveToProject(){
+  const payload = {
+    title: _buildTitle(),
+    form_data: _collectFormData(),
+    html_content: _buildHTMLSnapshot(),
+    metadata: _buildMetadata()
+  };
+  if(IS_EMBED) window.parent.postMessage({ type: 'brief:save', data: payload }, '*');
+}
+
+// Notify parent we're ready, listen for preload
+window.addEventListener('message', function(e){
+  if(!e.data || typeof e.data !== 'object') return;
+  if(e.data.type === 'brief:preload' || e.data.type === 'gen:preload'){
+    _applyFormData(e.data.data || {});
+  } else if(e.data.type === 'brief:getData' || e.data.type === 'gen:getData'){
+    e.source.postMessage({ type: 'brief:data', data: _collectFormData() }, '*');
+  }
+});
+
+window.addEventListener('load', function(){
+  // Default date today if empty
+  const d = document.getElementById('brief_date');
+  if(d && !d.value) d.value = new Date().toISOString().slice(0,10);
+  if(IS_EMBED) window.parent.postMessage({ type: 'brief:ready' }, '*');
+});
+</script>
+</body>
+</html>

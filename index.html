@@ -13750,15 +13750,15 @@ function _renderProjectGeneratedDocs(projectId) {
   if (!docs.length) {
     return '<div style="margin-top:32px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
       '<div class="section-title" style="margin:0;">Documents générés</div>' +
-      '<button onclick="(function(){_genState.selectedProjectId=\'' + projectId + '\';navigate(\'generateurs\');})()" style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">auto_awesome</span> Générer un CPS</button>' +
+      '<button onclick="(function(){_genState.selectedProjectId=\'' + projectId + '\';navigate(\'generateurs\');})()" style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">auto_awesome</span> Générer un document</button>' +
       '</div><div style="padding:24px;text-align:center;background:var(--surface2);border-radius:var(--radius);color:var(--text-faint);font-size:13px;">Aucun document généré pour ce projet.</div></div>';
   }
   const grouped = {};
   docs.forEach(function(d) { (grouped[d.doc_type] = grouped[d.doc_type] || []).push(d); });
-  const typeLabels = { cps: 'CPS', planning: 'Planning', questionnaire: 'Questionnaire' };
+  const typeLabels = { cps: 'CPS', planning: 'Planning', questionnaire: 'Questionnaire client' };
   let html = '<div style="margin-top:32px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
     '<div class="section-title" style="margin:0;">Documents générés (' + docs.length + ')</div>' +
-    '<button onclick="(function(){_genState.selectedProjectId=\'' + projectId + '\';navigate(\'generateurs\');})()" style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">auto_awesome</span> Nouveau CPS</button>' +
+    '<button onclick="(function(){_genState.selectedProjectId=\'' + projectId + '\';navigate(\'generateurs\');})()" style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">auto_awesome</span> Nouveau document</button>' +
     '</div>';
   Object.keys(grouped).forEach(function(t) {
     grouped[t].sort(function(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
@@ -14165,6 +14165,12 @@ let _genState = {
   editingId: null        // id of doc being edited (null = new)
 };
 
+const GEN_TYPES = {
+  cps:           { label: 'CPS',                src: 'generators/cps.html',   icon: 'description', newLabel: 'Nouveau CPS' },
+  questionnaire: { label: 'Questionnaire client', src: 'generators/brief.html', icon: 'quiz',        newLabel: 'Nouveau brief' }
+};
+function _genTypeInfo(t) { return GEN_TYPES[t] || GEN_TYPES.cps; }
+
 function renderGenerateurs() {
   if (!currentUser) return;
   if (currentUser.role !== 'admin') {
@@ -14188,7 +14194,7 @@ function renderGenerateurs() {
 
   let versionsHTML = '';
   if (!docsForCtx.length) {
-    versionsHTML = '<div class="card" style="padding:32px;text-align:center;color:var(--text-faint);font-size:13px;">Aucun document généré ' + (_genState.selectedProjectId ? 'pour ce projet' : 'en mode test') + '. Cliquez sur « Nouveau CPS » pour commencer.</div>';
+    versionsHTML = '<div class="card" style="padding:32px;text-align:center;color:var(--text-faint);font-size:13px;">Aucun document généré ' + (_genState.selectedProjectId ? 'pour ce projet' : 'en mode test') + '. Cliquez sur « ' + _genTypeInfo(_genState.type).newLabel + ' » pour commencer.</div>';
   } else {
     versionsHTML = '<div style="display:flex;flex-direction:column;gap:8px;">' +
       docsForCtx.map(function(d) {
@@ -14200,7 +14206,7 @@ function renderGenerateurs() {
             '<div style="font-size:14px;font-weight:600;color:var(--text);">' + escHTML(d.title) + ' <span style="font-size:11px;color:var(--text-dim);font-weight:500;">v' + d.version + '</span></div>' +
             '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + dt + phase + ' • par ' + escHTML(d.created_by || '—') + '</div>' +
           '</div>' +
-          '<button onclick="openGenEditor(\'cps\',' + d.id + ')" style="padding:6px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:12px;font-weight:600;cursor:pointer;color:var(--text);"><span class="mi mi-sm">edit</span> Ouvrir</button>' +
+          '<button onclick="openGenEditor(\'' + _genState.type + '\',' + d.id + ')" style="padding:6px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:12px;font-weight:600;cursor:pointer;color:var(--text);"><span class="mi mi-sm">edit</span> Ouvrir</button>' +
           '<button onclick="duplicateGenDoc(' + d.id + ')" style="padding:6px 12px;background:none;border:1px solid var(--border);border-radius:var(--radius-pill);font-size:12px;font-weight:500;cursor:pointer;color:var(--text-dim);" title="Dupliquer en nouvelle version"><span class="mi mi-sm">content_copy</span></button>' +
           '<button onclick="downloadGenDocHTML(' + d.id + ')" style="padding:6px 12px;background:none;border:1px solid var(--border);border-radius:var(--radius-pill);font-size:12px;font-weight:500;cursor:pointer;color:var(--text-dim);" title="Télécharger HTML"><span class="mi mi-sm">download</span></button>' +
           '<button onclick="deleteGenDoc(' + d.id + ')" style="padding:6px 12px;background:none;border:none;cursor:pointer;color:#c62828;" title="Supprimer"><span class="mi mi-sm">delete</span></button>' +
@@ -14210,9 +14216,9 @@ function renderGenerateurs() {
   }
 
   const tabs = [
-    { key: 'cps',           label: 'CPS',           icon: 'description', enabled: true },
-    { key: 'planning',      label: 'Planning',      icon: 'event_note',  enabled: false },
-    { key: 'questionnaire', label: 'Questionnaire', icon: 'quiz',        enabled: false }
+    { key: 'cps',           label: 'CPS',                 icon: 'description', enabled: true  },
+    { key: 'questionnaire', label: 'Questionnaire client', icon: 'quiz',       enabled: true  },
+    { key: 'planning',      label: 'Planning',            icon: 'event_note',  enabled: false }
   ];
   const tabsHTML = '<div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:24px;">' +
     tabs.map(function(t) {
@@ -14228,7 +14234,7 @@ function renderGenerateurs() {
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">' +
       '<label style="font-size:12px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Projet :</label>' +
       '<select onchange="_genSetProject(this.value)" style="flex:1;max-width:340px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:13px;border-radius:var(--radius-sm);font-family:inherit;outline:none;cursor:pointer;">' + projectOpts + '</select>' +
-      '<button onclick="openGenEditor(\'cps\',null)" style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">add</span> Nouveau CPS</button>' +
+      '<button onclick="openGenEditor(\'' + _genState.type + '\',null)" style="margin-left:auto;display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">add</span> ' + _genTypeInfo(_genState.type).newLabel + '</button>' +
     '</div>' +
     '<div class="section-title" style="margin-top:24px;margin-bottom:12px;">' + (_genState.selectedProjectId ? 'Versions enregistrées' : 'Brouillons de test') + '</div>' +
     versionsHTML;
@@ -14236,6 +14242,12 @@ function renderGenerateurs() {
 
 function _genSetType(t) { _genState.type = t; renderGenerateurs(); }
 function _genSetProject(id) { _genState.selectedProjectId = id; renderGenerateurs(); }
+
+// Dispatch by generator type
+function _genBuildPreload(type, projectId) {
+  if (type === 'questionnaire') return _genBuildPreloadForBrief(projectId);
+  return _genBuildPreloadFromProject(projectId);
+}
 
 // Pre-fill map: project → CPS form fields
 function _genBuildPreloadFromProject(projectId) {
@@ -14264,8 +14276,26 @@ function _genBuildPreloadFromProject(projectId) {
   };
 }
 
+// Pre-fill map: project → Brief Client form fields
+function _genBuildPreloadForBrief(projectId) {
+  if (!projectId) return null;
+  const p = (db.projects || []).find(function(x) { return String(x.id) === String(projectId); });
+  if (!p) return null;
+  const client = (db.clients || []).find(function(c) { return String(c.id) === String(p.clientId); });
+  return {
+    client_nom: client ? (client.name || '') : '',
+    client_tel: client ? (client.phone || client.tel || '') : '',
+    client_email: client ? (client.email || '') : '',
+    brief_date: new Date().toISOString().slice(0, 10),
+    proj_adresse: p.address || p.location || '',
+    prog_surface: p.surface || ''
+  };
+}
+
 async function openGenEditor(type, docId) {
+  _genState.type = type || _genState.type || 'cps';
   _genState.editingId = docId || null;
+  const info    = _genTypeInfo(_genState.type);
   const overlay = document.getElementById('gen-editor-overlay');
   const iframe  = document.getElementById('gen-editor-iframe');
   const titleEl = document.getElementById('gen-editor-title');
@@ -14273,7 +14303,6 @@ async function openGenEditor(type, docId) {
   let preload = null;
   if (docId) {
     let doc = (db.generatedDocs || []).find(function(d) { return String(d.id) === String(docId); });
-    // Fetch full row (with form_data) since initial load is metadata-only
     try {
       const full = await sbGet('generated_documents', '?id=eq.' + docId);
       if (full && full[0]) {
@@ -14283,15 +14312,17 @@ async function openGenEditor(type, docId) {
       }
     } catch(e) { console.warn('fetch full gendoc', e); }
     if (doc && doc.form_data) preload = doc.form_data;
-    titleEl.textContent = 'Modifier : ' + (doc ? doc.title + ' (v' + doc.version + ')' : 'CPS');
+    titleEl.textContent = 'Modifier : ' + (doc ? doc.title + ' (v' + doc.version + ')' : info.label);
   } else if (_genState.selectedProjectId) {
-    preload = _genBuildPreloadFromProject(_genState.selectedProjectId);
-    titleEl.textContent = 'Nouveau CPS — ' + (preload && preload.proj_nom ? preload.proj_nom : '');
+    preload = _genBuildPreload(_genState.type, _genState.selectedProjectId);
+    const lead = (preload && (preload.proj_nom || preload.client_nom)) || '';
+    titleEl.textContent = info.newLabel + (lead ? ' — ' + lead : '');
   } else {
-    titleEl.textContent = 'Nouveau CPS (test)';
+    titleEl.textContent = info.newLabel + ' (test)';
   }
   iframe.dataset.preload = preload ? JSON.stringify(preload) : '';
-  iframe.src = 'generators/cps.html';
+  iframe.dataset.gentype = _genState.type;
+  iframe.src = info.src;
   overlay.style.display = 'flex';
 }
 
@@ -14303,35 +14334,40 @@ function closeGenEditor() {
   _genState.editingId = null;
 }
 
-// Receive messages from the CPS iframe
+// Receive messages from generator iframes (cps:, brief:, …)
 window.addEventListener('message', function(e) {
   if (!e.data || typeof e.data !== 'object') return;
-  if (e.data.type === 'cps:ready') {
+  const t = e.data.type || '';
+  if (typeof t !== 'string' || t.indexOf(':') < 0) return;
+  const prefix = t.split(':')[0];
+  const action = t.split(':')[1];
+  if (action === 'ready') {
     const iframe = document.getElementById('gen-editor-iframe');
     if (iframe && iframe.dataset.preload) {
       try {
         const preload = JSON.parse(iframe.dataset.preload);
-        e.source.postMessage({ type: 'cps:preload', data: preload }, '*');
+        e.source.postMessage({ type: prefix + ':preload', data: preload }, '*');
       } catch(_) {}
     }
-  } else if (e.data.type === 'cps:save') {
+  } else if (action === 'save') {
     _genSaveDoc(e.data.data);
   }
 });
 
 async function _genSaveDoc(payload) {
   if (!payload) return;
+  const docType   = _genState.type || 'cps';
+  const info      = _genTypeInfo(docType);
   const projectId = _genState.selectedProjectId ? Number(_genState.selectedProjectId) : null;
-  // Compute next version: max+1 for this project+doc_type
   const existing = (db.generatedDocs || []).filter(function(d) {
-    return d.doc_type === 'cps' && String(d.project_id || '') === String(projectId || '');
+    return d.doc_type === docType && String(d.project_id || '') === String(projectId || '');
   });
   const nextVersion = existing.reduce(function(m, d) { return Math.max(m, d.version || 0); }, 0) + 1;
   const obj = {
     project_id: projectId,
-    doc_type: 'cps',
+    doc_type: docType,
     version: nextVersion,
-    title: payload.title || 'CPS sans titre',
+    title: payload.title || (info.label + ' sans titre'),
     form_data: payload.form_data || {},
     html_content: payload.html_content || '',
     metadata: payload.metadata || {},
@@ -14343,7 +14379,7 @@ async function _genSaveDoc(payload) {
     if (ins && ins.id) {
       db.generatedDocs = (db.generatedDocs || []).concat([ins]);
     }
-    toast('CPS enregistré (v' + nextVersion + ')');
+    toast(info.label + ' enregistré (v' + nextVersion + ')');
     closeGenEditor();
     renderGenerateurs();
   } catch(err) {
@@ -14369,10 +14405,8 @@ async function deleteGenDoc(id) {
 async function duplicateGenDoc(id) {
   const doc = (db.generatedDocs || []).find(function(d) { return String(d.id) === String(id); });
   if (!doc) return;
-  // Open editor with this doc's form_data but as NEW (no editing id) → save creates a new version
   _genState.selectedProjectId = doc.project_id ? String(doc.project_id) : '';
-  openGenEditor('cps', null);
-  // Manually set preload from this doc
+  openGenEditor(doc.doc_type || 'cps', null);
   const iframe = document.getElementById('gen-editor-iframe');
   if (iframe) iframe.dataset.preload = JSON.stringify(doc.form_data || {});
 }
@@ -14385,7 +14419,7 @@ function downloadGenDocHTML(id) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = (doc.title || 'CPS').replace(/[^a-zA-Z0-9_-]/g, '_') + '_v' + doc.version + '.html';
+  a.download = (doc.title || _genTypeInfo(doc.doc_type).label).replace(/[^a-zA-Z0-9_-]/g, '_') + '_v' + doc.version + '.html';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
 }
@@ -18101,11 +18135,11 @@ function escHTML(str) {
         '<div class="s33-drop-zone" id="s33-dz" onclick="document.getElementById(\'s33-file-input\').click()">' +
           '<div id="s33-dz-inner">' +
             '<span class="mi mi-lg" style="color:var(--text-dim);">cloud_upload</span>' +
-            '<div style="margin-top:8px;font-size:13px;font-weight:600;color:var(--text);">Cliquez ou glissez un fichier ici</div>' +
-            '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">PDF, JPG, PNG, WEBP</div>' +
+            '<div style="margin-top:8px;font-size:13px;font-weight:600;color:var(--text);">Cliquez ou glissez un ou plusieurs fichiers</div>' +
+            '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">PDF, JPG, PNG, WEBP — sélection multiple OK</div>' +
           '</div>' +
         '</div>' +
-        '<input type="file" id="s33-file-input" style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="s33HandleUploadFile(this)">' +
+        '<input type="file" id="s33-file-input" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="s33HandleUploadFile(this)">' +
         '<div id="s33-name-row" style="display:none;margin-top:14px;">' +
           '<label style="display:block;font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px;">Nom du document</label>' +
           '<input id="s33-upload-name" type="text" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:14px;color:var(--text);box-sizing:border-box;">' +
@@ -18123,11 +18157,12 @@ function escHTML(str) {
     dz.addEventListener('dragleave', () => dz.classList.remove('active'));
     dz.addEventListener('drop', e => {
       e.preventDefault(); dz.classList.remove('active');
-      if (e.dataTransfer.files[0]) {
-        const inp = document.getElementById('s33-file-input');
-        inp.files = e.dataTransfer.files;
-        s33HandleUploadFile(inp);
-      }
+      const files = e.dataTransfer.files;
+      if (!files || !files.length) return;
+      if (files.length > 1) { s33HandleBatch(files); return; }
+      const inp = document.getElementById('s33-file-input');
+      inp.files = files;
+      s33HandleUploadFile(inp);
     });
   };
 
@@ -18168,6 +18203,8 @@ function escHTML(str) {
   }
 
   window.s33HandleUploadFile = function(input) {
+    if (!input.files || !input.files.length) return;
+    if (input.files.length > 1) { s33HandleBatch(input.files); return; }
     const file = input.files[0];
     if (!file) return;
     const allowed = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp'];
@@ -18224,6 +18261,162 @@ function escHTML(str) {
     };
     reader.readAsDataURL(file);
   };
+
+  // Sequential batch upload — bypasses the single-file name/Save UI
+  async function s33HandleBatch(filesList) {
+    const list = Array.from(filesList);
+    const allowed = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp'];
+    const valid = list.filter(f => allowed.includes(f.type));
+    const rejected = list.length - valid.length;
+    if (!valid.length) { toast('Aucun fichier compatible'); return; }
+
+    // Hide name row + save button (not relevant for batch)
+    const nameRow = document.getElementById('s33-name-row');
+    if (nameRow) nameRow.style.display = 'none';
+    const saveBtn = document.getElementById('s33-upload-save');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.style.opacity = '.4'; saveBtn.textContent = 'Téléversement…'; }
+    const dzInner = document.getElementById('s33-dz-inner');
+    const dz = document.getElementById('s33-dz');
+    if (dz) dz.style.pointerEvents = 'none';
+
+    const setProgress = (i, total, name, note) => {
+      if (!dzInner) return;
+      const pct = Math.round((i / total) * 100);
+      dzInner.innerHTML =
+        '<span class="mi mi-lg" style="color:var(--gold);">cloud_upload</span>' +
+        '<div style="margin-top:8px;font-size:13px;font-weight:700;color:var(--text);">' + i + ' / ' + total + (note ? ' — ' + escHTML(note) : '') + '</div>' +
+        '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHTML(name || '') + '</div>' +
+        '<div style="margin-top:10px;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">' +
+          '<div style="height:100%;width:' + pct + '%;background:var(--gold);transition:width .25s;"></div>' +
+        '</div>';
+    };
+
+    let ok = 0, fail = 0;
+    for (let i = 0; i < valid.length; i++) {
+      const file = valid[i];
+      setProgress(i, valid.length, file.name, 'lecture…');
+      try {
+        if (file.type === 'application/pdf' && file.size > S33_MAX_PDF_BYTES) {
+          console.warn('PDF trop volumineux ignoré :', file.name, file.size);
+          fail++; continue;
+        }
+        const rawData = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = e => res(e.target.result);
+          r.onerror = rej;
+          r.readAsDataURL(file);
+        });
+        let data = rawData;
+        let finalBytes = file.size;
+        const isImage = file.type !== 'application/pdf';
+        if (isImage && file.size > S33_MAX_IMG_BYTES) {
+          setProgress(i, valid.length, file.name, 'compression…');
+          const cmp = await new Promise(res => s33CompressImage(rawData, file.type, S33_MAX_IMG_BYTES * 1.33, (c, b) => res({ c, b })));
+          data = cmp.c; finalBytes = cmp.b;
+        }
+        setProgress(i, valid.length, file.name, 'envoi…');
+        // Upload to Storage
+        const parts = data.split(',');
+        const mimeStr = (parts[0].match(/:(.*?);/) || [])[1] || file.type;
+        const binary = atob(parts[1]);
+        const arr = new Uint8Array(binary.length);
+        for (let j = 0; j < binary.length; j++) arr[j] = binary.charCodeAt(j);
+        const blob = new Blob([arr], { type: mimeStr });
+        const ext = mimeStr === 'application/pdf' ? '.pdf' : mimeStr === 'image/png' ? '.png' : '.jpg';
+        const baseName = (file.name.replace(/\.[^.]+$/, '') || 'fichier');
+        const safeName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+        const folderSlug = (window._s33UploadFolder || 'misc').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+        const path = 'proj/' + window._s33UploadProjId + '/' + folderSlug + '/' + Date.now() + '_' + i + '_' + safeName + ext;
+        let storagePath = null;
+        try {
+          const res = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + path, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': blob.type, 'x-upsert': 'true' },
+            body: blob
+          });
+          if (res.ok) storagePath = path;
+        } catch(e) { console.warn('Storage upload err', file.name, e); }
+
+        const legacyType =
+          window._s33UploadFolder === 'Photos de chantier'        ? 'photo_chantier'  :
+          window._s33UploadFolder === 'PV de chantier'            ? 'pv_chantier'     :
+          window._s33UploadFolder === 'Plans / Coupes / Façades'  ? 'plan_cadastral'  :
+          window._s33UploadFolder === 'Documents administratifs'  ? 'doc_admin'       :
+          'doc_admin';
+
+        const docObj = {
+          name:           baseName,
+          doc_type:       legacyType,
+          folder:         window._s33UploadFolder,
+          is_project_doc: true,
+          is_pdf:         mimeStr === 'application/pdf',
+          mime:           mimeStr,
+          file_path:      storagePath || null,
+          data:           storagePath ? null : data,
+          project_id:     window._s33UploadProjId,
+          size:           formatSize(finalBytes),
+          added_by:       (currentUser && currentUser.name) || '',
+          added_at:       new Date().toLocaleDateString('fr-MA')
+        };
+
+        let inserted = null;
+        try {
+          const res = await sbInsertOrThrow('media', docObj);
+          if (Array.isArray(res) && res[0]) inserted = res[0];
+        } catch(e) {
+          try {
+            const { folder, ...rest } = docObj;
+            const res = await sbInsertOrThrow('media', rest);
+            if (Array.isArray(res) && res[0]) inserted = res[0];
+          } catch(e2) {
+            if (storagePath) {
+              fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + storagePath, {
+                method: 'DELETE',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+              }).catch(()=>{});
+            }
+            // Local-only fallback
+            const existingIds = (db.media || []).map(m => m.id || 0);
+            inserted = Object.assign({}, docObj, {
+              file_path: null,
+              data: data,
+              id: existingIds.length ? Math.max(...existingIds) + 1 : Date.now()
+            });
+          }
+        }
+        if (inserted) {
+          inserted.folder = window._s33UploadFolder;
+          db.media = db.media || [];
+          db.media.push(inserted);
+          ok++;
+        } else {
+          fail++;
+        }
+      } catch(err) {
+        console.error('Batch upload error', file.name, err);
+        fail++;
+      }
+    }
+
+    // Cache update
+    try {
+      const cacheItems = (db.media || []).slice(-200).map(m => {
+        if (m.file_path) return m;
+        const { data, ...rest } = m;
+        return rest;
+      });
+      localStorage.setItem('s33_db_media_cache', JSON.stringify(cacheItems));
+    } catch(_) {}
+
+    const modal = document.getElementById('s33-upload-modal');
+    if (modal) modal.remove();
+    const parts = [];
+    parts.push(ok + ' fichier(s) ajouté(s)');
+    if (fail) parts.push(fail + ' échec(s)');
+    if (rejected) parts.push(rejected + ' format(s) refusé(s)');
+    toast(parts.join(' • '));
+    renderDocsV2();
+  }
 
   window.s33SaveUpload = async function() {
     if (!window._s33UploadData || !window._s33UploadProjId) {

@@ -6230,44 +6230,21 @@ function renderProjectDetailPage() {
       </div>`}
     </div>
 
-    <div class="grid-2">
-      <!-- Tâches -->
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <div class="section-title" style="margin:0;">Tâches (${tasks.length})</div>
-          ${isAdmin ? `<button onclick="openTaskModal(${p.id})" style="padding:6px 14px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">+ Ajouter</button>` : ''}
-        </div>
-        <div class="card" style="padding:12px;">
-          ${tasks.length === 0
-            ? '<div style="color:var(--text-faint);font-size:13px;text-align:center;padding:16px;">Aucune tâche</div>'
-            : tasks.map(t => {
-                const isDone = savedDone[p.id+'_'+t.id] || isTaskDone(t);
-                const tStatus = getTaskStatus(t);
-                return `<div style="padding:10px 8px;border-bottom:1px solid var(--surface2);">
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="flex:1;min-width:0;">
-                      <div style="font-size:13px;font-weight:${isDone?'400':'500'};color:var(--text);text-decoration:${isDone?'line-through':'none'};opacity:${isDone?'.5':'1'};">${t.name}</div>
-                      ${t.assignedTo ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">${(()=>{const u=USERS.find(x=>x.name===t.assignedTo||x.username===t.assignedTo);return u?avatarHTML(u.id,18):'';})()}<span style="font-size:11px;color:var(--text-dim);">${t.assignedTo}</span></div>` : ''}
-                    </div>
-                    ${taskDeadlineEditable(p.id, t.id, t.deadline, isDone)}
-                    ${t.priority==='urgent'&&!isDone ? '<span class="badge badge-red" style="font-size:9px;flex-shrink:0;">Urgent</span>' : ''}
-                    ${statusPillHTML(p.id, t.id, tStatus)}
-                    <button onclick="if(confirm('Supprimer cette tâche ?'))deleteTask(${p.id},${t.id})" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;border:none;background:#fff0f0;color:#c0392b;cursor:pointer;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;">×</button>
-                  </div>
-                  ${taskExtraPanelsHTML(p.id, t)}
-                </div>`;
-              }).join('')
-          }
-        </div>
-      </div>
+    <style>
+      .proj-top-row { display:grid; grid-template-columns: 1.15fr .85fr; gap:22px; align-items:start; }
+      .proj-events-cell > div:first-child { margin-top:0 !important; }
+      @media (max-width: 980px) {
+        .proj-top-row { grid-template-columns: 1fr !important; }
+      }
+      .proj-tasks-header { width:100%; display:flex; align-items:center; justify-content:space-between; padding:12px 18px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); font-family:inherit; cursor:pointer; color:var(--text); transition:background .12s; }
+      .proj-tasks-header:hover { background:var(--surface3); }
+      .proj-tasks-header .mi { transition:transform .2s; }
+      .proj-tasks-header.open .mi.chev { transform:rotate(180deg); }
+    </style>
 
-      <!-- Événements liés au projet -->
-      ${_renderProjectCalendarEvents(p.id)}
-
-      <!-- CPS / Documents générés -->
-      ${_renderProjectGeneratedDocs(p.id)}
-
-      <!-- Documents du projet -->
+    <!-- TOP: Documents (gauche) + Événements (droite) -->
+    <div class="proj-top-row">
+      <!-- Documents du projet (renderDocsV2 transformera ce bloc en système de dossiers) -->
       <div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
           <div class="section-title" style="margin:0;">Documents du projet</div>
@@ -6298,7 +6275,55 @@ function renderProjectDetailPage() {
           })()}
         </div>
       </div>
+
+      <!-- Événements liés au projet (colonne droite) -->
+      <div class="proj-events-cell">
+        ${_renderProjectCalendarEvents(p.id)}
+      </div>
     </div>
+
+    <!-- Documents générés (CPS, Brief…) - pleine largeur -->
+    ${_renderProjectGeneratedDocs(p.id)}
+
+    <!-- Tâches du projet (accordéon — replié par défaut) -->
+    ${(function(){
+      const open = localStorage.getItem('s33_proj_tasks_open_' + p.id) === '1';
+      return `
+      <div style="margin-top:28px;">
+        <div onclick="toggleProjectTasksPanel(${p.id})" class="proj-tasks-header${open ? ' open' : ''}" id="proj-tasks-header-${p.id}" role="button" tabindex="0">
+          <span style="display:flex;align-items:center;gap:12px;min-width:0;">
+            <span class="mi chev">expand_more</span>
+            <span style="font-family:'Cormorant Garamond',Georgia,serif;font-size:17px;font-weight:600;letter-spacing:.5px;">Tâches (${tasks.length})</span>
+            ${tasks.length ? `<span style="font-size:11px;color:var(--text-dim);font-weight:500;">· ${done}/${tasks.length} complètes · ${pct}%</span>` : ''}
+          </span>
+          ${isAdmin ? `<span onclick="event.stopPropagation();openTaskModal(${p.id})" style="padding:5px 12px;background:var(--gold);color:#fff;border-radius:var(--radius-pill);font-size:11px;font-weight:600;cursor:pointer;">+ Ajouter</span>` : ''}
+        </div>
+        <div id="proj-tasks-panel-${p.id}" style="display:${open ? 'block' : 'none'};margin-top:12px;">
+          <div class="card" style="padding:12px;">
+            ${tasks.length === 0
+              ? '<div style="color:var(--text-faint);font-size:13px;text-align:center;padding:16px;">Aucune tâche</div>'
+              : tasks.map(t => {
+                  const isDone = savedDone[p.id+'_'+t.id] || isTaskDone(t);
+                  const tStatus = getTaskStatus(t);
+                  return `<div style="padding:10px 8px;border-bottom:1px solid var(--surface2);">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <div style="flex:1;min-width:0;">
+                        <div style="font-size:13px;font-weight:${isDone?'400':'500'};color:var(--text);text-decoration:${isDone?'line-through':'none'};opacity:${isDone?'.5':'1'};">${t.name}</div>
+                        ${t.assignedTo ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">${(()=>{const u=USERS.find(x=>x.name===t.assignedTo||x.username===t.assignedTo);return u?avatarHTML(u.id,18):'';})()}<span style="font-size:11px;color:var(--text-dim);">${t.assignedTo}</span></div>` : ''}
+                      </div>
+                      ${taskDeadlineEditable(p.id, t.id, t.deadline, isDone)}
+                      ${t.priority==='urgent'&&!isDone ? '<span class="badge badge-red" style="font-size:9px;flex-shrink:0;">Urgent</span>' : ''}
+                      ${statusPillHTML(p.id, t.id, tStatus)}
+                      <button onclick="if(confirm('Supprimer cette tâche ?'))deleteTask(${p.id},${t.id})" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;border:none;background:#fff0f0;color:#c0392b;cursor:pointer;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;">×</button>
+                    </div>
+                    ${taskExtraPanelsHTML(p.id, t)}
+                  </div>`;
+                }).join('')
+            }
+          </div>
+        </div>
+      </div>`;
+    })()}
 
     <!-- Notes (compact) -->
     <div style="margin-top:20px;padding:14px 18px;background:var(--surface2);border-radius:var(--radius);border-left:3px solid var(--gold);">
@@ -6307,6 +6332,17 @@ function renderProjectDetailPage() {
       ${p.link ? `<a href="${p.link}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;margin-top:10px;color:var(--gold);font-size:12px;font-weight:600;text-decoration:none;">Lien du projet →</a>` : ''}
     </div>
   `;
+}
+
+// Toggle project tasks accordion (persistent per-project via localStorage)
+function toggleProjectTasksPanel(projectId) {
+  const panel  = document.getElementById('proj-tasks-panel-' + projectId);
+  const header = document.getElementById('proj-tasks-header-' + projectId);
+  if (!panel) return;
+  const willOpen = panel.style.display === 'none';
+  panel.style.display = willOpen ? 'block' : 'none';
+  if (header) header.classList.toggle('open', willOpen);
+  try { localStorage.setItem('s33_proj_tasks_open_' + projectId, willOpen ? '1' : '0'); } catch(_) {}
 }
 
 function renderAll() {

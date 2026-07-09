@@ -11035,7 +11035,9 @@ window.addEventListener('popstate', function() {
 });
 
 function closeLightbox() {
-  document.getElementById('lightbox').classList.remove('open');
+  const lb = document.getElementById('lightbox');
+  if (!lb.classList.contains('open')) return; // déjà fermée (évite un double history.back)
+  lb.classList.remove('open');
   if (history.state && history.state.s33lb) { try { history.back(); } catch(_) {} }
   document.body.style.overflow = '';
 }
@@ -11096,8 +11098,11 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeLightbox();
 });
 
+// Un tap n'importe où ferme la visionneuse (sauf sur les flèches de
+// navigation et la croix, qui gardent leur propre action)
 document.getElementById('lightbox').addEventListener('click', e => {
-  if (e.target === document.getElementById('lightbox')) closeLightbox();
+  if (e.target.closest('#lightbox-close, #lightbox-nav-prev, #lightbox-nav-next')) return;
+  closeLightbox();
 });
 
 // ===== FINANCE =====

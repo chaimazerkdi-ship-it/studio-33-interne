@@ -1589,8 +1589,13 @@
     /* Grilles projets (styles inline en repeat(3,1fr)) */
     #proj-pinned-grid, #proj-cards-grid { grid-template-columns: 1fr !important; }
 
-    /* Modales */
-    .modal-overlay { padding: 12px; }
+    /* Modales : au-dessus de la barre de navigation (z-index 1000),
+       sinon le bouton Enregistrer reste caché dessous */
+    .modal-overlay {
+      padding: 12px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom));
+      z-index: 1600;
+    }
     .modal {
       width: 100% !important;
       max-width: 100% !important;
@@ -2506,12 +2511,11 @@
 .cal-status-reporte   { background:#fff3e0; color:#b06000; }
 .cal-status-annule    { background:#ffebee; color:#c62828; text-decoration:line-through; }
 .cal-status-termine   { background:#e3f2fd; color:#1e88e5; }
-.cal-weekday-header { font-size:11px; font-weight:500; color:var(--text-dim); text-align:center; padding:10px 0 8px; background:var(--surface); text-transform:uppercase; letter-spacing:.5px; }
 [data-theme=dark] .cal-event-commission { background:rgba(109,40,217,.2); color:#c4b5fd; border-color:rgba(109,40,217,.3); }
 [data-theme=dark] .cal-event-rokha     { background:rgba(194,65,12,.2); color:#fdba74; border-color:rgba(194,65,12,.3); }
 [data-theme=dark] .cal-event-anniversaire { background:rgba(157,23,77,.2); color:#f9a8d4; border-color:rgba(157,23,77,.3); }
 [data-theme=dark] .cal-event-autre     { background:rgba(55,65,81,.3); color:#d1d5db; border-color:rgba(55,65,81,.4); }
-.cal-weekday-header { font-size:11px; font-weight:700; color:var(--text-dim); text-align:center; padding:8px 0; background:var(--surface2); }
+.cal-weekday-header { font-size:11px; font-weight:700; color:var(--text-dim); text-align:center; padding:8px 0; background:var(--surface2); text-transform:uppercase; letter-spacing:.5px; }
 
 /* Google-Calendar week/day view */
 .gcal-wrap { display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; background:var(--surface); }
@@ -6079,7 +6083,7 @@ function applyTheme(mode) {
   if (icon) icon.innerHTML = mode === 'dark' ? '<span class="mi">light_mode</span>' : '<span class="mi">dark_mode</span>';
   if (label) label.textContent = mode === 'dark' ? 'Mode jour' : 'Mode nuit';
   const btnM = document.getElementById('theme-toggle-mobile');
-  if (btnM) btnM.innerHTML = (mode === 'dark' ? '<span class="mi">light_mode</span>' : '<span class="mi">dark_mode</span>') + ' Mode jour/nuit';
+  if (btnM) btnM.innerHTML = mode === 'dark' ? '<span class="mi">light_mode</span>' : '<span class="mi">dark_mode</span>';
 }
 
 function toggleTheme() {
@@ -6090,7 +6094,7 @@ function toggleTheme() {
   if (icon) icon.innerHTML = isDark ? '<span class="mi">light_mode</span>' : '<span class="mi">dark_mode</span>';
   if (label) label.textContent = isDark ? 'Mode jour' : 'Mode nuit';
   const btnM = document.getElementById('theme-toggle-mobile');
-  if (btnM) btnM.innerHTML = (isDark ? '<span class="mi">light_mode</span>' : '<span class="mi">dark_mode</span>') + ' Mode jour/nuit';
+  if (btnM) btnM.innerHTML = isDark ? '<span class="mi">light_mode</span>' : '<span class="mi">dark_mode</span>';
   const footIcon = document.getElementById('footer-theme-icon');
   if (footIcon) footIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
 }
@@ -11743,7 +11747,7 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
       <span class="mnav-icon" style="color:var(--gold);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Samia IA
     </div>
     <div class="mobile-more-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:16px;" onclick="toggleTheme(); closeMobileMore()">
-      <span id="theme-toggle-mobile">☀️</span> Mode jour/nuit
+      <span id="theme-toggle-mobile" class="mnav-icon"><span class="mi">dark_mode</span></span> Mode jour/nuit
     </div>
     <div class="mobile-more-item" style="color:var(--text-faint);" onclick="logout(); closeMobileMore()">
       <span class="mnav-icon" style="color:var(--text-faint);">&#8592;</span> Deconnexion

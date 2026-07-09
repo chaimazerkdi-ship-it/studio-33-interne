@@ -1634,6 +1634,18 @@
     /* Panneau profil plein écran */
     #profile-panel { width: 100vw !important; }
 
+    /* Lightbox au-dessus de la barre de navigation, bouton fermer plus grand */
+    #lightbox { z-index: 1601; }
+    #lightbox-close {
+      top: max(16px, env(safe-area-inset-top));
+      right: 16px;
+      font-size: 34px;
+      padding: 8px 12px;
+      background: rgba(255,255,255,.1);
+      border-radius: 99px;
+      line-height: 1;
+    }
+
     /* Boutons : cibles tactiles */
     .btn { padding: 11px 16px; font-size: 11px; min-height: 40px; }
   }
@@ -10967,11 +10979,14 @@ function setMediaTypeFilter(t) {
 }
 
 function openLightbox(id) {
+  document.getElementById('lightbox-nav-prev').style.display = '';
+  document.getElementById('lightbox-nav-next').style.display = '';
   const idx = lightboxItems.findIndex(m => m.id === id);
   if (idx === -1) return;
   lightboxIndex = idx;
   showLightboxItem();
   document.getElementById('lightbox').classList.add('open');
+  _lbPushHistory();
   document.body.style.overflow = 'hidden';
 }
 
@@ -10996,8 +11011,32 @@ function lightboxNav(dir) {
   showLightboxItem();
 }
 
+/**
+ * Visionneuse in-app pour une image seule (docs projet, admin…).
+ * Remplace l'ouverture dans un onglet vierge : sur mobile, un onglet
+ * about:blank n'a pas d'historique, donc aucun moyen de revenir à l'app.
+ */
+function showImageLightbox(src, title) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox-title').textContent = title || '';
+  document.getElementById('lightbox-nav-prev').style.display = 'none';
+  document.getElementById('lightbox-nav-next').style.display = 'none';
+  document.getElementById('lightbox').classList.add('open');
+  _lbPushHistory();
+}
+
+// Le bouton retour du téléphone ferme la visionneuse au lieu de quitter l'app
+function _lbPushHistory() {
+  try { history.pushState({ s33lb: 1 }, ''); } catch(_) {}
+}
+window.addEventListener('popstate', function() {
+  const lb = document.getElementById('lightbox');
+  if (lb && lb.classList.contains('open')) lb.classList.remove('open');
+});
+
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('open');
+  if (history.state && history.state.s33lb) { try { history.back(); } catch(_) {} }
   document.body.style.overflow = '';
 }
 
@@ -18129,10 +18168,8 @@ function escHTML(str) {
           setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
         }
       } else {
-        // Images: src can be a data URL or https:// — both work in <img>
-        const w = window.open('', '_blank');
-        if (!w) { toast('Autorisez les pop-ups pour ouvrir le fichier'); return; }
-        w.document.write('<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;"><img src="' + data + '" style="max-width:100vw;max-height:100vh;object-fit:contain;"></body></html>');
+        // Images : visionneuse in-app — un onglet vierge n'a pas de bouton retour sur mobile
+        showImageLightbox(data, d.name);
       }
     } catch(e) {
       toast('Erreur ouverture : ' + e.message);
@@ -22329,19 +22366,23 @@ function escHTML(str) {
   window.s33PreviewAdminDoc = async function(id) {
     const d = (db.admin_docs || []).find(x => String(x.id) === String(id));
     if (!d) return;
-    const w = window.open('', '_blank');
-    if (w) w.document.write('<html><head><title>' + esc(d.name) + '</title></head><body style="margin:0;background:#222;color:#888;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui;">Chargement…</body></html>');
-    const src = await resolveDocSrc(d);
-    if (!w) return;
-    if (!src) {
-      w.document.body.innerHTML = '<div style="color:#f87171;padding:20px;">Impossible de charger le fichier.</div>';
-      return;
-    }
-    if (src.isPdf) {
+    if (d.file_type === 'pdf') {
+      // PDF : nouvel onglet (ouvert avant l'await pour passer les bloqueurs de pop-ups)
+      const w = window.open('', '_blank');
+      if (w) w.document.write('<html><head><title>' + esc(d.name) + '</title></head><body style="margin:0;background:#222;color:#888;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui;">Chargement…</body></html>');
+      const src = await resolveDocSrc(d);
+      if (!w) return;
+      if (!src) {
+        w.document.body.innerHTML = '<div style="color:#f87171;padding:20px;">Impossible de charger le fichier.</div>';
+        return;
+      }
       w.document.body.innerHTML = '<embed src="' + src.src + '" type="application/pdf" width="100%" height="100%" style="height:100vh;">';
       w.document.body.style.margin = '0';
     } else {
-      w.document.body.innerHTML = '<img src="' + src.src + '" style="max-width:100%;max-height:100vh;">';
+      // Image : visionneuse in-app — un onglet vierge n'a pas de bouton retour sur mobile
+      const src = await resolveDocSrc(d);
+      if (!src) { toast('Impossible de charger le fichier'); return; }
+      showImageLightbox(src.src, d.name);
     }
   };
 

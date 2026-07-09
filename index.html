@@ -1462,6 +1462,9 @@
     border-top: 1px solid var(--border);
     border-radius: 24px 24px 0 0;
     padding: 20px 0 calc(16px + env(safe-area-inset-bottom));
+    max-height: 80vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .mobile-more-title {
@@ -6088,6 +6091,8 @@ function toggleTheme() {
   if (label) label.textContent = isDark ? 'Mode jour' : 'Mode nuit';
   const btnM = document.getElementById('theme-toggle-mobile');
   if (btnM) btnM.innerHTML = (isDark ? '<span class="mi">light_mode</span>' : '<span class="mi">dark_mode</span>') + ' Mode jour/nuit';
+  const footIcon = document.getElementById('footer-theme-icon');
+  if (footIcon) footIcon.textContent = isDark ? 'light_mode' : 'dark_mode';
 }
 initTheme();
 
@@ -11664,7 +11669,7 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
       <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
       <span>Calendrier</span>
     </div>
-    <div class="mobile-nav-item" id="mnav-rapport" onclick="mobileNavigate('rapport')">
+    <div class="mobile-nav-item" id="mnav-rapport" style="display:none;" onclick="mobileNavigate('rapport')">
       <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg></span>
       <span>Rapport</span>
     </div>
@@ -11686,8 +11691,20 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     <div class="mobile-more-item" onclick="openProfilePanel(); closeMobileMore()" style="border-bottom:1px solid var(--border);margin-bottom:8px;padding-bottom:16px;">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Mon profil
     </div>
+    <div class="mobile-more-item" id="mnav-more-rapport" onclick="mobileNavigate('rapport'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">assignment</span></span> Mon Rapport
+    </div>
     <div class="mobile-more-item" id="mnav-more-equipe" style="display:none;" onclick="mobileNavigate('equipe'); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span> Équipe
+    </div>
+    <div class="mobile-more-item" id="mnav-more-panneau" onclick="mobileNavigate('panneau'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">construction</span></span> Panneau chantier
+    </div>
+    <div class="mobile-more-item" id="mnav-more-pv" onclick="mobileNavigate('pv'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">meeting_room</span></span> PV de réunion
+    </div>
+    <div class="mobile-more-item" id="mnav-more-concours" onclick="mobileNavigate('concours'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">emoji_events</span></span> Concours / Appels d'offres
     </div>
     <div class="mobile-more-item" id="mnav-more-devis" onclick="mobileNavigate('devis'); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span> Devis
@@ -11698,6 +11715,9 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     <div class="mobile-more-item" id="mnav-more-finance" onclick="mobileNavigate('finance'); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span> Finances
     </div>
+    <div class="mobile-more-item" id="mnav-more-contacts" style="display:none;" onclick="mobileNavigate('contacts'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">contacts</span></span> Contacts Pro
+    </div>
     <div class="mobile-more-item" id="mnav-more-administratif" onclick="mobileNavigate('administratif'); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v4H4z"/><path d="M4 10h16v10H4z"/><path d="M9 14h6"/></svg></span> Administratif
     </div>
@@ -11706,6 +11726,18 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     </div>
     <div class="mobile-more-item" id="mnav-more-library" onclick="mobileNavigate('library'); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg></span> Bibliothèque
+    </div>
+    <div class="mobile-more-item" id="mnav-more-generateurs" style="display:none;" onclick="mobileNavigate('generateurs'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">auto_awesome</span></span> Générateurs
+    </div>
+    <div class="mobile-more-item" id="mnav-more-materiaux" onclick="mobileNavigate('materiaux'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">layers</span></span> Matériaux
+    </div>
+    <div class="mobile-more-item" id="mnav-more-signalements" onclick="mobileNavigate('signalements'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">warning</span></span> Signalements
+    </div>
+    <div class="mobile-more-item" id="mnav-more-templates" style="display:none;" onclick="mobileNavigate('templates'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">dashboard_customize</span></span> Templates
     </div>
     <div class="mobile-more-item" onclick="mobileNavigate('ai'); closeMobileMore()">
       <span class="mnav-icon" style="color:var(--gold);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Samia IA
@@ -11777,6 +11809,103 @@ function toggleDevisPanel() {
   function closeMobileNotifs() {
     document.getElementById('mobile-notif-overlay').classList.remove('open');
   }
+
+  // ═══ DRAG & DROP TACTILE ═══════════════════════════════════════
+  // Convertit un appui long + glissé sur [draggable=true] en événements
+  // HTML5 drag (dragstart/dragover/dragleave/drop/dragend), pour que le
+  // déplacement des événements du calendrier fonctionne au doigt.
+  (function() {
+    if (!('ontouchstart' in window)) return;
+    var src = null, dt = null, lastCell = null, ghost = null;
+    var timer = null, dragging = false, startX = 0, startY = 0, lastTouch = null;
+
+    function makeDT() {
+      var store = {};
+      return {
+        effectAllowed: 'move', dropEffect: 'move', files: [], types: [],
+        setData: function(t, v) { store[t] = String(v); },
+        getData: function(t) { return store[t] || ''; },
+        clearData: function() { store = {}; },
+        setDragImage: function() {}
+      };
+    }
+
+    function fire(type, target, touch) {
+      var ev = new Event(type, { bubbles: true, cancelable: true });
+      ev.dataTransfer = dt;
+      if (touch) {
+        ev.clientX = touch.clientX; ev.clientY = touch.clientY;
+        ev.pageX = touch.pageX; ev.pageY = touch.pageY;
+      }
+      target.dispatchEvent(ev);
+      return ev;
+    }
+
+    function cleanup() {
+      clearTimeout(timer); timer = null;
+      if (src) { src.style.opacity = ''; src.style.pointerEvents = ''; }
+      if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      ghost = null; src = null; dt = null; lastCell = null; dragging = false; lastTouch = null;
+    }
+
+    document.addEventListener('touchstart', function(e) {
+      var el = e.target.closest && e.target.closest('[draggable="true"]');
+      if (!el) return;
+      src = el; dragging = false;
+      var t = e.touches[0];
+      startX = t.clientX; startY = t.clientY; lastTouch = t;
+      timer = setTimeout(function() {
+        if (!src) return;
+        dragging = true;
+        dt = makeDT();
+        fire('dragstart', src, lastTouch);
+        src.style.opacity = '0.4';
+        src.style.pointerEvents = 'none';
+        ghost = src.cloneNode(true);
+        ghost.style.cssText += ';position:fixed;z-index:99999;pointer-events:none;opacity:.8;margin:0;'
+          + 'width:' + src.offsetWidth + 'px;left:' + (lastTouch.clientX - src.offsetWidth / 2) + 'px;top:' + (lastTouch.clientY - 20) + 'px;';
+        document.body.appendChild(ghost);
+        if (navigator.vibrate) navigator.vibrate(25);
+      }, 350);
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function(e) {
+      if (!src) return;
+      var t = e.touches[0];
+      lastTouch = t;
+      if (!dragging) {
+        // Le doigt bouge avant l'appui long → c'est un scroll, on annule
+        if (Math.abs(t.clientX - startX) > 12 || Math.abs(t.clientY - startY) > 12) cleanup();
+        return;
+      }
+      e.preventDefault(); // bloque le scroll pendant le drag
+      if (ghost) {
+        ghost.style.left = (t.clientX - ghost.offsetWidth / 2) + 'px';
+        ghost.style.top = (t.clientY - 20) + 'px';
+      }
+      var under = document.elementFromPoint(t.clientX, t.clientY);
+      if (!under) return;
+      var cell = under.closest && under.closest('[ondrop]');
+      if (lastCell && lastCell !== cell) fire('dragleave', lastCell, t);
+      if (cell) { fire('dragover', cell, t); lastCell = cell; }
+      else lastCell = null;
+    }, { passive: false });
+
+    document.addEventListener('touchend', function(e) {
+      if (!src) return;
+      if (!dragging) { cleanup(); return; }
+      e.preventDefault(); // empêche le click fantôme après le drop
+      var t = e.changedTouches[0];
+      var under = document.elementFromPoint(t.clientX, t.clientY);
+      var cell = under && under.closest ? under.closest('[ondrop]') : null;
+      var source = src;
+      if (cell) fire('drop', cell, t);
+      fire('dragend', source, t);
+      cleanup();
+    }, { passive: false });
+
+    document.addEventListener('touchcancel', function() { if (src) { if (dragging && src) fire('dragend', src, lastTouch); cleanup(); } });
+  })();
 
   // Patch navigate to also update mobile nav
   (function() {
@@ -15623,7 +15752,7 @@ function updateUIForUser() {
   _setVis(['nav-devis','mnav-more-devis'], false);
   _setVis(['nav-finance','mnav-more-finance'], false);
   _setVis(['nav-section-finance'], false);
-  _setVis(['nav-contacts'], false);
+  _setVis(['nav-contacts','mnav-more-contacts'], false);
   _setVis(['nav-administratif','mnav-more-administratif'], false);
   _setVis(['nav-mediatheque','mnav-more-mediatheque'], false);
   _setVis(['nav-library','mnav-more-library'], false);
@@ -15635,12 +15764,12 @@ function updateUIForUser() {
   if (_canSee('invoices'))      _setVis(['nav-invoices','mnav-more-invoices'], true);
   if (_canSee('devis'))         _setVis(['nav-devis','mnav-more-devis'], true);
   if (_canSee('clients'))       _setVis(['nav-clients','mnav-clients'], true);
-  if (_canSee('contacts'))      _setVis(['nav-contacts'], true);
+  if (_canSee('contacts'))      _setVis(['nav-contacts','mnav-more-contacts'], true);
   if (_canSee('administratif')) _setVis(['nav-administratif','mnav-more-administratif'], true);
   if (_canSee('mediatheque'))   _setVis(['nav-mediatheque','mnav-more-mediatheque'], true);
   if (_canSee('library'))       _setVis(['nav-library','mnav-more-library'], true);
   // Générateurs : admin uniquement (pour l'instant)
-  _setVis(['nav-generateurs'], !!isAdmin);
+  _setVis(['nav-generateurs','mnav-more-generateurs'], !!isAdmin);
 
   // Section headers
   const showFinSec = _canSee('finance') || _canSee('invoices') || _canSee('devis');
@@ -15666,7 +15795,21 @@ function updateUIForUser() {
       <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${currentUser.name}</div>
       <div style="font-size:10px;color:var(--text-faint);">${currentUser.jobTitle || (isAdmin ? 'Administrateur' : 'Membre')}</div>
     </div>
+    <div style="position:relative;flex-shrink:0;" onclick="event.stopPropagation()">
+      <button id="notif-bell-btn" onclick="toggleNotifPanel()" title="Notifications" style="background:none;border:none;cursor:pointer;padding:4px;display:flex;align-items:center;gap:2px;color:var(--text-dim);font-family:'Inter',system-ui,-apple-system,sans-serif;">
+        <span class="mi" style="font-size:18px;">notifications</span><span id="notif-count" style="font-size:10px;font-weight:800;color:var(--gold);display:none;">0</span>
+      </button>
+      <div id="notif-panel" style="display:none;position:absolute;right:0;bottom:calc(100% + 8px);width:320px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,.25);z-index:500;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:13px;font-weight:700;color:var(--text);">Notifications</div>
+          <button onclick="markAllNotifsRead()" style="background:none;border:none;font-size:11px;color:var(--gold);cursor:pointer;font-family:'Inter',system-ui,-apple-system,sans-serif;">Tout lire</button>
+        </div>
+        <div id="notif-list" style="max-height:360px;overflow-y:auto;"></div>
+      </div>
+    </div>
+    <button onclick="event.stopPropagation();toggleTheme()" title="Mode jour/nuit" style="background:none;border:none;cursor:pointer;padding:4px;flex-shrink:0;color:var(--text-dim);"><span class="mi" id="footer-theme-icon" style="font-size:18px;">${document.documentElement.classList.contains('dark') ? 'light_mode' : 'dark_mode'}</span></button>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-dim);flex-shrink:0;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+    renderNotifBell();
   }
 
   // Populate équipe user filter
@@ -19463,16 +19606,15 @@ function escHTML(str) {
         clientsItem.insertAdjacentHTML('beforebegin', html);
       }
     }
-    // Mobile bottom nav (if exists)
+    // Mobile : dans le menu "Plus" (la barre du bas est déjà pleine)
     if (!document.getElementById('mnav-prospects')) {
-      const mClients = document.getElementById('mnav-clients');
-      if (mClients) {
+      const mDevis = document.getElementById('mnav-more-devis');
+      if (mDevis) {
         const html =
-          '<div class="mobile-nav-item" id="mnav-prospects" onclick="mobileNavigate(\'prospects\')">' +
-            '<span class="material-icons-outlined" style="font-size:22px;">hub</span>' +
-            '<span>Prospects</span>' +
+          '<div class="mobile-more-item" id="mnav-prospects" onclick="mobileNavigate(\'prospects\'); closeMobileMore()">' +
+            '<span class="mnav-icon"><span class="mi">hub</span></span> Prospects' +
           '</div>';
-        mClients.insertAdjacentHTML('beforebegin', html);
+        mDevis.insertAdjacentHTML('beforebegin', html);
       }
     }
   }
@@ -20787,9 +20929,10 @@ function escHTML(str) {
   // ── INIT ────────────────────────────────────────────────────
   function applyRoleVisibility() {
     const nav = document.getElementById('nav-templates');
-    if (!nav) return;
-    if (!window.currentUser) { nav.style.display = ''; return; }
-    nav.style.display = (window.currentUser.role === 'admin') ? '' : 'none';
+    const mnav = document.getElementById('mnav-more-templates');
+    const show = !window.currentUser || (window.currentUser.role === 'admin');
+    if (nav)  nav.style.display  = show ? '' : 'none';
+    if (mnav) mnav.style.display = show ? '' : 'none';
   }
 
   function init() {

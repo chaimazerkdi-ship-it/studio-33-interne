@@ -6043,6 +6043,9 @@ async function login() {
     updateUIForUser();
     checkDailyReport();
     loadNotifications();
+    // Rapports saisis hors-ligne : afficher l'indicateur et tenter la synchro
+    if (typeof s33UpdateOfflineBadge === 'function') s33UpdateOfflineBadge();
+    if (typeof s33FlushOfflineReports === 'function') s33FlushOfflineReports();
   }
 }
 
@@ -19949,7 +19952,7 @@ function escHTML(str) {
     const origLabel = submitBtn ? submitBtn.textContent : '';
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Envoi en cours…'; }
 
-    let ok = 0, failed = 0;
+    let ok = 0, failed = 0, queued = 0;
     for (const e of entries) {
       const isConcours = String(e.projectId).startsWith('concours_');
       const project    = isConcours ? null : (db.projects || []).find(p => String(p.id) === String(e.projectId));
@@ -19979,6 +19982,17 @@ function escHTML(str) {
         blockers:     e.blockers || null,
         submitted_at: nowIso
       };
+
+      // ── Hors-ligne : mettre en file locale, sync au retour du réseau ──
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        s33QueueOfflineReport(reportData);
+        // Affichage optimiste : rapport visible localement en attendant la sync
+        db.dailyReports = (db.dailyReports || []).filter(r =>
+          !(String(r.user_id) === uid && r.date === today && parseInt(r.project_id) === projId && !Number.isInteger(r.id)));
+        db.dailyReports.unshift({ ...reportData, id: '_offline_' + Date.now() + '_' + projId, _pendingSync: true });
+        queued++;
+        continue;
+      }
 
       try {
         if (existing) {
@@ -20017,14 +20031,27 @@ function escHTML(str) {
         ok++;
       } catch(err) {
         console.error('Échec enregistrement rapport:', err.message);
-        // Ne PAS créer de faux objet local — afficher une vraie erreur
-        failed++;
-        toast('Erreur enregistrement projet ' + (project ? project.name : '#' + projId) + ' — réessayez', 'error');
+        // Échec pendant un envoi : si le réseau a lâché, mettre en file plutôt qu'échouer
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          s33QueueOfflineReport(reportData);
+          db.dailyReports = (db.dailyReports || []).filter(r =>
+            !(String(r.user_id) === uid && r.date === today && parseInt(r.project_id) === projId && !Number.isInteger(r.id)));
+          db.dailyReports.unshift({ ...reportData, id: '_offline_' + Date.now() + '_' + projId, _pendingSync: true });
+          queued++;
+        } else {
+          failed++;
+          toast('Erreur enregistrement projet ' + (project ? project.name : '#' + projId) + ' — réessayez', 'error');
+        }
       }
     }
 
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origLabel; }
     releaseLock();
+
+    if (queued > 0) {
+      toast('📶 Hors-ligne — ' + queued + ' rapport' + (queued > 1 ? 's' : '') + ' enregistré' + (queued > 1 ? 's' : '') + ' et synchronisé' + (queued > 1 ? 's' : '') + ' dès le retour du réseau', 'warning');
+      s33UpdateOfflineBadge();
+    }
 
     if (ok > 0) {
       logActivity('add_report', currentUser.name + ' a soumis son rapport journalier', 'report', null, null);
@@ -20049,6 +20076,72 @@ function escHTML(str) {
 
   console.log('✓ Multi-report loaded');
 })();
+
+// ═══ RAPPORTS HORS-LIGNE (file d'attente + synchronisation) ═════════
+const S33_OFFLINE_KEY = 's33_offline_reports';
+
+function s33GetOfflineQueue() {
+  try { return JSON.parse(localStorage.getItem(S33_OFFLINE_KEY) || '[]'); } catch(_) { return []; }
+}
+function s33QueueOfflineReport(reportData) {
+  const q = s33GetOfflineQueue();
+  q.push({ ...reportData, _queuedAt: Date.now() });
+  try { localStorage.setItem(S33_OFFLINE_KEY, JSON.stringify(q)); } catch(_) {}
+}
+
+function s33UpdateOfflineBadge() {
+  const n = s33GetOfflineQueue().length;
+  let badge = document.getElementById('s33-offline-badge');
+  if (n === 0) { if (badge) badge.remove(); return; }
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 's33-offline-badge';
+    badge.style.cssText = 'position:fixed;left:12px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:1699;'
+      + 'background:#92400e;color:#fff;border-radius:99px;padding:7px 13px;font-size:11px;font-weight:700;'
+      + 'font-family:Inter,system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.3);display:flex;align-items:center;gap:6px;cursor:pointer;';
+    badge.title = 'Rapports en attente de synchronisation';
+    badge.onclick = () => s33FlushOfflineReports(true);
+    document.body.appendChild(badge);
+  }
+  badge.innerHTML = '<span class="mi" style="font-size:14px;">cloud_off</span> ' + n + ' en attente';
+}
+
+let _s33Flushing = false;
+async function s33FlushOfflineReports(manual) {
+  if (_s33Flushing) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (manual) toast('Toujours hors-ligne — réessayez une fois connecté', 'warning');
+    return;
+  }
+  let q = s33GetOfflineQueue();
+  if (!q.length) return;
+  _s33Flushing = true;
+  let synced = 0;
+  const remaining = [];
+  for (const rd of q) {
+    const payload = { ...rd }; delete payload._queuedAt;
+    try {
+      await sbInsertOrThrow('daily_reports', payload);
+      synced++;
+    } catch(err) {
+      console.warn('Sync rapport hors-ligne échouée, on garde en file:', err.message);
+      remaining.push(rd); // on réessaiera plus tard
+    }
+  }
+  try { localStorage.setItem(S33_OFFLINE_KEY, JSON.stringify(remaining)); } catch(_) {}
+  _s33Flushing = false;
+  s33UpdateOfflineBadge();
+  if (synced > 0) {
+    toast('✓ ' + synced + ' rapport' + (synced > 1 ? 's' : '') + ' synchronisé' + (synced > 1 ? 's' : ''));
+    if (typeof loadDB === 'function' && currentUser) {
+      try { await loadDB(); if (typeof renderRapport === 'function') renderRapport(); if (typeof renderEquipe === 'function' && currentPage === 'equipe') renderEquipe(); } catch(_) {}
+    }
+  }
+}
+
+// Synchronise au retour du réseau + au démarrage
+window.addEventListener('online', () => { s33UpdateOfflineBadge(); s33FlushOfflineReports(); });
+window.addEventListener('offline', () => s33UpdateOfflineBadge());
 
 // ═══════════════════════════════════════════════════════════════════
 // ░░ SPRINT 2 — PIPELINE CRM (Prospects avant clients)              ░

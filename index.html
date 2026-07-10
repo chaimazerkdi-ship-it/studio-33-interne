@@ -3854,6 +3854,7 @@
           <select id="finance-year" onchange="renderFinance()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:12px;border-radius:var(--radius);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;"></select>
           <button class="btn btn-gold" onclick="openModal('charge-modal')">+ Charge</button>
           <button class="btn btn-outline" onclick="openModal('entree-modal')">+ Entrée</button>
+          <button class="btn btn-outline" onclick="exportFinancesCSV()" title="Exporter l'année en CSV (Excel)"><span class="mi">download</span> Exporter</button>
         </div>
       </div>
 
@@ -11386,6 +11387,76 @@ function getFinanceMonth() {
   const y = parseInt(document.getElementById('finance-year')?.value || new Date().getFullYear());
   const m = parseInt(document.getElementById('finance-month')?.value || new Date().getMonth()+1);
   return { y, m, str: `${y}-${String(m).padStart(2,'0')}` };
+}
+
+/**
+ * Export CSV de tous les mouvements financiers de l'année sélectionnée
+ * (entrées, charges, factures), lisible directement dans Excel.
+ * - BOM UTF-8 + séparateur ';' → accents et colonnes corrects en Excel français.
+ */
+function exportFinancesCSV() {
+  const year = parseInt(document.getElementById('finance-year')?.value || new Date().getFullYear());
+  const clientName = id => (db.clients.find(c => String(c.id) === String(id)) || {}).name || '';
+  const rows = [];
+
+  // ── Entrées ──
+  (db.entrees || []).forEach(e => {
+    if (!e.month || !String(e.month).startsWith(String(year))) return;
+    rows.push({ type: 'Entrée', mois: e.month, date: '', libelle: e.label || '', cat: e.cat || '',
+      client: clientName(e.clientId ?? e.client_id), recur: '', montant: e.amount || 0, statut: '' });
+  });
+
+  // ── Charges (ponctuelles de l'année + récurrentes mensuelles) ──
+  (db.charges || []).forEach(c => {
+    const isRecurring = c.recur === 'mensuel';
+    if (!isRecurring && (!c.month || !String(c.month).startsWith(String(year)))) return;
+    rows.push({ type: 'Charge', mois: c.month || '', date: '', libelle: c.label || '', cat: c.cat || '',
+      client: '', recur: isRecurring ? 'Mensuelle récurrente' : 'Ponctuelle',
+      montant: -(c.amount || 0), statut: '' });
+  });
+
+  // ── Factures ──
+  (db.invoices || []).forEach(i => {
+    if (!i.date || !String(i.date).startsWith(String(year))) return;
+    rows.push({ type: 'Facture', mois: (i.date || '').slice(0, 7), date: i.date || '',
+      libelle: [i.num, i.object].filter(Boolean).join(' — '), cat: '',
+      client: clientName(i.clientId ?? i.client_id), recur: '',
+      montant: i.amount || 0, statut: i.status || '' });
+  });
+
+  if (!rows.length) { toast('Aucun mouvement financier pour ' + year); return; }
+
+  // Tri chronologique (mois puis type)
+  rows.sort((a, b) => (a.mois || '').localeCompare(b.mois || '') || a.type.localeCompare(b.type));
+
+  const totalEntrees = rows.filter(r => r.type === 'Entrée').reduce((s, r) => s + r.montant, 0);
+  const totalCharges = rows.filter(r => r.type === 'Charge').reduce((s, r) => s + r.montant, 0);
+  const totalFactures = rows.filter(r => r.type === 'Facture').reduce((s, r) => s + r.montant, 0);
+
+  const esc = v => {
+    const s = (v == null ? '' : String(v));
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const headers = ['Type', 'Mois', 'Date', 'Libellé', 'Catégorie', 'Client', 'Récurrence', 'Montant (MAD)', 'Statut'];
+  const lines = [headers.join(';')];
+  rows.forEach(r => {
+    lines.push([r.type, r.mois, r.date, r.libelle, r.cat, r.client, r.recur, r.montant, r.statut].map(esc).join(';'));
+  });
+  // Ligne(s) de synthèse
+  lines.push('');
+  lines.push(['', '', '', 'TOTAL Entrées', '', '', '', totalEntrees, ''].map(esc).join(';'));
+  lines.push(['', '', '', 'TOTAL Charges', '', '', '', totalCharges, ''].map(esc).join(';'));
+  lines.push(['', '', '', 'TOTAL Factures (HT)', '', '', '', totalFactures, ''].map(esc).join(';'));
+
+  const csv = '﻿' + lines.join('\r\n'); // BOM UTF-8 pour Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Studio33_Finances_' + year + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+  toast('Export ' + year + ' — ' + rows.length + ' lignes');
 }
 
 function renderFinance() {

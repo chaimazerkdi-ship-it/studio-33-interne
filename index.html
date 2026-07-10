@@ -2773,6 +2773,9 @@
     </div>
     <nav class="sidebar-nav">
       <div class="nav-section">
+        <div class="nav-item" onclick="openGlobalSearch()" style="margin-bottom:4px;">
+          <span class="nav-icon"><span class="mi">search</span></span><span class="nav-text">Rechercher <span style="font-size:9px;font-weight:700;color:var(--text-faint);border:1px solid var(--border);border-radius:5px;padding:1px 5px;margin-left:6px;">⌘K</span></span>
+        </div>
         <div class="nav-label">Vue générale</div>
         <div class="nav-item active" onclick="navigate('dashboard')">
           <span class="nav-icon"><span class="mi">dashboard</span></span><span class="nav-text">Dashboard</span>
@@ -4475,6 +4478,69 @@
   <img id="lightbox-img" src="" alt="">
   <div id="lightbox-title"></div>
   <button id="lightbox-nav-next" onclick="lightboxNav(1)">›</button>
+</div>
+
+<!-- ====== RECHERCHE GLOBALE ====== -->
+<style>
+  #gsearch-overlay {
+    position: fixed; inset: 0; z-index: 1650; display: none;
+    background: rgba(0,0,0,.45); backdrop-filter: blur(4px);
+    align-items: flex-start; justify-content: center;
+    padding: 12vh 16px 16px;
+  }
+  #gsearch-overlay.open { display: flex; }
+  #gsearch-box {
+    width: 100%; max-width: 620px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: 0 20px 60px rgba(0,0,0,.35); overflow: hidden;
+    display: flex; flex-direction: column; max-height: 76vh;
+    animation: fadeSlideUp .18s ease;
+  }
+  #gsearch-inputrow { display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  #gsearch-inputrow .mi { color: var(--text-faint); font-size: 22px; }
+  #gsearch-input {
+    flex: 1; border: none !important; background: transparent !important;
+    font-size: 17px; color: var(--text); outline: none; padding: 0 !important;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  #gsearch-input:focus { box-shadow: none !important; }
+  #gsearch-esc {
+    font-size: 10px; font-weight: 700; color: var(--text-faint);
+    border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px;
+    background: var(--surface2); flex-shrink: 0; cursor: pointer;
+  }
+  #gsearch-results { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .gs-group-label {
+    font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--text-faint); padding: 12px 18px 6px;
+  }
+  .gs-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 18px;
+    cursor: pointer; transition: background .12s; border: none; background: none;
+    width: 100%; text-align: left; font-family: inherit;
+  }
+  .gs-item:hover, .gs-item.active { background: var(--surface2); }
+  .gs-item-icon {
+    width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface2); color: var(--gold);
+  }
+  .gs-item-icon .mi { font-size: 18px; }
+  .gs-item-body { flex: 1; min-width: 0; }
+  .gs-item-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gs-item-sub { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .gs-empty { padding: 40px 20px; text-align: center; color: var(--text-faint); font-size: 13px; }
+  .gs-hint { padding: 40px 20px; text-align: center; color: var(--text-faint); font-size: 13px; }
+</style>
+<div id="gsearch-overlay" onclick="if(event.target===this)closeGlobalSearch()">
+  <div id="gsearch-box">
+    <div id="gsearch-inputrow">
+      <span class="mi">search</span>
+      <input id="gsearch-input" type="text" placeholder="Rechercher projets, clients, factures, documents…" autocomplete="off" oninput="runGlobalSearch(this.value)">
+      <span id="gsearch-esc" onclick="closeGlobalSearch()">ESC</span>
+    </div>
+    <div id="gsearch-results"><div class="gs-hint">Tapez pour rechercher dans toute l'application.</div></div>
+  </div>
 </div>
 
 <!-- ====== CHARGE MODAL ====== -->
@@ -11042,6 +11108,184 @@ function closeLightbox() {
   document.body.style.overflow = '';
 }
 
+// ═══ RECHERCHE GLOBALE ═════════════════════════════════════════════
+let _gsActiveIdx = -1;
+let _gsFlatItems = [];
+
+function openGlobalSearch() {
+  const ov = document.getElementById('gsearch-overlay');
+  ov.classList.add('open');
+  const inp = document.getElementById('gsearch-input');
+  inp.value = '';
+  runGlobalSearch('');
+  setTimeout(() => inp.focus(), 50);
+  try { history.pushState({ s33gs: 1 }, ''); } catch(_) {}
+}
+
+function closeGlobalSearch() {
+  const ov = document.getElementById('gsearch-overlay');
+  if (!ov.classList.contains('open')) return;
+  ov.classList.remove('open');
+  if (history.state && history.state.s33gs) { try { history.back(); } catch(_) {} }
+}
+
+function _gsNorm(s) {
+  return (s || '').toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, ''); // enlève les accents
+}
+
+function runGlobalSearch(raw) {
+  const q = _gsNorm(raw).trim();
+  const box = document.getElementById('gsearch-results');
+  _gsActiveIdx = -1;
+  _gsFlatItems = [];
+  if (!q) {
+    box.innerHTML = '<div class="gs-hint">Tapez pour rechercher dans toute l\'application.</div>';
+    return;
+  }
+
+  const isAdmin = currentUser?.role === 'admin';
+  const clientById = id => (db.clients || []).find(c => String(c.id) === String(id));
+  const groups = [];
+
+  // ── Projets ──
+  const projs = (db.projects || []).filter(p => {
+    const cli = clientById(p.clientId);
+    return _gsNorm(p.name).includes(q) || _gsNorm(p.notes).includes(q) ||
+           _gsNorm(p.type).includes(q) || _gsNorm(p.phase).includes(q) ||
+           (cli && _gsNorm(cli.name).includes(q));
+  }).slice(0, 6).map(p => {
+    const cli = clientById(p.clientId);
+    return { icon: 'folder', title: p.name, sub: [p.phase, cli && cli.name].filter(Boolean).join(' · ') || 'Projet', action: () => openProjectDetail(p.id) };
+  });
+  if (projs.length) groups.push({ label: 'Projets', items: projs });
+
+  // ── Clients ──
+  const clis = (db.clients || []).filter(c =>
+    _gsNorm(c.name).includes(q) || _gsNorm(c.phone).includes(q) ||
+    _gsNorm(c.email).includes(q) || _gsNorm(c.notes).includes(q)
+  ).slice(0, 6).map(c => ({
+    icon: 'person', title: c.name, sub: [c.phone, c.email].filter(Boolean).join(' · ') || 'Client',
+    action: () => { navigate('clients'); setTimeout(() => { try { openClientProfile(c.id); } catch(_) {} }, 60); }
+  }));
+  if (clis.length && (isAdmin || _gsCanSee('clients'))) groups.push({ label: 'Clients', items: clis });
+
+  // ── Factures ──
+  if (isAdmin || _gsCanSee('invoices')) {
+    const invs = (db.invoices || []).filter(i => {
+      const cli = clientById(i.clientId);
+      return _gsNorm(i.num).includes(q) || _gsNorm(i.object).includes(q) ||
+             (cli && _gsNorm(cli.name).includes(q));
+    }).slice(0, 5).map(i => {
+      const cli = clientById(i.clientId);
+      return { icon: 'receipt', title: (i.num ? 'N° ' + i.num + ' — ' : '') + (i.object || 'Facture'),
+        sub: [cli && cli.name, i.amount ? _gsMad(i.amount) : '', i.status].filter(Boolean).join(' · '),
+        action: () => navigate('invoices') };
+    });
+    if (invs.length) groups.push({ label: 'Factures', items: invs });
+  }
+
+  // ── Devis ──
+  if (isAdmin || _gsCanSee('devis')) {
+    const dvs = (db.devis || []).filter(d =>
+      _gsNorm(d.clientName).includes(q) || _gsNorm(d.ref).includes(q) || _gsNorm(d.object).includes(q)
+    ).slice(0, 5).map(d => ({
+      icon: 'request_quote', title: d.ref || d.clientName || 'Devis',
+      sub: [d.clientName, d.dateVal].filter(Boolean).join(' · ') || 'Devis', action: () => navigate('devis')
+    }));
+    if (dvs.length) groups.push({ label: 'Devis', items: dvs });
+  }
+
+  // ── Prospects ──
+  if (isAdmin) {
+    const pros = (db.prospects || []).filter(p =>
+      _gsNorm(p.name).includes(q) || _gsNorm(p.contact).includes(q) ||
+      _gsNorm(p.phone).includes(q) || _gsNorm(p.notes).includes(q)
+    ).slice(0, 5).map(p => ({
+      icon: 'hub', title: p.name || p.contact || 'Prospect',
+      sub: [p.stage || p.status, p.phone].filter(Boolean).join(' · ') || 'Prospect', action: () => navigate('prospects')
+    }));
+    if (pros.length) groups.push({ label: 'Prospects', items: pros });
+  }
+
+  // ── Documents / Médias ──
+  const meds = (db.media || []).filter(m => _gsNorm(m.name).includes(q))
+    .slice(0, 6).map(m => {
+      const proj = (db.projects || []).find(p => String(p.id) === String(m.projectId));
+      return { icon: m.isPDF ? 'picture_as_pdf' : 'image', title: m.name,
+        sub: proj ? proj.name : 'Document',
+        action: () => { if (m.isPDF && typeof openPDF === 'function') openPDF(m.id); else if (typeof s33OpenDoc === 'function' && m.is_project_doc) s33OpenDoc(m.id); else if (typeof openLightbox === 'function') openLightbox(m.id); } };
+    });
+  if (meds.length) groups.push({ label: 'Documents', items: meds });
+
+  if (!groups.length) {
+    box.innerHTML = '<div class="gs-empty">Aucun résultat pour « ' + _gsEsc(raw) + ' »</div>';
+    return;
+  }
+
+  let html = '';
+  groups.forEach(g => {
+    html += '<div class="gs-group-label">' + g.label + '</div>';
+    g.items.forEach(it => {
+      const idx = _gsFlatItems.length;
+      _gsFlatItems.push(it);
+      html += '<button class="gs-item" data-gsidx="' + idx + '" onclick="_gsRun(' + idx + ')">' +
+        '<span class="gs-item-icon"><span class="mi">' + it.icon + '</span></span>' +
+        '<span class="gs-item-body">' +
+          '<span class="gs-item-title">' + _gsEsc(it.title) + '</span>' +
+          (it.sub ? '<span class="gs-item-sub">' + _gsEsc(it.sub) + '</span>' : '') +
+        '</span></button>';
+    });
+  });
+  box.innerHTML = html;
+}
+
+function _gsRun(idx) {
+  const it = _gsFlatItems[idx];
+  if (!it) return;
+  closeGlobalSearch();
+  setTimeout(() => { try { it.action(); } catch(e) { console.error('gsearch action', e); } }, 60);
+}
+
+function _gsCanSee(key) {
+  const p = currentUser?.permissions;
+  if (!p) return false;
+  const sec = p.sections || {};
+  if (p.is_co_admin) return sec[key] !== false;
+  return sec[key] === true;
+}
+function _gsMad(n) { try { return Number(n).toLocaleString('fr-FR') + ' DH'; } catch(_) { return n + ' DH'; } }
+function _gsEsc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+// Clavier : Cmd/Ctrl+K ouvre, flèches naviguent, Entrée valide, Échap ferme
+document.addEventListener('keydown', function(e) {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    const ov = document.getElementById('gsearch-overlay');
+    if (ov.classList.contains('open')) closeGlobalSearch(); else openGlobalSearch();
+    return;
+  }
+  const ov = document.getElementById('gsearch-overlay');
+  if (!ov.classList.contains('open')) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeGlobalSearch(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); _gsMove(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _gsMove(-1); }
+  else if (e.key === 'Enter') { if (_gsActiveIdx >= 0) { e.preventDefault(); _gsRun(_gsActiveIdx); } }
+});
+function _gsMove(dir) {
+  if (!_gsFlatItems.length) return;
+  _gsActiveIdx = (_gsActiveIdx + dir + _gsFlatItems.length) % _gsFlatItems.length;
+  document.querySelectorAll('.gs-item').forEach(el => {
+    const on = Number(el.getAttribute('data-gsidx')) === _gsActiveIdx;
+    el.classList.toggle('active', on);
+    if (on) el.scrollIntoView({ block: 'nearest' });
+  });
+}
+window.addEventListener('popstate', function() {
+  const ov = document.getElementById('gsearch-overlay');
+  if (ov && ov.classList.contains('open')) ov.classList.remove('open');
+});
+
 async function openPDF(id) {
   const m = db.media.find(x => x.id === id);
   if (!m) return;
@@ -11732,6 +11976,9 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
 <div class="mobile-more-overlay" id="mobile-more-overlay" onclick="closeMobileMore()">
   <div class="mobile-more-sheet" onclick="event.stopPropagation()">
     <div class="mobile-more-title">Navigation</div>
+    <div class="mobile-more-item" onclick="closeMobileMore(); openGlobalSearch()">
+      <span class="mnav-icon"><span class="mi">search</span></span> Rechercher
+    </div>
     <div class="mobile-more-item" onclick="openMobileNotifs()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></span> Notifications
       <span id="notif-count-mobile" style="display:none;margin-left:auto;background:var(--gold);color:#fff;font-size:10px;font-weight:800;border-radius:99px;padding:2px 8px;">0</span>

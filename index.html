@@ -14040,6 +14040,7 @@ function _calRenderToolbar(periodLabel) {
     return '<button onclick="navigateCalendar(' + delta + ')" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">' + icon + '</span></button>';
   };
   const tachesAutoBtn = '<button onclick="toggleCalTemplateTasks()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:' + (_calShowTemplateTasks ? '#1a73e8' : 'var(--surface)') + ';color:' + (_calShowTemplateTasks ? '#fff' : 'var(--text-dim)') + ';font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;">Tâches auto : ' + (_calShowTemplateTasks ? 'ON' : 'OFF') + '</button>';
+  const icsBtn = '<button onclick="exportCalendarICS()" title="Exporter vers Google Agenda / iPhone (.ics)" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><span class="mi" style="font-size:14px;">ios_share</span> .ics</button>';
   return '<div class="gcal-toolbar-unified" style="display:flex;align-items:center;gap:8px;padding:12px 16px;margin-bottom:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius) var(--radius) 0 0;flex-wrap:wrap;">' +
     '<button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;">Aujourd\'hui</button>' +
     chevronBtn(-1, 'chevron_left') +
@@ -14048,8 +14049,67 @@ function _calRenderToolbar(periodLabel) {
     '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">' +
     viewBtns +
     tachesAutoBtn +
+    icsBtn +
     '</div>' +
     '</div>';
+}
+
+/**
+ * Exporte tous les événements du calendrier au format .ics (iCalendar),
+ * importable dans Google Agenda, Apple Calendrier, Outlook…
+ */
+function exportCalendarICS() {
+  const events = getCalCustomEvents();
+  if (!events.length) { toast('Aucun événement à exporter'); return; }
+
+  const pad = n => String(n).padStart(2, '0');
+  const esc = s => (s == null ? '' : String(s))
+    .replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  // Date-only (événement journée entière) → format VALUE=DATE
+  const dOnly = s => (s || '').replace(/-/g, '');
+  // Date + heure locale → format flottant YYYYMMDDTHHMMSS
+  const dTime = (dateStr, timeStr) => dOnly(dateStr) + 'T' + (timeStr || '00:00').replace(':', '') + '00';
+  const stamp = (() => { const n = new Date(); return n.getUTCFullYear() + pad(n.getUTCMonth()+1) + pad(n.getUTCDate()) + 'T' + pad(n.getUTCHours()) + pad(n.getUTCMinutes()) + pad(n.getUTCSeconds()) + 'Z'; })();
+
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Studio 33//Manager//FR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Studio 33'];
+
+  events.forEach(ev => {
+    if (!ev.date) return;
+    const t = CAL_EVENT_TYPES[ev.type] || CAL_EVENT_TYPES.autre;
+    const uid = 's33-' + (ev.id != null ? ev.id : Math.random().toString(36).slice(2)) + '@studio33';
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:' + uid);
+    lines.push('DTSTAMP:' + stamp);
+    if (ev.time_start) {
+      lines.push('DTSTART:' + dTime(ev.date, ev.time_start));
+      lines.push('DTEND:' + dTime(ev.date_end || ev.date, ev.time_end || ev.time_start));
+    } else {
+      // Journée entière : DTEND est exclusif → jour suivant
+      const endBase = ev.date_end || ev.date;
+      const endD = new Date(endBase + 'T00:00'); endD.setDate(endD.getDate() + 1);
+      const endStr = endD.getFullYear() + pad(endD.getMonth()+1) + pad(endD.getDate());
+      lines.push('DTSTART;VALUE=DATE:' + dOnly(ev.date));
+      lines.push('DTEND;VALUE=DATE:' + endStr);
+    }
+    lines.push('SUMMARY:' + esc((t.label ? '[' + t.label + '] ' : '') + (ev.title || 'Événement')));
+    const descParts = [];
+    if (ev.note) descParts.push(ev.note);
+    if (ev.status && CAL_STATUS[ev.status]) descParts.push('Statut : ' + CAL_STATUS[ev.status].label);
+    if (descParts.length) lines.push('DESCRIPTION:' + esc(descParts.join('\n')));
+    lines.push('END:VEVENT');
+  });
+
+  lines.push('END:VCALENDAR');
+  // Les lignes iCalendar se terminent par CRLF
+  const ics = lines.join('\r\n');
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Studio33_Calendrier.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 8000);
+  toast(events.length + ' événements exportés');
 }
 
 function _renderCalLegend() {

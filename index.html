@@ -2852,6 +2852,9 @@
         <div class="nav-item" id="nav-ai" onclick="navigate('ai')">
           <span class="nav-icon"><span class="mi">auto_awesome</span></span><span class="nav-text">Samia IA</span>
         </div>
+        <div class="nav-item" onclick="openTrash()">
+          <span class="nav-icon"><span class="mi">delete</span></span><span class="nav-text">Corbeille</span>
+        </div>
       </div>
     </nav>
     <div class="sidebar-footer" onclick="openProfilePanel()" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;">
@@ -5712,14 +5715,14 @@ async function loadDB() {
     // ── Promise.allSettled : une table en panne ne bloque plus le chargement ──
     const TABLE_NAMES = ['clients','projects','invoices','library','devis','charges','entrees','media','app_config','user_tasks','daily_reports','conges','user_profiles','team_members','dashboard_config','contacts_pro','mat_suppliers','mat_materials','bureau_incidents','concours','calendar_events','activity_log','generated_documents'];
     const _settled = await Promise.allSettled([
-      sbGet('clients', '?order=id'),
-      sbGet('projects', '?order=id'),
-      sbGet('invoices', '?order=id'),
+      sbGet('clients', '?deleted_at=is.null&order=id'),
+      sbGet('projects', '?deleted_at=is.null&order=id'),
+      sbGet('invoices', '?deleted_at=is.null&order=id'),
       sbGet('library', '?order=id'),
-      sbGet('devis', '?order=id'),
+      sbGet('devis', '?deleted_at=is.null&order=id'),
       sbGet('charges', '?order=id'),
       sbGet('entrees', '?order=id'),
-      sbGet('media', '?select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year&order=id'),
+      sbGet('media', '?deleted_at=is.null&select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year&order=id'),
       sbGet('app_config'),
       sbGet('user_tasks', '?order=created_at'),
       sbGet('daily_reports', '?order=submitted_at.desc'),
@@ -7781,11 +7784,10 @@ async function deleteProject(id) {
   } catch { return; }
   setLoading(true, 'Suppression…');
   try {
-    await sbDelete('projects', id);
-    db.projects = db.projects.filter(x => x.id !== id);
-    if (currentPage === 'project-detail') navigate('projects');
-    else { renderProjects(); renderDashboard(); }
-    toast(`Projet "${p.name}" supprimé`);
+    await s33SoftDelete('projects', p, () => {
+      if (currentPage === 'project-detail') navigate('projects');
+      else { renderProjects(); renderDashboard(); }
+    });
   } finally { setLoading(false); }
 }
 
@@ -9006,9 +9008,7 @@ async function deleteClient(id) {
   closeClientProfile();
   setLoading(true, 'Suppression…');
   try {
-    const ok = await sbDelete('clients', id);
-    if (!ok) { toast('Erreur : suppression refusée par la base de données', 'error'); return; }
-    await loadDB(); renderClients(); renderDashboard(); toast('Client supprimé');
+    await s33SoftDelete('clients', c || { id }, () => { renderClients(); renderDashboard(); });
   } finally { setLoading(false); }
 }
 
@@ -9944,9 +9944,8 @@ async function confirmPayment(invoiceId, date, method, btn) {
 
 async function deleteInvoice(id) {
   if (!confirm('Supprimer cette facture ?')) return;
-  const ok = await sbDelete('invoices', id);
-  if (!ok) { toast('Erreur : suppression refusée par la base de données'); return; }
-  await loadDB(); renderInvoices(); toast('Facture supprimée');
+  const inv = db.invoices.find(x => x.id === id) || { id };
+  await s33SoftDelete('invoices', inv, () => renderInvoices());
 }
 
 function printInvoice(id) {
@@ -10757,10 +10756,9 @@ async function changeDevisStatus(id, status) {
 
 async function deleteDevis(id) {
   if (!confirm('Supprimer ce devis ?')) return;
-  const ok = await sbDelete('devis', id);
-  if (!ok) { toast('Erreur : suppression refusée par la base de données'); return; }
+  const dv = db.devis.find(x => x.id === id) || { id };
   if (currentDevisId === id) { currentDevisId = null; resetDevis(); }
-  await loadDB(); renderDevisList(); toast('Devis supprimé');
+  await s33SoftDelete('devis', dv, () => renderDevisList());
 }
 
 async function convertDevisToInvoice(id) {
@@ -11259,6 +11257,150 @@ function _gsCanSee(key) {
 function _gsMad(n) { try { return Number(n).toLocaleString('fr-FR') + ' DH'; } catch(_) { return n + ' DH'; } }
 function _gsEsc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
+// ═══ CORBEILLE (soft-delete) ═══════════════════════════════════════
+// Entités gérées : projets, clients, factures, devis, documents.
+// La suppression marque deleted_at ; la corbeille permet de restaurer
+// ou de supprimer définitivement.
+const S33_TRASH_TABLES = {
+  projects: { label: 'Projet',   icon: 'folder',        name: r => r.name },
+  clients:  { label: 'Client',   icon: 'person',        name: r => r.name },
+  invoices: { label: 'Facture',  icon: 'receipt',       name: r => [r.num, r.object].filter(Boolean).join(' — ') || ('Facture #' + r.id) },
+  devis:    { label: 'Devis',    icon: 'request_quote', name: r => r.ref || r.client_name || ('Devis #' + r.id) },
+  media:    { label: 'Document', icon: 'description',   name: r => r.name },
+};
+
+/**
+ * Suppression douce : marque deleted_at puis propose "Annuler".
+ * @param table  nom de la table Supabase
+ * @param row    l'objet en mémoire (pour le libellé et le retrait local)
+ * @param onDone callback après suppression/restauration (re-render)
+ */
+async function s33SoftDelete(table, row, onDone) {
+  const meta = S33_TRASH_TABLES[table];
+  const label = meta ? meta.name(row) : ('#' + row.id);
+  const ok = await sbUpdate(table, row.id, { deleted_at: new Date().toISOString() });
+  if (ok === false) { toast('Erreur : suppression refusée par la base', 'error'); return false; }
+  // Retrait local immédiat
+  if (db[_trashDbKey(table)]) db[_trashDbKey(table)] = db[_trashDbKey(table)].filter(x => String(x.id) !== String(row.id));
+  if (typeof onDone === 'function') onDone();
+  showUndoBar(label, async () => {
+    await sbUpdate(table, row.id, { deleted_at: null });
+    await loadDB();
+    if (typeof onDone === 'function') onDone();
+    toast('« ' + label + ' » restauré');
+  });
+  return true;
+}
+function _trashDbKey(table) {
+  // Correspondance table Supabase → clé du store local
+  return ({ projects: 'projects', clients: 'clients', invoices: 'invoices', devis: 'devis', media: 'media' })[table];
+}
+
+let _undoBarTimer = null;
+function showUndoBar(label, onUndo) {
+  let bar = document.getElementById('s33-undo-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 's33-undo-bar';
+    bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);'
+      + 'bottom:calc(72px + env(safe-area-inset-bottom));z-index:1700;'
+      + 'background:#1a1a1a;color:#fff;border-radius:12px;padding:12px 16px;'
+      + 'display:flex;align-items:center;gap:14px;box-shadow:0 8px 28px rgba(0,0,0,.35);'
+      + 'font-family:Inter,system-ui,sans-serif;font-size:13px;max-width:calc(100vw - 32px);';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = '';
+  const txt = document.createElement('span');
+  txt.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  txt.textContent = '« ' + label + ' » supprimé';
+  const btn = document.createElement('button');
+  btn.textContent = 'Annuler';
+  btn.style.cssText = 'background:none;border:none;color:#f5c842;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px;flex-shrink:0;';
+  btn.onclick = async () => { clearTimeout(_undoBarTimer); bar.remove(); try { await onUndo(); } catch(e) { toast('Restauration impossible', 'error'); } };
+  bar.appendChild(txt); bar.appendChild(btn);
+  bar.style.display = 'flex';
+  clearTimeout(_undoBarTimer);
+  _undoBarTimer = setTimeout(() => { if (bar) bar.remove(); }, 8000);
+}
+
+// ── Vue Corbeille : liste, restaure, purge ─────────────────────────
+async function openTrash() {
+  let ov = document.getElementById('s33-trash-modal');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.id = 's33-trash-modal';
+  ov.addEventListener('click', e => { if (e.target === ov) closeTrash(); });
+  ov.innerHTML = '<div class="modal" style="max-width:640px;" onclick="event.stopPropagation()">' +
+    '<button class="modal-close" onclick="closeTrash()">×</button>' +
+    '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">delete</span> Corbeille</div>' +
+    '<p style="font-size:11px;color:var(--text-faint);margin:-6px 0 16px;">Les éléments supprimés sont conservés ici. Vous pouvez les restaurer ou les supprimer définitivement.</p>' +
+    '<div id="s33-trash-body"><div style="padding:30px;text-align:center;color:var(--text-faint);font-size:13px;">Chargement…</div></div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  try { history.pushState({ s33trash: 1 }, ''); } catch(_) {}
+  await renderTrashBody();
+}
+function closeTrash() {
+  const ov = document.getElementById('s33-trash-modal');
+  if (ov) ov.remove();
+  if (history.state && history.state.s33trash) { try { history.back(); } catch(_) {} }
+}
+window.addEventListener('popstate', function() {
+  const ov = document.getElementById('s33-trash-modal');
+  if (ov) ov.remove();
+});
+
+async function renderTrashBody() {
+  const body = document.getElementById('s33-trash-body');
+  if (!body) return;
+  const results = await Promise.all(Object.keys(S33_TRASH_TABLES).map(async table => {
+    try {
+      const rows = await sbGet(table, '?deleted_at=not.is.null&order=deleted_at.desc');
+      return { table, rows: Array.isArray(rows) ? rows : [] };
+    } catch(_) { return { table, rows: [] }; }
+  }));
+  const total = results.reduce((s, r) => s + r.rows.length, 0);
+  if (!total) {
+    body.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-faint);font-size:13px;"><span class="mi mi-lg" style="display:block;margin-bottom:8px;color:var(--text-dim);">delete_outline</span>La corbeille est vide.</div>';
+    return;
+  }
+  let html = '';
+  results.forEach(({ table, rows }) => {
+    if (!rows.length) return;
+    const meta = S33_TRASH_TABLES[table];
+    html += '<div style="font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);margin:14px 0 6px;">' + meta.label + ' (' + rows.length + ')</div>';
+    rows.forEach(r => {
+      const nm = _gsEsc(meta.name(r));
+      const when = r.deleted_at ? new Date(r.deleted_at).toLocaleDateString('fr-MA') : '';
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
+        '<span class="gs-item-icon" style="width:30px;height:30px;flex-shrink:0;"><span class="mi" style="font-size:16px;">' + meta.icon + '</span></span>' +
+        '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + nm + '</div>' +
+          (when ? '<div style="font-size:10px;color:var(--text-faint);">supprimé le ' + when + '</div>' : '') + '</div>' +
+        '<button onclick="trashRestore(\'' + table + '\',\'' + r.id + '\')" title="Restaurer" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:5px 12px;font-size:11px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;flex-shrink:0;">Restaurer</button>' +
+        '<button onclick="trashPurge(\'' + table + '\',\'' + r.id + '\',this)" title="Supprimer définitivement" style="background:#fff0f0;border:1px solid #f5c6cb;border-radius:var(--radius-pill);width:30px;height:30px;color:#c0392b;cursor:pointer;flex-shrink:0;"><span class="mi mi-sm">delete_forever</span></button>' +
+      '</div>';
+    });
+  });
+  body.innerHTML = html;
+}
+
+async function trashRestore(table, id) {
+  const ok = await sbUpdate(table, id, { deleted_at: null });
+  if (ok === false) { toast('Restauration refusée par la base', 'error'); return; }
+  await loadDB();
+  renderAll();
+  await renderTrashBody();
+  toast('Élément restauré');
+}
+async function trashPurge(table, id, btn) {
+  if (!confirm('Supprimer DÉFINITIVEMENT cet élément ? Cette action est irréversible.')) return;
+  const ok = await sbDelete(table, id);
+  if (ok === false) { toast('Suppression refusée par la base', 'error'); return; }
+  await renderTrashBody();
+  toast('Supprimé définitivement');
+}
+
 // Clavier : Cmd/Ctrl+K ouvre, flèches naviguent, Entrée valide, Échap ferme
 document.addEventListener('keydown', function(e) {
   if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
@@ -11331,9 +11473,8 @@ function openPanneauFromMedia(projectId) {
 
 async function deleteMedia(id) {
   if (!confirm('Supprimer ce fichier ?')) return;
-  const ok = await sbDelete('media', id);
-  if (!ok) { toast('Erreur : suppression refusée par la base de données'); return; }
-  await loadDB(); renderMediatheque(); toast('Fichier supprimé');
+  const m = db.media.find(x => x.id === id) || { id };
+  await s33SoftDelete('media', m, () => renderMediatheque());
 }
 
 // Keyboard nav for lightbox
@@ -12108,6 +12249,9 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     </div>
     <div class="mobile-more-item" onclick="mobileNavigate('ai'); closeMobileMore()">
       <span class="mnav-icon" style="color:var(--gold);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Samia IA
+    </div>
+    <div class="mobile-more-item" onclick="closeMobileMore(); openTrash()">
+      <span class="mnav-icon"><span class="mi">delete</span></span> Corbeille
     </div>
     <div class="mobile-more-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:16px;" onclick="toggleTheme(); closeMobileMore()">
       <span id="theme-toggle-mobile" class="mnav-icon"><span class="mi">dark_mode</span></span> Mode jour/nuit
@@ -15984,10 +16128,7 @@ async function deleteProjectDoc(projectId, docId) {
   const doc = (db.media||[]).find(m => m.id === docId);
   if (!doc) return;
   if (!confirm(`Supprimer "${doc.name}" ?`)) return;
-  await sbDelete('media', docId);
-  db.media = (db.media||[]).filter(m => m.id !== docId);
-  renderProjectDetailPage();
-  toast('Document supprimé');
+  await s33SoftDelete('media', doc, () => renderProjectDetailPage());
 }
 
 function downloadDoc(dataUrl, name) {
@@ -18565,19 +18706,10 @@ function escHTML(str) {
     if (!d) return;
     if (!confirm('Supprimer « ' + d.name + ' » ?')) return;
     try {
-      await sbDelete('media', docId);
-      // Clean up the Storage file if any (fire-and-forget)
-      if (d.file_path) {
-        fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + d.file_path, {
-          method: 'DELETE',
-          headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
-        }).catch(()=>{});
-      }
-      db.media = (db.media || []).filter(m => m.id !== docId);
-      // Clear the cache entry so deleted file doesn't linger
+      // Soft-delete : on garde le fichier Storage pour permettre la restauration
+      // (il ne sera purgé que lors d'une suppression définitive depuis la corbeille)
       delete _mediaDataCache[docId];
-      renderDocsV2();
-      toast('Document supprimé');
+      await s33SoftDelete('media', d, () => renderDocsV2());
     } catch(e) { toast('Erreur : ' + e.message); }
   };
 

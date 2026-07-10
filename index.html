@@ -9,6 +9,22 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Studio 33">
   <meta name="theme-color" content="#ffffff">
+  <!-- Espace client : détection précoce du jeton pour masquer l'app avant tout affichage -->
+  <script>
+    try {
+      if (new URLSearchParams(location.search).get('portal')) {
+        document.documentElement.classList.add('s33-portal-mode');
+      }
+    } catch(_) {}
+  </script>
+  <style>
+    .s33-portal-mode #auth-screen, .s33-portal-mode #app,
+    .s33-portal-mode .ai-fab, .s33-portal-mode #s33-timer-widget,
+    .s33-portal-mode .mobile-nav, .s33-portal-mode .mobile-more-overlay,
+    .s33-portal-mode .ai-float-wrap { display: none !important; }
+    #s33-portal { display: none; }
+    .s33-portal-mode #s33-portal { display: block; }
+  </style>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20,400,0,0" />
   <link rel="apple-touch-icon" href="data:image/png;base64,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">
   
@@ -2736,6 +2752,9 @@
 <script src="assets/royaume-maroc.svg.js" defer onerror="console.warn('[emblem] assets/royaume-maroc.svg.js non chargé — un placeholder sera utilisé')"></script>
 </head>
 <body>
+
+<!-- ESPACE CLIENT (lecture seule, servi via jeton) -->
+<div id="s33-portal"></div>
 
 <!-- AUTH -->
 <div id="auth-screen">
@@ -5722,7 +5741,7 @@ async function loadDB() {
       sbGet('devis', '?deleted_at=is.null&order=id'),
       sbGet('charges', '?order=id'),
       sbGet('entrees', '?order=id'),
-      sbGet('media', '?deleted_at=is.null&select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year&order=id'),
+      sbGet('media', '?deleted_at=is.null&select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year,client_visible&order=id'),
       sbGet('app_config'),
       sbGet('user_tasks', '?order=created_at'),
       sbGet('daily_reports', '?order=submitted_at.desc'),
@@ -6264,6 +6283,7 @@ function renderProjectDetailPage() {
       <span class="badge ${phaseColors[p.phase]||'badge-dim'}">${p.phase}</span>
       ${p.archived ? `<span style="padding:6px 14px;background:#f0f4ff;color:#4a6fa5;border-radius:var(--radius-pill);font-size:11px;font-weight:700;letter-spacing:.05em;"><span class="mi mi-sm">inventory_2</span> ARCHIVÉ</span>` : ''}
       <button onclick="openVisitReport(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">assignment</span> Rapport visite</button>
+      ${isAdmin ? `<button onclick="openClientPortalShare(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">share</span> Espace client</button>` : ''}
       ${isAdmin ? `
         <button onclick="applyTemplateFromProject(${p.id})" style="padding:9px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">bolt</span> Template</button>
         <button onclick="editProject(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">edit</span> Éditer</button>
@@ -11402,6 +11422,126 @@ async function trashPurge(table, id, btn) {
   if (ok === false) { toast('Suppression refusée par la base', 'error'); return; }
   await renderTrashBody();
   toast('Supprimé définitivement');
+}
+
+// ═══ ESPACE CLIENT — partage (côté admin) ══════════════════════════
+function _s33GenToken() {
+  const a = new Uint8Array(24);
+  (crypto || window.crypto).getRandomValues(a);
+  return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
+}
+function _s33PortalLink(token) {
+  return location.origin + location.pathname + '?portal=' + token;
+}
+
+async function openClientPortalShare(projectId) {
+  const p = db.projects.find(x => x.id === projectId);
+  if (!p) return;
+  let ov = document.getElementById('s33-portal-modal');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.id = 's33-portal-modal';
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.innerHTML = '<div class="modal" style="max-width:600px;" onclick="event.stopPropagation()">' +
+    '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+    '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">share</span> Espace client — ' + escHTML(p.name) + '</div>' +
+    '<div id="s33-portal-modal-body"><div style="padding:24px;text-align:center;color:var(--text-faint);font-size:13px;">…</div></div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  renderClientPortalShare(projectId);
+}
+
+function renderClientPortalShare(projectId) {
+  const p = db.projects.find(x => x.id === projectId);
+  const body = document.getElementById('s33-portal-modal-body');
+  if (!p || !body) return;
+  const token = p.portal_token;
+  const link = token ? _s33PortalLink(token) : '';
+
+  // Médias du projet (documents + photos) pour cocher la visibilité client
+  const media = (db.media || []).filter(m => String(m.projectId ?? m.project_id) === String(p.id));
+
+  let html = '';
+  if (!token) {
+    html += '<div style="text-align:center;padding:20px 10px 24px;">' +
+      '<p style="font-size:13px;color:var(--text-dim);margin-bottom:16px;line-height:1.6;">Générez un lien sécurisé à envoyer à votre client. Il pourra suivre l\'avancement, consulter les documents que vous partagez et les photos — sans rien pouvoir modifier.</p>' +
+      '<button class="btn btn-gold" onclick="s33PortalGenerate(' + p.id + ')"><span class="mi">link</span> Générer le lien client</button>' +
+    '</div>';
+  } else {
+    html += '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;display:flex;gap:8px;align-items:center;">' +
+      '<input id="s33-portal-link" type="text" readonly value="' + escHTML(link) + '" onclick="this.select()" style="flex:1;min-width:0;font-size:12px;background:transparent;border:none;color:var(--text);padding:0;">' +
+      '<button onclick="s33PortalCopy()" class="btn btn-gold" style="padding:7px 12px;font-size:11px;flex-shrink:0;"><span class="mi" style="font-size:14px;">content_copy</span> Copier</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:20px;">' +
+      '<button onclick="s33PortalCopy(true)" style="flex:1;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;"><span class="mi" style="font-size:14px;vertical-align:-2px;">send</span> WhatsApp / SMS</button>' +
+      '<button onclick="s33PortalGenerate(' + p.id + ', true)" style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:var(--text-dim);cursor:pointer;font-family:inherit;" title="Nouveau lien (l\'ancien cesse de marcher)"><span class="mi" style="font-size:14px;">refresh</span></button>' +
+      '<button onclick="s33PortalRevoke(' + p.id + ')" style="padding:8px 12px;background:#fff0f0;border:1px solid #f5c6cb;border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:#c0392b;cursor:pointer;font-family:inherit;" title="Désactiver le lien">Révoquer</button>' +
+    '</div>';
+
+    // Sélection des documents/photos visibles
+    html += '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:8px;">Éléments partagés avec le client</div>';
+    if (!media.length) {
+      html += '<div style="padding:16px;background:var(--surface2);border-radius:var(--radius);color:var(--text-faint);font-size:12px;text-align:center;">Aucun document dans ce projet. Ajoutez-en, puis cochez ceux à partager.</div>';
+    } else {
+      html += '<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);">';
+      media.forEach(m => {
+        const isImg = !(m.isPDF || m.is_pdf) && ((m.mime && m.mime.startsWith('image/')) || m.doc_type === 'photo_chantier');
+        const checked = m.client_visible ? 'checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+          '<input type="checkbox" ' + checked + ' onchange="s33PortalToggleDoc(' + m.id + ',this.checked,' + p.id + ')" style="width:16px;height:16px;accent-color:var(--gold);flex-shrink:0;">' +
+          '<span class="mi" style="font-size:16px;color:var(--text-dim);flex-shrink:0;">' + (isImg ? 'image' : (m.isPDF || m.is_pdf) ? 'picture_as_pdf' : 'description') + '</span>' +
+          '<span style="flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHTML(m.name) + '</span>' +
+        '</label>';
+      });
+      html += '</div>';
+    }
+    html += '<p style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.5;">Seuls les éléments cochés sont visibles. L\'avancement et le calendrier du projet sont toujours affichés. Aucune donnée financière n\'est partagée.</p>';
+  }
+  body.innerHTML = html;
+}
+
+async function s33PortalGenerate(projectId, regen) {
+  const p = db.projects.find(x => x.id === projectId);
+  if (!p) return;
+  if (regen && !confirm('Générer un nouveau lien ? L\'ancien cessera immédiatement de fonctionner.')) return;
+  const token = _s33GenToken();
+  const ok = await sbUpdate('projects', projectId, { portal_token: token });
+  if (ok === false) { toast('Erreur — réessayez', 'error'); return; }
+  p.portal_token = token;
+  renderClientPortalShare(projectId);
+  toast(regen ? 'Nouveau lien généré' : 'Lien client créé');
+}
+
+async function s33PortalRevoke(projectId) {
+  const p = db.projects.find(x => x.id === projectId);
+  if (!p) return;
+  if (!confirm('Désactiver l\'espace client ? Le lien ne fonctionnera plus.')) return;
+  const ok = await sbUpdate('projects', projectId, { portal_token: null });
+  if (ok === false) { toast('Erreur — réessayez', 'error'); return; }
+  p.portal_token = null;
+  renderClientPortalShare(projectId);
+  toast('Espace client désactivé');
+}
+
+async function s33PortalToggleDoc(mediaId, visible, projectId) {
+  const ok = await sbUpdate('media', mediaId, { client_visible: visible });
+  if (ok === false) { toast('Erreur — réessayez', 'error'); return; }
+  const m = (db.media || []).find(x => String(x.id) === String(mediaId));
+  if (m) m.client_visible = visible;
+}
+
+function s33PortalCopy(share) {
+  const inp = document.getElementById('s33-portal-link');
+  if (!inp) return;
+  const link = inp.value;
+  if (share && navigator.share) {
+    navigator.share({ title: 'Espace projet — Studio 33', url: link }).catch(() => {});
+    return;
+  }
+  const done = () => toast('Lien copié ✓');
+  if (navigator.clipboard) navigator.clipboard.writeText(link).then(done).catch(() => { inp.select(); document.execCommand('copy'); done(); });
+  else { inp.select(); document.execCommand('copy'); done(); }
 }
 
 // Clavier : Cmd/Ctrl+K ouvre, flèches naviguent, Entrée valide, Échap ferme
@@ -26509,6 +26649,135 @@ window.addEventListener('appinstalled', () => {
     setTimeout(cleanup, 60000); // filet de sécurité si afterprint ne vient pas
     window.print();
   };
+})();
+</script>
+
+<!-- ═══ ESPACE CLIENT — rendu lecture seule via jeton ═══ -->
+<script>
+(function() {
+  'use strict';
+  const token = (function(){ try { return new URLSearchParams(location.search).get('portal'); } catch(_) { return null; } })();
+  if (!token) return; // pas en mode portail → app normale
+
+  const PHASE_LABELS = { ESQ:'Esquisse', APS:'Avant-projet sommaire', APD:'Avant-projet définitif', EXE:'Études d\'exécution', Chantier:'Chantier' };
+  const esc = s => { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; };
+  const host = document.getElementById('s33-portal');
+
+  function shell(inner) {
+    return '<div style="max-width:820px;margin:0 auto;padding:28px 18px 60px;font-family:Inter,system-ui,-apple-system,sans-serif;color:#1a1a1a;">' + inner + '</div>';
+  }
+  function loading() {
+    host.innerHTML = shell('<div style="text-align:center;padding:80px 20px;color:#888;font-size:14px;">Chargement de votre espace projet…</div>');
+  }
+  function errorView(msg) {
+    host.innerHTML = shell(
+      '<div style="text-align:center;padding:70px 24px;">' +
+        '<div style="font-size:40px;margin-bottom:14px;">🔒</div>' +
+        '<div style="font-size:18px;font-weight:700;margin-bottom:8px;">Lien indisponible</div>' +
+        '<div style="font-size:13px;color:#777;max-width:360px;margin:0 auto;">' + esc(msg) + '</div>' +
+      '</div>');
+  }
+
+  loading();
+  document.title = 'Espace projet — Studio 33';
+
+  const FN_URL = 'https://yjxcqptgugatrxeyzrdc.supabase.co/functions/v1/client-portal?token=' + encodeURIComponent(token);
+  fetch(FN_URL)
+    .then(r => r.json().then(j => ({ ok: r.ok, j })))
+    .then(({ ok, j }) => {
+      if (!ok || !j || j.error) {
+        errorView(j && j.error === 'not_found'
+          ? 'Ce lien n\'est plus valide. Contactez Studio 33 pour en obtenir un nouveau.'
+          : 'Impossible d\'afficher ce projet pour le moment.');
+        return;
+      }
+      render(j);
+    })
+    .catch(() => errorView('Vérifiez votre connexion internet et réessayez.'));
+
+  function render(data) {
+    const p = data.project || {};
+    const phaseNice = PHASE_LABELS[p.phase] || p.phase || '';
+    const prog = Math.max(0, Math.min(100, p.progress || 0));
+
+    let html = '';
+    // En-tête marque
+    html += '<div style="text-align:center;margin-bottom:26px;">' +
+      '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:15px;letter-spacing:.35em;color:#B5870A;font-weight:600;">STUDIO 33 ARCHITECTS</div>' +
+      '<div style="font-size:11px;color:#aaa;letter-spacing:.1em;text-transform:uppercase;margin-top:4px;">Espace client · Suivi de projet</div>' +
+    '</div>';
+
+    // Carte projet + avancement
+    html += '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,.05);margin-bottom:20px;">' +
+      '<div style="font-size:22px;font-weight:800;line-height:1.2;">' + esc(p.name || 'Projet') + '</div>' +
+      (p.clientName ? '<div style="font-size:13px;color:#888;margin-top:3px;">' + esc(p.clientName) + '</div>' : '') +
+      (phaseNice ? '<div style="display:inline-block;margin-top:12px;background:#f7f5f0;color:#8a6d0a;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">Phase : ' + esc(phaseNice) + '</div>' : '') +
+      '<div style="margin-top:20px;">' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;"><span>Avancement</span><span style="font-weight:800;color:#B5870A;">' + prog + '%</span></div>' +
+        '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + prog + '%;background:linear-gradient(90deg,#B5870A,#d4af37);border-radius:99px;"></div></div>' +
+      '</div>' +
+    '</div>';
+
+    // Prochaines étapes
+    if (data.events && data.events.length) {
+      html += section('Prochaines étapes',
+        data.events.map(function(e) {
+          const d = fmtDate(e.date);
+          return '<div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #f2f2f2;">' +
+            '<div style="width:44px;flex-shrink:0;text-align:center;background:#f7f5f0;border-radius:8px;padding:6px 0;">' +
+              '<div style="font-size:15px;font-weight:800;color:#B5870A;line-height:1;">' + d.day + '</div>' +
+              '<div style="font-size:9px;color:#999;text-transform:uppercase;">' + d.mon + '</div>' +
+            '</div>' +
+            '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + esc(e.title || 'Événement') + '</div>' +
+              (e.time_start ? '<div style="font-size:11px;color:#999;">' + esc(e.time_start) + '</div>' : '') + '</div>' +
+          '</div>';
+        }).join(''));
+    }
+
+    // Documents
+    if (data.docs && data.docs.length) {
+      html += section('Documents partagés',
+        data.docs.map(function(dc) {
+          return '<a href="' + (dc.src || '#') + '" target="_blank" rel="noopener" style="display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #f2f2f2;text-decoration:none;color:inherit;">' +
+            '<div style="width:34px;height:34px;border-radius:8px;background:#f7f5f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (dc.isPdf ? '📄' : '📎') + '</div>' +
+            '<div style="flex:1;min-width:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(dc.name) + '</div>' +
+            '<div style="font-size:12px;color:#B5870A;font-weight:600;flex-shrink:0;">Ouvrir →</div>' +
+          '</a>';
+        }).join(''));
+    }
+
+    // Photos
+    if (data.photos && data.photos.length) {
+      html += section('Photos du chantier',
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">' +
+        data.photos.map(function(ph) {
+          return '<a href="' + (ph.src || '#') + '" target="_blank" rel="noopener" style="display:block;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#f0f0f0;">' +
+            '<img src="' + (ph.src || '') + '" alt="' + esc(ph.name) + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">' +
+          '</a>';
+        }).join('') + '</div>');
+    }
+
+    if (!(data.events||[]).length && !(data.docs||[]).length && !(data.photos||[]).length) {
+      html += '<div style="text-align:center;padding:30px;color:#aaa;font-size:13px;">Aucun élément partagé pour le moment. Votre architecte mettra cet espace à jour prochainement.</div>';
+    }
+
+    html += '<div style="text-align:center;margin-top:34px;font-size:11px;color:#bbb;">Studio 33 Architects · Agadir, Maroc<br>Espace en lecture seule — mis à jour en temps réel</div>';
+    host.innerHTML = shell(html);
+  }
+
+  function section(title, inner) {
+    return '<div style="margin-bottom:20px;">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#B5870A;margin-bottom:8px;padding-left:2px;">' + esc(title) + '</div>' +
+      '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:16px 18px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' + inner + '</div>' +
+    '</div>';
+  }
+
+  function fmtDate(s) {
+    try {
+      const d = new Date(s + 'T00:00');
+      return { day: d.getDate(), mon: d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '') };
+    } catch(_) { return { day: '?', mon: '' }; }
+  }
 })();
 </script>
 

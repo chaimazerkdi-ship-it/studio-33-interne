@@ -6256,6 +6256,7 @@ function renderProjectDetailPage() {
       </div>
       <span class="badge ${phaseColors[p.phase]||'badge-dim'}">${p.phase}</span>
       ${p.archived ? `<span style="padding:6px 14px;background:#f0f4ff;color:#4a6fa5;border-radius:var(--radius-pill);font-size:11px;font-weight:700;letter-spacing:.05em;"><span class="mi mi-sm">inventory_2</span> ARCHIVÉ</span>` : ''}
+      <button onclick="openVisitReport(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">assignment</span> Rapport visite</button>
       ${isAdmin ? `
         <button onclick="applyTemplateFromProject(${p.id})" style="padding:9px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">bolt</span> Template</button>
         <button onclick="editProject(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">edit</span> Éditer</button>
@@ -25741,6 +25742,416 @@ window.addEventListener('appinstalled', () => {
     });
 
     initialized = true;
+  };
+})();
+</script>
+
+<!-- ═══ RAPPORT DE VISITE DE CHANTIER (PDF avec photos) ═══ -->
+<style>
+  #vr-print { display: none; }
+  @media print {
+    html.vr-printing body > *:not(#vr-print) { display: none !important; }
+    html.vr-printing #vr-print { display: block !important; }
+    html.vr-printing #vr-print { margin: 0; }
+  }
+  .vr-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+  .vr-row > * { min-width: 0; }
+  .vr-del {
+    background: rgba(220,50,50,.07); border: 1.5px solid rgba(220,50,50,.2); color: #c33;
+    border-radius: var(--radius-sm); width: 34px; height: 38px; cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .vr-add {
+    background: transparent; border: 1.5px dashed var(--gold); color: var(--gold);
+    border-radius: var(--radius-sm); padding: 8px 14px; font-size: 12px; font-weight: 600;
+    cursor: pointer; width: 100%; font-family: inherit; margin-top: 2px;
+  }
+  .vr-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; }
+  .vr-photo-cell {
+    position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
+    border: 3px solid transparent; aspect-ratio: 1; background: var(--surface2);
+  }
+  .vr-photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .vr-photo-cell.sel { border-color: var(--gold); }
+  .vr-photo-cell.sel::after {
+    content: '✓'; position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
+    background: var(--gold); color: #fff; border-radius: 50%; font-size: 12px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .vr-cap-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .vr-cap-row img { width: 52px; height: 52px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+</style>
+<div id="vr-print"></div>
+<script>
+(function() {
+  'use strict';
+  let VR = null; // état du rapport en cours { projectId, uploaded: [{src, caption}] }
+
+  const VR_STATUTS = ['Conforme', 'Non conforme', 'À corriger', 'En cours', 'Pour information'];
+  const VR_METEO = ['Ensoleillé', 'Nuageux', 'Pluvieux', 'Venteux', 'Autre'];
+
+  function vrDraftKey(pid) { return 's33_vr_draft_' + pid; }
+
+  function vrIsImage(m) {
+    if (m.is_pdf || m.isPDF) return false;
+    if (m.mime) return m.mime.startsWith('image/');
+    return m.doc_type === 'photo_chantier' || m.doc_type === 'plan_cadastral' || !m.doc_type;
+  }
+
+  window.openVisitReport = function(projectId) {
+    const p = db.projects.find(x => x.id === projectId);
+    if (!p) return;
+    VR = { projectId, uploaded: [] };
+    let draft = null;
+    try { draft = JSON.parse(localStorage.getItem(vrDraftKey(projectId)) || 'null'); } catch(_) {}
+
+    const client = db.clients.find(c => c.id === p.clientId);
+    const today = new Date().toISOString().slice(0, 10);
+    const photos = (db.media || []).filter(m =>
+      String(m.project_id || m.projectId) === String(projectId) && vrIsImage(m));
+
+    const old = document.getElementById('vr-modal'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 'vr-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) vrClose(); });
+    ov.innerHTML =
+      '<div class="modal" style="max-width:680px;" onclick="event.stopPropagation()">' +
+        '<button class="modal-close" onclick="vrClose()">×</button>' +
+        '<div class="modal-title">Rapport de visite — ' + escHTML(p.name) + '</div>' +
+        '<p style="font-size:11px;color:var(--text-faint);margin:-6px 0 16px;">' + escHTML(client ? client.name : '') + '</p>' +
+
+        '<div class="form-row">' +
+          '<div class="form-group"><label>Date de visite</label><input type="date" id="vr-date" value="' + (draft?.date || today) + '"></div>' +
+          '<div class="form-group"><label>Heure</label><input type="time" id="vr-heure" value="' + (draft?.heure || '') + '"></div>' +
+          '<div class="form-group"><label>Météo</label><select id="vr-meteo">' +
+            VR_METEO.map(m => '<option' + ((draft?.meteo || '') === m ? ' selected' : '') + '>' + m + '</option>').join('') +
+          '</select></div>' +
+        '</div>' +
+        '<div class="form-group" style="margin-bottom:14px;"><label>Rédigé par</label><input type="text" id="vr-auteur" value="' + escHTML(draft?.auteur || (currentUser?.name || '')) + '"></div>' +
+
+        '<div class="section-title" style="font-size:12px;margin:18px 0 8px;">Présents sur site</div>' +
+        '<div id="vr-presents"></div>' +
+        '<button class="vr-add" onclick="vrAddPresent()">+ Ajouter un présent</button>' +
+
+        '<div class="section-title" style="font-size:12px;margin:20px 0 8px;">Avancement général</div>' +
+        '<textarea id="vr-avancement" rows="3" placeholder="État d\'avancement du chantier, travaux en cours…">' + escHTML(draft?.avancement || '') + '</textarea>' +
+
+        '<div class="section-title" style="font-size:12px;margin:20px 0 8px;">Observations</div>' +
+        '<div id="vr-observations"></div>' +
+        '<button class="vr-add" onclick="vrAddObs()">+ Ajouter une observation</button>' +
+
+        '<div class="section-title" style="font-size:12px;margin:20px 0 8px;">Actions à prévoir</div>' +
+        '<div id="vr-actions"></div>' +
+        '<button class="vr-add" onclick="vrAddAction()">+ Ajouter une action</button>' +
+
+        '<div class="section-title" style="font-size:12px;margin:20px 0 8px;">Photos du rapport</div>' +
+        (photos.length
+          ? '<p style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Touchez les photos du projet à inclure :</p>' +
+            '<div class="vr-photo-grid" style="margin-bottom:12px;">' +
+            photos.map(m =>
+              '<div class="vr-photo-cell" data-vrmid="' + m.id + '" onclick="vrTogglePhoto(this)">' +
+                '<img src="" data-mid="' + m.id + '" alt="">' +
+              '</div>').join('') +
+            '</div>'
+          : '<p style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Aucune photo dans ce projet — ajoutez-en ci-dessous.</p>') +
+        '<label style="display:block;border:1.5px dashed var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center;font-size:12px;color:var(--text-dim);cursor:pointer;margin-bottom:12px;">' +
+          '<span class="mi mi-sm">add_a_photo</span> Ajouter des photos (appareil / galerie)' +
+          '<input type="file" accept="image/*" multiple style="display:none;" onchange="vrHandleUpload(this)">' +
+        '</label>' +
+        '<div id="vr-captions"></div>' +
+
+        '<div class="form-group" style="margin-top:16px;"><label>Prochaine visite (optionnel)</label><input type="date" id="vr-next" value="' + (draft?.next || '') + '"></div>' +
+
+        '<div class="form-actions">' +
+          '<button class="btn btn-outline" onclick="vrClose()">Fermer</button>' +
+          '<button class="btn btn-gold" id="vr-generate-btn" onclick="vrGenerate()"><span class="mi">picture_as_pdf</span> Générer le PDF</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+
+    // Lignes dynamiques (restaurées du brouillon ou une ligne vide)
+    (draft?.presents?.length ? draft.presents : [{ nom: currentUser?.name || '', role: 'Architecte' }])
+      .forEach(x => vrAddPresent(x.nom, x.role));
+    (draft?.observations?.length ? draft.observations : [{}]).forEach(x => vrAddObs(x.texte, x.statut));
+    (draft?.actions?.length ? draft.actions : []).forEach(x => vrAddAction(x.texte, x.resp, x.echeance));
+
+    // Restaurer la sélection de photos du brouillon
+    (draft?.mediaIds || []).forEach(id => {
+      const cell = ov.querySelector('[data-vrmid="' + id + '"]');
+      if (cell) cell.classList.add('sel');
+    });
+    vrRenderCaptions(draft?.captions || {});
+
+    if (typeof applyLazyMediaImages === 'function') requestAnimationFrame(() => applyLazyMediaImages());
+    try { history.pushState({ s33vr: 1 }, ''); } catch(_) {}
+  };
+
+  window.vrClose = function() {
+    vrSaveDraft();
+    const m = document.getElementById('vr-modal');
+    if (m) m.remove();
+    if (history.state && history.state.s33vr) { try { history.back(); } catch(_) {} }
+  };
+  window.addEventListener('popstate', function() {
+    const m = document.getElementById('vr-modal');
+    if (m) { vrSaveDraft(); m.remove(); }
+  });
+
+  // ── Lignes dynamiques ──────────────────────────────────────────
+  window.vrAddPresent = function(nom, role) {
+    document.getElementById('vr-presents').insertAdjacentHTML('beforeend',
+      '<div class="vr-row">' +
+        '<input type="text" placeholder="Nom" value="' + escHTML(nom || '') + '" data-vr="pnom" style="flex:1.2;">' +
+        '<input type="text" placeholder="Qualité (Architecte, Entreprise, BET…)" value="' + escHTML(role || '') + '" data-vr="prole" style="flex:1;">' +
+        '<button class="vr-del" onclick="this.parentElement.remove()">×</button>' +
+      '</div>');
+  };
+  window.vrAddObs = function(texte, statut) {
+    document.getElementById('vr-observations').insertAdjacentHTML('beforeend',
+      '<div class="vr-row">' +
+        '<textarea rows="2" placeholder="Observation…" data-vr="otexte" style="flex:1;">' + escHTML(texte || '') + '</textarea>' +
+        '<select data-vr="ostatut" style="width:150px;flex-shrink:0;">' +
+          VR_STATUTS.map(s => '<option' + ((statut || '') === s ? ' selected' : '') + '>' + s + '</option>').join('') +
+        '</select>' +
+        '<button class="vr-del" onclick="this.parentElement.remove()">×</button>' +
+      '</div>');
+  };
+  window.vrAddAction = function(texte, resp, echeance) {
+    document.getElementById('vr-actions').insertAdjacentHTML('beforeend',
+      '<div class="vr-row">' +
+        '<input type="text" placeholder="Action / travaux à réaliser" value="' + escHTML(texte || '') + '" data-vr="atexte" style="flex:1.6;">' +
+        '<input type="text" placeholder="Responsable" value="' + escHTML(resp || '') + '" data-vr="aresp" style="flex:1;">' +
+        '<input type="date" value="' + (echeance || '') + '" data-vr="aech" style="width:140px;flex-shrink:0;">' +
+        '<button class="vr-del" onclick="this.parentElement.remove()">×</button>' +
+      '</div>');
+  };
+
+  // ── Photos ─────────────────────────────────────────────────────
+  window.vrTogglePhoto = function(cell) {
+    cell.classList.toggle('sel');
+    vrRenderCaptions(vrGetCaptions());
+  };
+
+  window.vrHandleUpload = function(input) {
+    const files = [...(input.files || [])];
+    input.value = '';
+    files.forEach(f => {
+      const reader = new FileReader();
+      reader.onload = () => vrDownscale(reader.result, (small) => {
+        VR.uploaded.push({ src: small, caption: '' });
+        vrRenderCaptions(vrGetCaptions());
+      });
+      reader.readAsDataURL(f);
+    });
+  };
+
+  function vrDownscale(dataUrl, cb) {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1400;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) { const k = Math.min(MAX / w, MAX / h); w = Math.round(w * k); h = Math.round(h * k); }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      cb(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => cb(dataUrl);
+    img.src = dataUrl;
+  }
+
+  function vrSelectedMediaIds() {
+    return [...document.querySelectorAll('#vr-modal .vr-photo-cell.sel')].map(c => c.getAttribute('data-vrmid'));
+  }
+
+  function vrGetCaptions() {
+    const caps = {};
+    document.querySelectorAll('#vr-captions [data-vrcap]').forEach(inp => {
+      caps[inp.getAttribute('data-vrcap')] = inp.value;
+    });
+    return caps;
+  }
+
+  window.vrRenderCaptions = function(prev) {
+    prev = prev || {};
+    const box = document.getElementById('vr-captions');
+    if (!box) return;
+    const ids = vrSelectedMediaIds();
+    let html = '';
+    ids.forEach(id => {
+      const m = (db.media || []).find(x => String(x.id) === String(id));
+      html += '<div class="vr-cap-row">' +
+        '<img src="" data-mid="' + id + '" alt="">' +
+        '<input type="text" placeholder="Légende — ' + escHTML(m ? m.name : 'photo') + '" data-vrcap="m' + id + '" value="' + escHTML(prev['m' + id] || '') + '" style="flex:1;">' +
+      '</div>';
+    });
+    VR.uploaded.forEach((u, i) => {
+      html += '<div class="vr-cap-row">' +
+        '<img src="' + u.src + '" alt="">' +
+        '<input type="text" placeholder="Légende" data-vrcap="u' + i + '" value="' + escHTML(prev['u' + i] || u.caption || '') + '" style="flex:1;">' +
+        '<button class="vr-del" style="height:34px;" onclick="vrRemoveUpload(' + i + ')">×</button>' +
+      '</div>';
+    });
+    box.innerHTML = html;
+    if (typeof applyLazyMediaImages === 'function') requestAnimationFrame(() => applyLazyMediaImages());
+  };
+  window.vrRemoveUpload = function(i) {
+    VR.uploaded.splice(i, 1);
+    vrRenderCaptions(vrGetCaptions());
+  };
+
+  // ── Collecte + brouillon ───────────────────────────────────────
+  function vrCollect() {
+    const g = id => (document.getElementById(id) || {}).value || '';
+    const rows = (boxId, map) => [...document.querySelectorAll('#' + boxId + ' .vr-row')].map(map)
+      .filter(x => Object.values(x).some(v => (v || '').trim()));
+    return {
+      date: g('vr-date'), heure: g('vr-heure'), meteo: g('vr-meteo'), auteur: g('vr-auteur'),
+      avancement: g('vr-avancement'), next: g('vr-next'),
+      presents: rows('vr-presents', r => ({ nom: r.querySelector('[data-vr=pnom]').value, role: r.querySelector('[data-vr=prole]').value })),
+      observations: rows('vr-observations', r => ({ texte: r.querySelector('[data-vr=otexte]').value, statut: r.querySelector('[data-vr=ostatut]').value })),
+      actions: rows('vr-actions', r => ({ texte: r.querySelector('[data-vr=atexte]').value, resp: r.querySelector('[data-vr=aresp]').value, echeance: r.querySelector('[data-vr=aech]').value })),
+      mediaIds: vrSelectedMediaIds(),
+      captions: vrGetCaptions()
+    };
+  }
+
+  function vrSaveDraft() {
+    if (!VR || !document.getElementById('vr-modal')) return;
+    try { localStorage.setItem(vrDraftKey(VR.projectId), JSON.stringify(vrCollect())); } catch(_) {}
+  }
+
+  // ── Génération du PDF ──────────────────────────────────────────
+  window.vrGenerate = async function() {
+    const p = db.projects.find(x => x.id === VR.projectId);
+    if (!p) return;
+    const d = vrCollect();
+    vrSaveDraft();
+    const client = db.clients.find(c => c.id === p.clientId);
+    const btn = document.getElementById('vr-generate-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Préparation…'; }
+
+    // Numéro de rapport (compteur local par projet)
+    let num = 1;
+    try {
+      num = parseInt(localStorage.getItem('s33_vr_counter_' + VR.projectId) || '0', 10) + 1;
+      localStorage.setItem('s33_vr_counter_' + VR.projectId, String(num));
+    } catch(_) {}
+    const ref = 'RV-' + String(num).padStart(2, '0');
+
+    // Résoudre les photos sélectionnées (data URL ou URL signée Storage)
+    const photoList = [];
+    for (const id of d.mediaIds) {
+      try {
+        const src = await getMediaData(Number(id) || id);
+        if (src) photoList.push({ src, caption: d.captions['m' + id] || '' });
+      } catch(_) {}
+    }
+    VR.uploaded.forEach((u, i) => photoList.push({ src: u.src, caption: d.captions['u' + i] || '' }));
+
+    const fmtDate = s => { try { return new Date(s + 'T00:00').toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' }); } catch(_) { return s; } };
+    const stColor = s => s === 'Conforme' ? '#15803d' : s === 'Non conforme' ? '#b91c1c' : s === 'À corriger' ? '#c2410c' : s === 'En cours' ? '#1d4ed8' : '#64748b';
+
+    const box = document.getElementById('vr-print');
+    box.innerHTML =
+      '<div style="font-family:Inter,system-ui,sans-serif;color:#1a1a1a;max-width:760px;margin:0 auto;padding:34px 30px;font-size:12.5px;line-height:1.55;background:#fff;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C9A84C;padding-bottom:14px;margin-bottom:22px;">' +
+          '<div>' +
+            '<div style="font-size:21px;font-weight:800;letter-spacing:.04em;">STUDIO 33 ARCHITECTS</div>' +
+            '<div style="font-size:10.5px;color:#777;letter-spacing:.14em;text-transform:uppercase;margin-top:2px;">Rapport de visite de chantier</div>' +
+          '</div>' +
+          '<div style="text-align:right;font-size:11px;color:#555;">' +
+            '<div style="font-size:15px;font-weight:800;color:#C9A84C;">' + ref + '</div>' +
+            '<div>' + escHTML(fmtDate(d.date)) + (d.heure ? ' — ' + escHTML(d.heure) : '') + '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px;">' +
+          '<tr>' +
+            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;width:120px;border:1px solid #eee;">Projet</td>' +
+            '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(p.name) + '</td>' +
+            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;width:120px;border:1px solid #eee;">Client</td>' +
+            '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(client ? client.name : '—') + '</td>' +
+          '</tr><tr>' +
+            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;border:1px solid #eee;">Phase</td>' +
+            '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(p.phase || '—') + '</td>' +
+            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;border:1px solid #eee;">Météo</td>' +
+            '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(d.meteo) + '</td>' +
+          '</tr><tr>' +
+            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;border:1px solid #eee;">Rédigé par</td>' +
+            '<td style="padding:6px 10px;border:1px solid #eee;" colspan="3">' + escHTML(d.auteur) + '</td>' +
+          '</tr>' +
+        '</table>' +
+
+        (d.presents.length ?
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:18px 0 8px;">Présents sur site</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+            d.presents.map(x => '<tr><td style="padding:5px 10px;border:1px solid #eee;width:50%;">' + escHTML(x.nom) + '</td><td style="padding:5px 10px;border:1px solid #eee;color:#555;">' + escHTML(x.role) + '</td></tr>').join('') +
+          '</table>' : '') +
+
+        (d.avancement.trim() ?
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:18px 0 8px;">Avancement général</div>' +
+          '<div style="white-space:pre-wrap;border:1px solid #eee;border-radius:6px;padding:10px 12px;">' + escHTML(d.avancement) + '</div>' : '') +
+
+        (d.observations.length ?
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:18px 0 8px;">Observations</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+            '<tr><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;width:34px;">#</th><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;">Observation</th><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;width:110px;">Statut</th></tr>' +
+            d.observations.map((o, i) =>
+              '<tr style="page-break-inside:avoid;">' +
+                '<td style="padding:6px 10px;border:1px solid #eee;color:#999;">' + (i + 1) + '</td>' +
+                '<td style="padding:6px 10px;border:1px solid #eee;white-space:pre-wrap;">' + escHTML(o.texte) + '</td>' +
+                '<td style="padding:6px 10px;border:1px solid #eee;font-weight:700;color:' + stColor(o.statut) + ';">' + escHTML(o.statut) + '</td>' +
+              '</tr>').join('') +
+          '</table>' : '') +
+
+        (d.actions.length ?
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:18px 0 8px;">Actions à prévoir</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+            '<tr><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;">Action</th><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;width:130px;">Responsable</th><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;width:100px;">Échéance</th></tr>' +
+            d.actions.map(a =>
+              '<tr style="page-break-inside:avoid;">' +
+                '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(a.texte) + '</td>' +
+                '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(a.resp) + '</td>' +
+                '<td style="padding:6px 10px;border:1px solid #eee;">' + (a.echeance ? escHTML(fmtDate(a.echeance)) : '—') + '</td>' +
+              '</tr>').join('') +
+          '</table>' : '') +
+
+        (photoList.length ?
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:20px 0 10px;">Photos (' + photoList.length + ')</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+            photoList.map((ph, i) =>
+              '<div style="page-break-inside:avoid;">' +
+                '<img src="' + ph.src + '" style="width:100%;border-radius:6px;border:1px solid #eee;" alt="">' +
+                '<div style="font-size:10.5px;color:#666;margin-top:4px;">Photo ' + (i + 1) + (ph.caption ? ' — ' + escHTML(ph.caption) : '') + '</div>' +
+              '</div>').join('') +
+          '</div>' : '') +
+
+        (d.next ?
+          '<div style="margin-top:20px;padding:10px 14px;background:#f7f5f0;border-left:3px solid #C9A84C;font-size:12px;"><strong>Prochaine visite :</strong> ' + escHTML(fmtDate(d.next)) + '</div>' : '') +
+
+        '<div style="display:flex;gap:40px;margin-top:40px;page-break-inside:avoid;">' +
+          '<div style="flex:1;text-align:center;"><div style="border-top:1px solid #999;padding-top:6px;font-size:11px;color:#555;">L\'Architecte</div></div>' +
+          '<div style="flex:1;text-align:center;"><div style="border-top:1px solid #999;padding-top:6px;font-size:11px;color:#555;">L\'Entreprise</div></div>' +
+          '<div style="flex:1;text-align:center;"><div style="border-top:1px solid #999;padding-top:6px;font-size:11px;color:#555;">Le Maître d\'ouvrage</div></div>' +
+        '</div>' +
+        '<div style="margin-top:26px;text-align:center;font-size:9.5px;color:#aaa;border-top:1px solid #eee;padding-top:10px;">Studio 33 Architects — Agadir, Maroc · Rapport généré le ' + new Date().toLocaleDateString('fr-MA') + '</div>' +
+      '</div>';
+
+    // Attendre le chargement des images avant d'imprimer (max 8 s)
+    const imgs = [...box.querySelectorAll('img')];
+    await Promise.race([
+      Promise.all(imgs.map(im => im.complete ? Promise.resolve() : new Promise(r => { im.onload = r; im.onerror = r; }))),
+      new Promise(r => setTimeout(r, 8000))
+    ]);
+
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span class="mi">picture_as_pdf</span> Générer le PDF'; }
+    document.documentElement.classList.add('vr-printing');
+    const cleanup = () => document.documentElement.classList.remove('vr-printing');
+    window.addEventListener('afterprint', cleanup, { once: true });
+    setTimeout(cleanup, 60000); // filet de sécurité si afterprint ne vient pas
+    window.print();
   };
 })();
 </script>

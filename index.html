@@ -23796,7 +23796,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
         <div style="font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:3px;">Installer l'app Studio 33</div>
         <div id="install-subtitle" style="font-size:12px;color:#666;line-height:1.4;">Accédez directement depuis votre écran d'accueil</div>
       </div>
-      <button onclick="dismissInstallBanner()" style="background:none;border:none;font-size:20px;color:#999;cursor:pointer;padding:4px;line-height:1;flex-shrink:0;">×</button>
+      <button onclick="dismissInstallBanner()" style="background:none;border:none;font-size:24px;color:#999;cursor:pointer;padding:10px 12px;margin:-10px -12px -10px 0;line-height:1;flex-shrink:0;">×</button>
     </div>
 
     <!-- Instructions iOS -->
@@ -23860,12 +23860,20 @@ function isIOS() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
 }
 function isInStandaloneMode() {
-  return ('standalone' in window.navigator) && window.navigator.standalone;
+  // iOS (navigator.standalone) ET Android/desktop PWA (display-mode)
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    || (('standalone' in window.navigator) && window.navigator.standalone);
 }
 
+let _installBannerTimer = null;
 function showInstallBanner(type) {
   if (localStorage.getItem('s33_install_dismissed')) return;
   if (isInStandaloneMode()) return; // Déjà installée
+
+  // Ne pas insister : 3 affichages maximum
+  const shown = parseInt(localStorage.getItem('s33_install_shown') || '0', 10);
+  if (shown >= 3) return;
+  localStorage.setItem('s33_install_shown', String(shown + 1));
 
   const banner = document.getElementById('install-banner');
   if (!banner) return;
@@ -23879,6 +23887,9 @@ function showInstallBanner(type) {
     document.getElementById('install-btn-android').style.display = '';
   }
   banner.style.display = '';
+  // Disparition automatique après 12 s pour ne pas gêner l'utilisation
+  if (_installBannerTimer) clearTimeout(_installBannerTimer);
+  _installBannerTimer = setTimeout(() => { banner.style.display = 'none'; }, 12000);
 }
 
 async function triggerInstall() {
@@ -26878,7 +26889,8 @@ window.addEventListener('appinstalled', () => {
       '@media(max-width:767px){' +
         '.msg-wrap{height:calc(100vh - 150px);border:none;border-radius:0;}' +
         '.msg-list{width:100%;}' +
-        '.msg-thread{display:none;position:fixed;inset:0;top:0;z-index:1550;background:var(--surface);height:100vh;}' +
+        '.msg-thread{display:none;position:fixed;inset:0;top:0;z-index:1550;background:var(--surface);height:100vh;height:100dvh;}' +
+        'body.s33-msg-thread-open #install-banner,body.s33-msg-thread-open .ai-fab,body.s33-msg-thread-open #s33-timer-widget,body.s33-msg-thread-open #s33-offline-badge{display:none !important;}' +
         '.msg-wrap.open .msg-list{display:none;}' +
         '.msg-wrap.open .msg-thread{display:flex;}' +
         '.msg-back{display:block;}' +
@@ -27010,7 +27022,9 @@ window.addEventListener('appinstalled', () => {
     injectNav(); injectPage();
     await fetchMessages();
     renderConvList();
-    s33MsgOpen(_msgChannel, true);
+    // Mobile : arriver sur la liste des conversations; desktop : ouvrir le canal courant
+    if (window.innerWidth > 767) s33MsgOpen(_msgChannel, true);
+    else updateBadges();
     if (_msgPoll) clearInterval(_msgPoll);
     _msgPoll = setInterval(async () => {
       if (typeof currentPage !== 'undefined' && currentPage !== 'messagerie') return;
@@ -27021,7 +27035,10 @@ window.addEventListener('appinstalled', () => {
   window.s33MsgOpen = function(ch, noScrollKeep) {
     _msgChannel = ch;
     const wrap = document.getElementById('msg-wrap');
-    if (wrap && window.innerWidth <= 767) wrap.classList.add('open');
+    if (wrap && window.innerWidth <= 767) {
+      wrap.classList.add('open');
+      document.body.classList.add('s33-msg-thread-open');
+    }
     renderConvList();
     renderThread(false);
     const inp = document.getElementById('msg-input');
@@ -27030,6 +27047,7 @@ window.addEventListener('appinstalled', () => {
   window.s33MsgBackToList = function() {
     const wrap = document.getElementById('msg-wrap');
     if (wrap) wrap.classList.remove('open');
+    document.body.classList.remove('s33-msg-thread-open');
     renderConvList();
   };
   window.s33MsgAutoGrow = function(t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; };
@@ -27047,13 +27065,22 @@ window.addEventListener('appinstalled', () => {
     const optim = { channel: ch, sender_id: myId(), sender_name: myName(), body, id: '_tmp_' + Date.now(), created_at: new Date().toISOString(), _pending: true };
     _msgCache.push(optim);
     renderThread(false);
+    let sent = false;
     try {
-      await sbInsert('messages', { channel: ch, sender_id: myId(), sender_name: myName(), body });
+      await sbInsertOrThrow('messages', { channel: ch, sender_id: myId(), sender_name: myName(), body });
+      sent = true;
       notifyRecipients(ch, body);
-    } catch(e) { toast('Message non envoyé — réessayez', 'error'); }
+    } catch(e) {
+      // Échec réel (RLS, réseau…) : retirer le message optimiste et rendre le texte
+      _msgCache = _msgCache.filter(m => m !== optim);
+      inp.value = body;
+      toast('Message non envoyé — vérifiez votre connexion et réessayez');
+    }
     _msgSending = false;
-    await fetchMessages();
-    localStorage.setItem(readKey(ch), new Date().toISOString());
+    if (sent) {
+      await fetchMessages();
+      localStorage.setItem(readKey(ch), new Date().toISOString());
+    }
     renderConvList(); renderThread(false);
   };
 
@@ -27078,6 +27105,12 @@ window.addEventListener('appinstalled', () => {
   window.renderPage = function(page) {
     if (typeof _origRP === 'function') { try { _origRP.apply(this, arguments); } catch(_) {} }
     if (page === 'messagerie') { try { window.renderMessagerie(); } catch(e) { console.error('renderMessagerie', e); } }
+    else {
+      // Quitter la messagerie : refermer le fil plein écran mobile
+      document.body.classList.remove('s33-msg-thread-open');
+      const w = document.getElementById('msg-wrap');
+      if (w) w.classList.remove('open');
+    }
   };
 
   // Injection immédiate (page + nav) pour que navigate('messagerie') fonctionne

@@ -27122,5 +27122,492 @@ window.addEventListener('appinstalled', () => {
 })();
 </script>
 
+<!-- ═══ SUIVI DE CHANTIER (historique visites + réserves / punch list) ═══ -->
+<script>
+(function() {
+  'use strict';
+
+  const LOTS = ['Gros œuvre', 'Étanchéité', 'Électricité', 'Plomberie', 'Menuiserie', 'Revêtements', 'Peinture', 'Climatisation', 'Aménagements ext.', 'Autre'];
+  let _chPid = null;
+  let _chVisites = [];
+  let _chReserves = [];
+  let _chVrPid = null; // projet du rapport de visite en cours
+
+  const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
+  const fmtD = s => { try { return new Date(s + 'T00:00').toLocaleDateString('fr-MA', { day: 'numeric', month: 'short', year: 'numeric' }); } catch(_) { return s || ''; } };
+  const isAdmin = () => currentUser && currentUser.role === 'admin';
+
+  function injectCSS() {
+    if (document.getElementById('s33-ch-css')) return;
+    const st = document.createElement('style');
+    st.id = 's33-ch-css';
+    st.textContent =
+      '.ch-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start;}' +
+      '.ch-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;}' +
+      '.ch-item{padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface2);}' +
+      '.ch-visite-head{display:flex;align-items:center;gap:10px;cursor:pointer;flex-wrap:wrap;}' +
+      '.ch-badge{font-size:10px;font-weight:800;letter-spacing:.05em;border-radius:99px;padding:3px 10px;flex-shrink:0;}' +
+      '.ch-badge.ouverte{background:rgba(220,50,50,.1);color:#c0392b;border:1px solid rgba(220,50,50,.25);}' +
+      '.ch-badge.levee{background:rgba(39,174,96,.1);color:#27ae60;border:1px solid rgba(39,174,96,.25);}' +
+      '.ch-chip{font-size:10.5px;background:var(--surface3);color:var(--text-dim);border-radius:99px;padding:2px 9px;}' +
+      '.ch-btn{border:none;border-radius:var(--radius-pill);padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;}' +
+      '.ch-detail table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;}' +
+      '.ch-detail td,.ch-detail th{border:1px solid var(--border);padding:5px 8px;text-align:left;}';
+    document.head.appendChild(st);
+  }
+
+  async function chLoad(pid) {
+    const [v, r] = await Promise.all([
+      sbGet('chantier_visites', '?project_id=eq.' + pid + '&order=visit_date.desc,id.desc'),
+      sbGet('chantier_reserves', '?project_id=eq.' + pid + '&order=id.desc')
+    ]);
+    _chVisites = Array.isArray(v) ? v : [];
+    _chReserves = Array.isArray(r) ? r : [];
+  }
+
+  function lastPct() {
+    const withPct = _chVisites.filter(v => v.avancement_pct != null);
+    return withPct.length ? withPct[0].avancement_pct : null;
+  }
+
+  function renderSection() {
+    const box = document.getElementById('s33-chantier-box');
+    if (!box) return;
+    const pid = _chPid;
+    const open = _chReserves.filter(r => r.statut === 'ouverte');
+    const levees = _chReserves.filter(r => r.statut !== 'ouverte');
+    const pct = lastPct();
+
+    box.innerHTML =
+      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:30px 0 14px;">' +
+        '<div class="section-title" style="margin:0;">Suivi de chantier</div>' +
+        '<span class="ch-chip">' + _chVisites.length + ' visite' + (_chVisites.length > 1 ? 's' : '') + '</span>' +
+        (open.length ? '<span class="ch-badge ouverte">' + open.length + ' réserve' + (open.length > 1 ? 's' : '') + ' ouverte' + (open.length > 1 ? 's' : '') + '</span>' : '') +
+        '<div style="flex:1;"></div>' +
+        '<button class="ch-btn" style="background:var(--gold);color:#fff;" onclick="openVisitReport(' + pid + ')"><span class="mi mi-sm">assignment</span> Nouvelle visite</button>' +
+        '<button class="ch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33ChReserveModal(' + pid + ')">+ Réserve</button>' +
+      '</div>' +
+      (pct != null ?
+        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;max-width:420px;">' +
+          '<div style="flex:1;height:8px;background:var(--surface3);border-radius:99px;overflow:hidden;">' +
+            '<div style="height:100%;width:' + Math.min(pct, 100) + '%;background:var(--gold);border-radius:99px;"></div></div>' +
+          '<span style="font-size:13px;font-weight:800;color:var(--gold);">' + pct + '%</span>' +
+          '<span style="font-size:11px;color:var(--text-faint);">avancement constaté</span>' +
+        '</div>' : '') +
+      '<div class="ch-grid">' +
+        '<div class="ch-card">' +
+          '<div style="font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:.05em;margin-bottom:10px;">HISTORIQUE DES VISITES</div>' +
+          (_chVisites.length ? _chVisites.map(visiteHTML).join('') :
+            '<div style="font-size:12px;color:var(--text-faint);padding:14px 0;">Aucune visite enregistrée. Les rapports de visite générés apparaîtront ici automatiquement.</div>') +
+        '</div>' +
+        '<div class="ch-card">' +
+          '<div style="font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:.05em;margin-bottom:10px;">RÉSERVES / POINTS À LEVER</div>' +
+          (open.length + levees.length ?
+            open.map(reserveHTML).join('') + levees.map(reserveHTML).join('') :
+            '<div style="font-size:12px;color:var(--text-faint);padding:14px 0;">Aucune réserve. Les observations « Non conforme » ou « À corriger » des rapports de visite créent des réserves automatiquement.</div>') +
+        '</div>' +
+      '</div>';
+  }
+
+  function visiteHTML(v) {
+    const obs = Array.isArray(v.observations) ? v.observations : [];
+    const acts = Array.isArray(v.actions) ? v.actions : [];
+    const pres = Array.isArray(v.presents) ? v.presents : [];
+    return '<div class="ch-item">' +
+      '<div class="ch-visite-head" onclick="s33ChToggleVisite(' + v.id + ')">' +
+        '<span style="font-size:12px;font-weight:800;color:var(--gold);">' + esc(v.ref || 'RV') + '</span>' +
+        '<span style="font-size:12.5px;font-weight:600;color:var(--text);">' + fmtD(v.visit_date) + (v.heure ? ' · ' + esc(v.heure) : '') + '</span>' +
+        (v.avancement_pct != null ? '<span class="ch-chip">' + v.avancement_pct + '%</span>' : '') +
+        (obs.length ? '<span class="ch-chip">' + obs.length + ' obs.</span>' : '') +
+        (v.photos_count ? '<span class="ch-chip">' + v.photos_count + ' photo' + (v.photos_count > 1 ? 's' : '') + '</span>' : '') +
+        '<div style="flex:1;"></div>' +
+        '<span style="font-size:11px;color:var(--text-faint);">' + esc(v.auteur || '') + '</span>' +
+        '<span class="mi" style="font-size:16px;color:var(--text-faint);">expand_more</span>' +
+      '</div>' +
+      '<div class="ch-detail" id="ch-vdetail-' + v.id + '" style="display:none;margin-top:10px;font-size:12px;color:var(--text);">' +
+        (v.meteo ? '<div style="color:var(--text-dim);margin-bottom:6px;">Météo : ' + esc(v.meteo) + '</div>' : '') +
+        (pres.length ? '<div style="color:var(--text-dim);margin-bottom:6px;">Présents : ' + pres.map(x => esc(x.nom) + (x.role ? ' (' + esc(x.role) + ')' : '')).join(', ') + '</div>' : '') +
+        (v.avancement ? '<div style="white-space:pre-wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:6px;">' + esc(v.avancement) + '</div>' : '') +
+        (obs.length ? '<table><tr><th>Observation</th><th style="width:110px;">Statut</th></tr>' +
+          obs.map(o => '<tr><td style="white-space:pre-wrap;">' + esc(o.texte) + '</td><td>' + esc(o.statut) + '</td></tr>').join('') + '</table>' : '') +
+        (acts.length ? '<table style="margin-top:8px;"><tr><th>Action</th><th style="width:110px;">Responsable</th><th style="width:95px;">Échéance</th></tr>' +
+          acts.map(a => '<tr><td>' + esc(a.texte) + '</td><td>' + esc(a.resp) + '</td><td>' + (a.echeance ? fmtD(a.echeance) : '—') + '</td></tr>').join('') + '</table>' : '') +
+        (isAdmin() ? '<div style="text-align:right;margin-top:8px;"><button class="ch-btn" style="background:#fff0f0;color:#c0392b;" onclick="s33ChDeleteVisite(' + v.id + ')">Supprimer</button></div>' : '') +
+      '</div>' +
+    '</div>';
+  }
+
+  function reserveHTML(r) {
+    const open = r.statut === 'ouverte';
+    return '<div class="ch-item"' + (open ? '' : ' style="opacity:.65;"') + '>' +
+      '<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
+        '<span class="ch-badge ' + (open ? 'ouverte' : 'levee') + '">' + (open ? 'OUVERTE' : 'LEVÉE') + '</span>' +
+        '<div style="flex:1;min-width:160px;">' +
+          '<div style="font-size:12.5px;color:var(--text);white-space:pre-wrap;">' + esc(r.description) + '</div>' +
+          '<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">' +
+            (r.lot ? esc(r.lot) + ' · ' : '') + (r.opened_date ? 'ouverte le ' + fmtD(r.opened_date) : '') +
+            (!open && r.resolved_date ? ' · levée le ' + fmtD(r.resolved_date) + (r.resolved_by ? ' (' + esc(r.resolved_by) + ')' : '') : '') +
+          '</div>' +
+        '</div>' +
+        '<button class="ch-btn" style="background:' + (open ? 'rgba(39,174,96,.12)' : 'var(--surface3)') + ';color:' + (open ? '#27ae60' : 'var(--text-dim)') + ';" onclick="s33ChToggleReserve(' + r.id + ')">' + (open ? 'Lever' : 'Rouvrir') + '</button>' +
+        (isAdmin() ? '<button class="ch-btn" style="background:#fff0f0;color:#c0392b;" onclick="s33ChDeleteReserve(' + r.id + ')">×</button>' : '') +
+      '</div>' +
+    '</div>';
+  }
+
+  // ── Actions ──────────────────────────────────────────────────────
+  window.s33ChToggleVisite = function(id) {
+    const d = document.getElementById('ch-vdetail-' + id);
+    if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none';
+  };
+
+  window.s33ChToggleReserve = async function(id) {
+    const r = _chReserves.find(x => x.id === id);
+    if (!r) return;
+    const open = r.statut === 'ouverte';
+    const patch = open
+      ? { statut: 'levee', resolved_date: new Date().toISOString().slice(0, 10), resolved_by: currentUser?.name || '' }
+      : { statut: 'ouverte', resolved_date: null, resolved_by: null };
+    const ok = await sbUpdate('chantier_reserves', id, patch);
+    if (ok === false) { toast('Erreur — réessayez'); return; }
+    Object.assign(r, patch);
+    renderSection();
+  };
+
+  window.s33ChDeleteReserve = async function(id) {
+    if (!confirm('Supprimer cette réserve ?')) return;
+    await sbDelete('chantier_reserves', id);
+    _chReserves = _chReserves.filter(x => x.id !== id);
+    renderSection();
+  };
+
+  window.s33ChDeleteVisite = async function(id) {
+    if (!confirm('Supprimer cette visite de l\'historique ?')) return;
+    await sbDelete('chantier_visites', id);
+    _chVisites = _chVisites.filter(x => x.id !== id);
+    renderSection();
+  };
+
+  window.s33ChReserveModal = function(pid) {
+    const old = document.getElementById('ch-res-modal'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 'ch-res-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    ov.innerHTML =
+      '<div class="modal" style="max-width:460px;" onclick="event.stopPropagation()">' +
+        '<button class="modal-close" onclick="document.getElementById(\'ch-res-modal\').remove()">×</button>' +
+        '<div class="modal-title">Nouvelle réserve</div>' +
+        '<div class="form-group"><label>Description *</label><textarea id="ch-res-desc" rows="3" placeholder="Ex : fissure sur voile RDC côté est…"></textarea></div>' +
+        '<div class="form-row">' +
+          '<div class="form-group"><label>Lot</label><select id="ch-res-lot"><option value=""></option>' +
+            LOTS.map(l => '<option>' + l + '</option>').join('') + '</select></div>' +
+          '<div class="form-group"><label>Constatée le</label><input type="date" id="ch-res-date" value="' + new Date().toISOString().slice(0, 10) + '"></div>' +
+        '</div>' +
+        '<div class="form-actions">' +
+          '<button class="btn btn-outline" onclick="document.getElementById(\'ch-res-modal\').remove()">Annuler</button>' +
+          '<button class="btn btn-gold" onclick="s33ChSaveReserve(' + pid + ')">Ajouter</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+  };
+
+  window.s33ChSaveReserve = async function(pid) {
+    const desc = (document.getElementById('ch-res-desc') || {}).value || '';
+    if (!desc.trim()) { toast('Décrivez la réserve'); return; }
+    const lot = (document.getElementById('ch-res-lot') || {}).value || '';
+    const date = (document.getElementById('ch-res-date') || {}).value || null;
+    try {
+      const ins = await sbInsertOrThrow('chantier_reserves', {
+        project_id: pid, description: desc.trim(), lot, statut: 'ouverte',
+        opened_date: date, author: currentUser?.name || ''
+      });
+      if (ins && ins[0]) _chReserves.unshift(ins[0]);
+      const m = document.getElementById('ch-res-modal'); if (m) m.remove();
+      renderSection();
+    } catch(e) { toast('Réserve non enregistrée — réessayez'); }
+  };
+
+  window.s33ChRefresh = async function() {
+    if (_chPid == null) return;
+    await chLoad(_chPid);
+    renderSection();
+  };
+
+  // ── Enregistrement automatique depuis le rapport de visite ───────
+  function chCollectVr() {
+    const g = id => (document.getElementById(id) || {}).value || '';
+    if (!document.getElementById('vr-modal')) return null;
+    const rows = (boxId, map) => [...document.querySelectorAll('#' + boxId + ' .vr-row')].map(map)
+      .filter(x => Object.values(x).some(v => (v || '').trim()));
+    const pctRaw = parseInt(g('vr-pct'), 10);
+    return {
+      date: g('vr-date'), heure: g('vr-heure'), meteo: g('vr-meteo'), auteur: g('vr-auteur'),
+      avancement: g('vr-avancement'),
+      pct: isNaN(pctRaw) ? null : Math.max(0, Math.min(100, pctRaw)),
+      presents: rows('vr-presents', r => ({ nom: r.querySelector('[data-vr=pnom]').value, role: r.querySelector('[data-vr=prole]').value })),
+      observations: rows('vr-observations', r => ({ texte: r.querySelector('[data-vr=otexte]').value, statut: r.querySelector('[data-vr=ostatut]').value })),
+      actions: rows('vr-actions', r => ({ texte: r.querySelector('[data-vr=atexte]').value, resp: r.querySelector('[data-vr=aresp]').value, echeance: r.querySelector('[data-vr=aech]').value })),
+      mediaIds: [...document.querySelectorAll('#vr-modal .vr-photo-cell.sel')].map(c => c.getAttribute('data-vrmid')),
+      uploadedCount: document.querySelectorAll('#vr-captions .vr-cap-row').length
+    };
+  }
+
+  async function chSaveVisite(pid, d) {
+    const num = parseInt(localStorage.getItem('s33_vr_counter_' + pid) || '0', 10);
+    const ins = await sbInsertOrThrow('chantier_visites', {
+      project_id: pid,
+      ref: 'RV-' + String(num || 1).padStart(2, '0'),
+      visit_date: d.date || new Date().toISOString().slice(0, 10),
+      heure: d.heure, meteo: d.meteo, auteur: d.auteur,
+      presents: d.presents, avancement: d.avancement, avancement_pct: d.pct,
+      observations: d.observations, actions: d.actions,
+      photos_count: d.mediaIds.length + Math.max(0, d.uploadedCount - d.mediaIds.length),
+      media_ids: d.mediaIds,
+      created_by: currentUser?.name || ''
+    });
+    const vid = ins && ins[0] ? ins[0].id : null;
+    const bad = (d.observations || []).filter(o => o.statut === 'Non conforme' || o.statut === 'À corriger');
+    for (const o of bad) {
+      await sbInsert('chantier_reserves', {
+        project_id: pid, visite_id: vid, description: o.texte,
+        statut: 'ouverte', opened_date: d.date || null, author: d.auteur || ''
+      });
+    }
+    toast('Visite enregistrée dans le suivi de chantier' + (bad.length ? ' + ' + bad.length + ' réserve(s)' : ''));
+    if (window._currentProjectDetailId === pid) { try { await s33ChRefresh(); } catch(_) {} }
+  }
+
+  const _origOVR = window.openVisitReport;
+  if (typeof _origOVR === 'function') {
+    window.openVisitReport = function(pid) {
+      _chVrPid = pid;
+      const res = _origOVR.apply(this, arguments);
+      // Champ « % d'avancement global » ajouté au rapport
+      try {
+        const ta = document.getElementById('vr-avancement');
+        if (ta && !document.getElementById('vr-pct')) {
+          const last = (_chPid === pid) ? lastPct() : null;
+          ta.insertAdjacentHTML('afterend',
+            '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">' +
+              '<label style="font-size:12px;color:var(--text-dim);margin:0;">Avancement global :</label>' +
+              '<input type="number" id="vr-pct" min="0" max="100" step="5" value="' + (last != null ? last : '') + '" style="width:100px;">' +
+              '<span style="font-size:12px;color:var(--text-faint);">% (pour le suivi de chantier)</span>' +
+            '</div>');
+        }
+      } catch(_) {}
+      return res;
+    };
+  }
+
+  const _origGen = window.vrGenerate;
+  if (typeof _origGen === 'function') {
+    window.vrGenerate = async function() {
+      const snap = chCollectVr();
+      const res = await _origGen.apply(this, arguments);
+      if (snap && _chVrPid != null) {
+        chSaveVisite(_chVrPid, snap).catch(e => { console.error('chantier save', e); toast('Visite non enregistrée dans le suivi'); });
+      }
+      return res;
+    };
+  }
+
+  // ── Intégration à la fiche projet ────────────────────────────────
+  const _origRPD = window.renderProjectDetailPage;
+  window.renderProjectDetailPage = function() {
+    if (typeof _origRPD === 'function') { try { _origRPD.apply(this, arguments); } catch(e) { console.error(e); } }
+    const host = document.getElementById('project-detail-content');
+    const pid = window._currentProjectDetailId;
+    if (!host || pid == null || !db.projects.find(x => x.id === pid)) return;
+    injectCSS();
+    if (!document.getElementById('s33-chantier-box')) {
+      host.insertAdjacentHTML('beforeend', '<div id="s33-chantier-box"></div>');
+    }
+    _chPid = pid;
+    document.getElementById('s33-chantier-box').innerHTML =
+      '<div class="section-title" style="margin:30px 0 14px;">Suivi de chantier</div>' +
+      '<div style="font-size:12px;color:var(--text-faint);">Chargement…</div>';
+    chLoad(pid).then(renderSection).catch(e => console.error('chantier load', e));
+  };
+
+  console.log('✓ Suivi de chantier loaded');
+})();
+</script>
+
+<!-- ═══ ÉCHÉANCIER D'HONORAIRES PAR PHASE ═══ -->
+<script>
+(function() {
+  'use strict';
+
+  // Répartition type des honoraires (modifiable ligne par ligne ensuite)
+  const SEED = [
+    { phase: 'ESQ',      label: 'Esquisse',                          pct: 10 },
+    { phase: 'APS',      label: 'Avant-projet sommaire',             pct: 20 },
+    { phase: 'APD',      label: 'Avant-projet définitif + autorisation', pct: 25 },
+    { phase: 'DCE',      label: 'Dossier de consultation entreprises',   pct: 10 },
+    { phase: 'Chantier', label: 'Suivi de chantier',                 pct: 35 }
+  ];
+  let _hPid = null;
+  let _hRows = [];
+
+  const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
+  const money = n => (typeof formatNum === 'function' ? formatNum(Math.round(n || 0)) : String(Math.round(n || 0)));
+  function canSee() {
+    return currentUser && (currentUser.role === 'admin' || (currentUser.permissions || {}).can_see_finance === true);
+  }
+  function projInvoices(pid) {
+    return (db.invoices || []).filter(i => i.projectId === pid && i.status !== 'Annulé');
+  }
+  function rowStatus(r) {
+    if (!r.invoice_id) return { key: 'a_facturer', label: 'À facturer', color: 'var(--text-dim)', bg: 'var(--surface3)' };
+    const inv = (db.invoices || []).find(i => i.id === r.invoice_id);
+    if (inv && inv.status === 'Payée') return { key: 'encaisse', label: 'Encaissé', color: '#27ae60', bg: 'rgba(39,174,96,.12)' };
+    return { key: 'facture', label: 'Facturé', color: '#1d6fa5', bg: 'rgba(52,152,219,.12)' };
+  }
+
+  async function hLoad(pid) {
+    const rows = await sbGet('honoraires_echeances', '?project_id=eq.' + pid + '&order=position,id');
+    _hRows = Array.isArray(rows) ? rows : [];
+  }
+
+  function renderSection() {
+    const box = document.getElementById('s33-honoraires-box');
+    if (!box) return;
+    const pid = _hPid;
+    const p = db.projects.find(x => x.id === pid) || {};
+    const total = _hRows.reduce((s, r) => s + (parseFloat(r.montant) || 0), 0);
+    const facture = _hRows.filter(r => rowStatus(r).key !== 'a_facturer').reduce((s, r) => s + (parseFloat(r.montant) || 0), 0);
+    const encaisse = _hRows.filter(r => rowStatus(r).key === 'encaisse').reduce((s, r) => s + (parseFloat(r.montant) || 0), 0);
+    const invs = projInvoices(pid);
+
+    let html =
+      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:30px 0 14px;">' +
+        '<div class="section-title" style="margin:0;">Honoraires — échéancier par phase</div>' +
+        '<div style="flex:1;"></div>' +
+        (_hRows.length === 0 && p.budget > 0 ?
+          '<button class="ch-btn" style="background:var(--gold);color:#fff;" onclick="s33HonSeed(' + pid + ')">Générer l\'échéancier type</button>' : '') +
+        '<button class="ch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33HonAddRow(' + pid + ')">+ Ligne</button>' +
+      '</div>';
+
+    if (!_hRows.length) {
+      html += '<div style="font-size:12.5px;color:var(--text-faint);background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius);padding:16px;">' +
+        (p.budget > 0
+          ? 'Aucun échéancier. « Générer l\'échéancier type » répartit les honoraires (' + money(p.budget) + ' MAD) sur les phases : ' + SEED.map(s => s.phase + ' ' + s.pct + '%').join(' · ') + ' — modifiable ensuite ligne par ligne.'
+          : 'Aucun échéancier. Définissez d\'abord le budget d\'honoraires du projet (Éditer), ou ajoutez des lignes manuellement.') +
+        '</div>';
+      box.innerHTML = html;
+      return;
+    }
+
+    const pctEnc = total > 0 ? Math.round(encaisse / total * 100) : 0;
+    const pctFac = total > 0 ? Math.round(facture / total * 100) : 0;
+    html +=
+      '<div class="grid-4" style="margin-bottom:16px;">' +
+        '<div class="stat-card"><div class="stat-label">Total honoraires</div><div style="font-size:20px;font-weight:800;color:var(--text);margin-top:4px;">' + money(total) + ' <span style="font-size:11px;color:var(--text-faint);">MAD</span></div>' +
+          (p.budget > 0 && Math.round(total) !== Math.round(p.budget) ? '<div style="font-size:10.5px;color:var(--yellow,#c2410c);margin-top:4px;">≠ budget projet (' + money(p.budget) + ')</div>' : '') + '</div>' +
+        '<div class="stat-card"><div class="stat-label">Facturé</div><div style="font-size:20px;font-weight:800;color:#1d6fa5;margin-top:4px;">' + money(facture) + '</div><div style="font-size:10.5px;color:var(--text-faint);margin-top:4px;">' + pctFac + '%</div></div>' +
+        '<div class="stat-card"><div class="stat-label">Encaissé</div><div style="font-size:20px;font-weight:800;color:#27ae60;margin-top:4px;">' + money(encaisse) + '</div><div style="font-size:10.5px;color:var(--text-faint);margin-top:4px;">' + pctEnc + '%</div></div>' +
+        '<div class="stat-card"><div class="stat-label">Reste à facturer</div><div style="font-size:20px;font-weight:800;color:var(--gold);margin-top:4px;">' + money(total - facture) + '</div></div>' +
+      '</div>' +
+      '<div style="height:10px;background:var(--surface3);border-radius:99px;overflow:hidden;display:flex;margin-bottom:16px;max-width:640px;">' +
+        '<div style="width:' + pctEnc + '%;background:#27ae60;"></div>' +
+        '<div style="width:' + Math.max(0, pctFac - pctEnc) + '%;background:#3498db;"></div>' +
+      '</div>';
+
+    html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:640px;">' +
+      '<tr>' + ['Phase', 'Libellé', 'Montant (MAD)', 'Échéance', 'Facture liée', 'Statut', ''].map(h =>
+        '<th style="text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-dim);font-size:11px;letter-spacing:.05em;">' + h + '</th>').join('') + '</tr>';
+    _hRows.forEach(r => {
+      const st = rowStatus(r);
+      html += '<tr>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);"><span class="badge badge-dim">' + esc(r.phase || '—') + '</span></td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);">' +
+          '<input type="text" value="' + esc(r.label || '') + '" onchange="s33HonUpdate(' + r.id + ',\'label\',this.value)" style="width:100%;min-width:150px;border:none;background:transparent;color:var(--text);font-family:inherit;font-size:12.5px;outline:none;border-bottom:1px dashed transparent;" onfocus="this.style.borderBottomColor=\'var(--gold)\'" onblur="this.style.borderBottomColor=\'transparent\'"></td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);">' +
+          '<input type="number" value="' + (parseFloat(r.montant) || 0) + '" min="0" step="1000" onchange="s33HonUpdate(' + r.id + ',\'montant\',this.value)" style="width:110px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:12.5px;"></td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);">' +
+          '<input type="date" value="' + (r.due_date || '') + '" onchange="s33HonUpdate(' + r.id + ',\'due_date\',this.value||null)" style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px;"></td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);">' +
+          '<select onchange="s33HonUpdate(' + r.id + ',\'invoice_id\',this.value?parseInt(this.value):null)" style="max-width:170px;border:1px solid var(--border);border-radius:6px;padding:4px 8px;background:var(--surface2);color:var(--text);font-family:inherit;font-size:12px;">' +
+            '<option value="">—</option>' +
+            projInvoices(_hPid).map(i => '<option value="' + i.id + '"' + (r.invoice_id === i.id ? ' selected' : '') + '>' + esc(i.num) + ' · ' + money(i.amount) + '</option>').join('') +
+          '</select></td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);"><span class="ch-badge" style="background:' + st.bg + ';color:' + st.color + ';border:none;">' + st.label + '</span></td>' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;">' +
+          '<button class="ch-btn" style="background:#fff0f0;color:#c0392b;padding:4px 9px;" onclick="s33HonDelete(' + r.id + ')">×</button></td>' +
+      '</tr>';
+    });
+    html += '</table></div>';
+    box.innerHTML = html;
+  }
+
+  // ── Actions ──────────────────────────────────────────────────────
+  window.s33HonSeed = async function(pid) {
+    const p = db.projects.find(x => x.id === pid);
+    if (!p || !(p.budget > 0)) { toast('Définissez d\'abord le budget du projet'); return; }
+    try {
+      for (let i = 0; i < SEED.length; i++) {
+        const s = SEED[i];
+        const ins = await sbInsertOrThrow('honoraires_echeances', {
+          project_id: pid, phase: s.phase, label: s.label,
+          montant: Math.round(p.budget * s.pct / 100), position: i
+        });
+        if (ins && ins[0]) _hRows.push(ins[0]);
+      }
+      renderSection();
+      toast('Échéancier créé — ajustez les montants si besoin');
+    } catch(e) { toast('Erreur lors de la création — réessayez'); }
+  };
+
+  window.s33HonAddRow = async function(pid) {
+    try {
+      const ins = await sbInsertOrThrow('honoraires_echeances', {
+        project_id: pid, phase: '', label: 'Nouvelle échéance', montant: 0, position: _hRows.length
+      });
+      if (ins && ins[0]) _hRows.push(ins[0]);
+      renderSection();
+    } catch(e) { toast('Erreur — réessayez'); }
+  };
+
+  window.s33HonUpdate = async function(id, field, value) {
+    const r = _hRows.find(x => x.id === id);
+    if (!r) return;
+    if (field === 'montant') value = parseFloat(value) || 0;
+    const patch = {}; patch[field] = value;
+    const ok = await sbUpdate('honoraires_echeances', id, patch);
+    if (ok === false) { toast('Modification non enregistrée'); return; }
+    r[field] = value;
+    renderSection();
+  };
+
+  window.s33HonDelete = async function(id) {
+    if (!confirm('Supprimer cette ligne d\'échéancier ?')) return;
+    await sbDelete('honoraires_echeances', id);
+    _hRows = _hRows.filter(x => x.id !== id);
+    renderSection();
+  };
+
+  // ── Intégration à la fiche projet (après le suivi de chantier) ───
+  const _origRPD = window.renderProjectDetailPage;
+  window.renderProjectDetailPage = function() {
+    if (typeof _origRPD === 'function') { try { _origRPD.apply(this, arguments); } catch(e) { console.error(e); } }
+    if (!canSee()) return;
+    const host = document.getElementById('project-detail-content');
+    const pid = window._currentProjectDetailId;
+    if (!host || pid == null || !db.projects.find(x => x.id === pid)) return;
+    if (!document.getElementById('s33-honoraires-box')) {
+      host.insertAdjacentHTML('beforeend', '<div id="s33-honoraires-box"></div>');
+    }
+    _hPid = pid;
+    document.getElementById('s33-honoraires-box').innerHTML =
+      '<div class="section-title" style="margin:30px 0 14px;">Honoraires — échéancier par phase</div>' +
+      '<div style="font-size:12px;color:var(--text-faint);">Chargement…</div>';
+    hLoad(pid).then(renderSection).catch(e => console.error('honoraires load', e));
+  };
+
+  console.log('✓ Échéancier honoraires loaded');
+})();
+</script>
+
 </body>
 </html>

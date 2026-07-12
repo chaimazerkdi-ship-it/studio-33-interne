@@ -6610,12 +6610,14 @@ function renderDashboard() {
   } else {
     dt.innerHTML = urgent.slice(0,5).map(t => {
       const proj = db.projects.find(p => p.tasks.some(tk => tk.id === t.id));
+      const who = (t.assignedTo || '').trim();
       return `<div class="task-item">
         <div class="urgent-dot"></div>
         <div style="flex:1">
           <div style="font-size:13px;color:var(--text);">${t.name}</div>
           <div style="font-size:11px;color:var(--text-faint);margin-top:2px;">${proj ? proj.name : ''}</div>
         </div>
+        ${who ? `<span style="font-size:10.5px;font-weight:600;color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:3px 10px;flex-shrink:0;">${escHTML(who)}</span>` : ''}
       </div>`;
     }).join('');
   }
@@ -6758,7 +6760,8 @@ function getProjectHealth(p) {
   let status = 'ok';
 
   const urgentPending = (p.tasks || []).filter(t => t.priority === 'urgent' && !isTaskDone(t));
-  const overdue = (p.tasks || []).filter(t => !isTaskDone(t) && t.deadline && new Date(t.deadline) < today);
+  // Retards : uniquement les tâches assignées à quelqu'un (les tâches auto des templates, non assignées, ne comptent pas)
+  const overdue = (p.tasks || []).filter(t => !isTaskDone(t) && t.deadline && new Date(t.deadline) < today && ((t.assignedTo || '').trim() || t.assignedUserId));
 
   if (urgentPending.length > 0) {
     reasons.push(`${urgentPending.length} tâche${urgentPending.length > 1 ? 's' : ''} urgente${urgentPending.length > 1 ? 's' : ''}`);
@@ -12238,7 +12241,10 @@ function checkDeadlineNotifications() {
   db.projects.forEach(p => {
     (p.tasks || []).forEach(t => {
       if (!t.deadline) return;
-      const isForMe = !t.assignedTo || (t.assignedTo||'').toLowerCase() === (currentUser.name||'').toLowerCase() || currentUser.role === 'admin';
+      // Seule la personne assignée est notifiée ; les tâches non assignées (templates) ne notifient personne
+      const assignee = (t.assignedTo || '').trim();
+      if (!assignee && !t.assignedUserId) return;
+      const isForMe = assignee.toLowerCase() === (currentUser.name||'').toLowerCase() || String(t.assignedUserId||'') === String(currentUser.id);
       if (!isForMe) return;
       const dl = new Date(t.deadline); dl.setHours(0,0,0,0);
       if (dl >= today && dl <= in2days) {
@@ -14095,6 +14101,24 @@ function renderMesTaches() {
   const filterPid = (filterVal && filterVal !== 'admin') ? parseInt(filterVal) : null;
   const filterAdmin = filterVal === 'admin';
 
+  // ── Tâches auto (templates, non assignées) : masquées par défaut ──
+  const showAuto = localStorage.getItem('s33_taches_show_auto') === 'true';
+  if (!document.getElementById('taches-toggle-auto') && sel.parentElement) {
+    sel.insertAdjacentHTML('afterend',
+      '<button id="taches-toggle-auto" onclick="toggleTachesAuto()" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;"></button>');
+    window.toggleTachesAuto = function() {
+      localStorage.setItem('s33_taches_show_auto', localStorage.getItem('s33_taches_show_auto') === 'true' ? 'false' : 'true');
+      renderMesTaches();
+    };
+  }
+  const autoBtn = document.getElementById('taches-toggle-auto');
+  if (autoBtn) {
+    autoBtn.textContent = 'Tâches auto : ' + (showAuto ? 'ON' : 'OFF');
+    autoBtn.style.background = showAuto ? '#1a73e8' : 'var(--surface)';
+    autoBtn.style.color = showAuto ? '#fff' : 'var(--text-dim)';
+  }
+  const hasAssignee = t => ((t.assignedTo || '').trim() !== '') || (t.assignedUserId != null && t.assignedUserId !== '');
+
   // Tâches administratives (Supabase, par utilisateur)
   const uid = String(currentUser.id);
   const adminTasks = (db.userTasks || []).filter(t => String(t.user_id || t.userId) === uid);
@@ -14124,14 +14148,17 @@ function renderMesTaches() {
     const projects = allProjects.map(p => ({
       ...p,
       tasks: (p.tasks || []).filter(t => {
+        // Tâches auto des templates (non assignées) : masquées sauf si le bouton « Tâches auto » est ON
+        if (!showAuto && !hasAssignee(t)) return false;
         // Admin avec filtre membre → montrer seulement les tâches de ce membre
         if ((isAdmin || currentUser?.permissions?.is_co_admin) && filterMember) {
           return (t.assignedTo || '').toLowerCase() === filterMember.toLowerCase();
         }
-        // Admin sans filtre → toutes les tâches
+        // Admin sans filtre → toutes les tâches (assignées, ou tout si Tâches auto ON)
         if (isAdmin || currentUser?.permissions?.is_co_admin) return true;
-        // Staff → seulement ses tâches
-        return !t.assignedUserId || t.assignedUserId === currentUser.id || (t.assignedTo||'').toLowerCase() === currentUser.name.toLowerCase();
+        // Staff → seulement ses tâches (+ les non assignées si Tâches auto ON)
+        if (showAuto && !hasAssignee(t)) return true;
+        return String(t.assignedUserId || '') === String(currentUser.id) || (t.assignedTo||'').toLowerCase() === currentUser.name.toLowerCase();
       })
     })).filter(p => p.tasks.length > 0);
 
@@ -18357,15 +18384,19 @@ function escHTML(str) {
     const today = new Date().toISOString().slice(0, 10);
     const reminders = [];
 
-    // Overdue tasks
+    // Overdue tasks — uniquement les tâches assignées à quelqu'un
+    // (les tâches auto des templates, non assignées, ne génèrent pas de rappel)
     (db.projects || []).forEach(p => {
+      if (p.archived) return;
       (p.tasks || []).forEach(t => {
         if (isTaskDone(t) || !t.deadline || t.deadline >= today) return;
-        const mine = (t.assignedTo || '').toLowerCase() === userName.toLowerCase() || String(t.assignedUserId || '') === userId;
+        const assignee = (t.assignedTo || '').trim();
+        if (!assignee && !t.assignedUserId) return;
+        const mine = assignee.toLowerCase() === userName.toLowerCase() || String(t.assignedUserId || '') === userId;
         if (isAdmin || mine) {
           reminders.push({
             icon: 'schedule', color: '#e74c3c',
-            title: 'Tâche en retard',
+            title: 'Tâche en retard' + (isAdmin && !mine && assignee ? ' — ' + assignee : ''),
             desc: t.name + ' — ' + p.name + ' · échéance ' + t.deadline,
             action: 'openProjectDetail(' + p.id + ')'
           });
@@ -22178,11 +22209,15 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
     const items = [];
 
     // 1. Overdue tasks — grouped by project for admin, individual for members
+    // Uniquement les tâches assignées : les tâches auto des templates ne génèrent aucune alerte
     const _overdueByProject = {};
     (db.projects || []).forEach(function(p) {
+      if (p.archived) return;
       (p.tasks || []).forEach(function(t) {
         if (isTaskDone(t) || !t.deadline) return;
-        const mine = (t.assignedTo || '').toLowerCase() === userName || String(t.assignedUserId || '') === userId;
+        const assignee = (t.assignedTo || '').trim();
+        if (!assignee && !t.assignedUserId) return;
+        const mine = assignee.toLowerCase() === userName || String(t.assignedUserId || '') === userId;
         if (!isAdmin && !mine) return;
         if (t.deadline < today) {
           if (isAdmin) {

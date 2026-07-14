@@ -5498,6 +5498,19 @@ function scheduleTokenRefresh(expiresInSeconds) {
   }, delay);
 }
 
+// Alerte visible quand un enregistrement échoue (réseau, droits…).
+// Sans ça, l'app faisait comme si tout allait bien et les données
+// disparaissaient au rechargement suivant.
+let _lastWriteFailToast = 0;
+const _writeFailSilent = { activity_log: 1, notifications: 1, push_subscriptions: 1 };
+function s33WriteFailToast(table) {
+  if (_writeFailSilent[table]) return;
+  const now = Date.now();
+  if (now - _lastWriteFailToast < 5000) return;
+  _lastWriteFailToast = now;
+  try { toast('⚠️ Enregistrement non abouti — vérifiez votre connexion et réessayez'); } catch(_) {}
+}
+
 async function sbFetch(table, method='GET', body=null, query='', throwOnError=false) {
   const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
   const authToken = supabaseToken || SUPABASE_KEY;
@@ -5526,6 +5539,7 @@ async function sbFetch(table, method='GET', body=null, query='', throwOnError=fa
       const errText = await res.text().catch(() => '');
       console.error(`Supabase ${method} ${table} error ${res.status}:`, errText);
       if (throwOnError) throw new Error(`${res.status}: ${errText}`);
+      if (method !== 'GET') s33WriteFailToast(table);
     }
     if (method === 'GET' || buildOpts(authToken).headers['Prefer'] === 'return=representation') {
       return res.ok ? res.json() : [];
@@ -5536,10 +5550,12 @@ async function sbFetch(table, method='GET', body=null, query='', throwOnError=fa
     if (e.name === 'AbortError') {
       console.warn(`[sbFetch] Timeout (>12s) sur la table "${table}" — données ignorées`);
       if (throwOnError) throw new Error(`Timeout: ${table}`);
+      if (method !== 'GET') s33WriteFailToast(table);
       return method === 'GET' ? [] : false;
     }
     if (throwOnError) throw e;
     console.error(`[sbFetch] Erreur réseau sur "${table}":`, e.message);
+    if (method !== 'GET') s33WriteFailToast(table);
     return method === 'GET' ? [] : false;
   }
 }
@@ -11066,7 +11082,9 @@ function renderMediatheque() {
       <button class="btn ${mediaTypeFilter === t ? 'btn-gold' : 'btn-outline'}"
         onclick="setMediaTypeFilter('${t}')"
         style="font-size:10px;padding:6px 14px;">${t}</button>
-    `).join('');
+    `).join('') + (currentUser && currentUser.role === 'admin'
+      ? `<button class="btn btn-outline" onclick="s33OptimizePhotos()" style="font-size:10px;padding:6px 14px;margin-left:auto;" title="Recompresser les anciennes photos trop lourdes (accélère l'app sur tablette/mobile)"><span class="mi mi-sm">compress</span> Optimiser les photos</button>`
+      : '');
   }
 
   // Separate panneau_state items (shown specially) from regular media
@@ -27729,6 +27747,134 @@ window.addEventListener('appinstalled', () => {
   };
 
   console.log('✓ Échéancier honoraires loaded');
+})();
+</script>
+
+<!-- ═══ SAUVEGARDE EXCEL + OPTIMISATION DES PHOTOS ═══ -->
+<script>
+(function() {
+  'use strict';
+
+  async function ensureXLSX() {
+    if (window.XLSX) return;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  // ── Export Excel de toutes les données (assurance / sauvegarde) ──
+  window.s33ExportBackup = async function() {
+    if (!window.currentUser) return;
+    if (currentUser.role !== 'admin') { toast('Export réservé aux administrateurs'); return; }
+    toast('Préparation de la sauvegarde…');
+    try {
+      await ensureXLSX();
+      const [visites, reserves, echeances, prospects] = await Promise.all([
+        sbGet('chantier_visites', '?order=id'),
+        sbGet('chantier_reserves', '?order=id'),
+        sbGet('honoraires_echeances', '?order=id'),
+        sbGet('prospects', '?order=id')
+      ]);
+      const wb = XLSX.utils.book_new();
+      const add = (name, rows) => {
+        const clean = (rows || []).map(r => {
+          const o = {};
+          Object.keys(r).forEach(k => {
+            if (k === 'data' || k === 'thumb') return; // pas les images dans l'Excel
+            const v = r[k];
+            o[k] = (v && typeof v === 'object') ? JSON.stringify(v) : v;
+          });
+          return o;
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clean.length ? clean : [{ vide: '' }]), name.slice(0, 31));
+      };
+      add('Clients', db.clients);
+      add('Projets', db.projects);
+      add('Factures', db.invoices);
+      add('Devis', db.devis);
+      add('Charges', db.charges);
+      add('Entrées', db.entrees);
+      add('Échéanciers honoraires', echeances);
+      add('Visites chantier', visites);
+      add('Réserves chantier', reserves);
+      add('Contacts pro', db.contactsPro);
+      add('Fournisseurs', db.matSuppliers);
+      add('Matériaux', db.matMaterials);
+      add('Prospects', prospects);
+      add('Concours', db.concours);
+      add('Équipe', (db.teamMembers || []).map(m => ({ id: m.id, nom: m.display_name, email: m.email, role: m.role, actif: m.active })));
+      add('Tâches perso', db.userTasks);
+      add('Rapports journaliers', db.dailyReports);
+      add('Congés', db.conges);
+      add('Événements calendrier', db.calEvents);
+      add('Bibliothèque', db.library);
+      XLSX.writeFile(wb, 'Sauvegarde-Studio33-' + new Date().toISOString().slice(0, 10) + '.xlsx');
+      toast('✅ Sauvegarde Excel téléchargée — gardez-la en lieu sûr');
+    } catch(e) {
+      console.error('export backup', e);
+      toast('Échec de l\'export — vérifiez votre connexion et réessayez');
+    }
+  };
+
+  // ── Recompression des anciennes photos (au choix de l'admin) ─────
+  window.s33OptimizePhotos = async function() {
+    if (!window.currentUser || currentUser.role !== 'admin') return;
+    if (window._s33OptRunning) { toast('Optimisation déjà en cours — laissez l\'onglet ouvert'); return; }
+    const candidates = (db.media || []).filter(m => !m.isPDF && !m.file_path && m.doc_type !== 'panneau_state');
+    if (!candidates.length) { toast('Aucune photo à optimiser'); return; }
+    if (!confirm('Recompresser les anciennes photos trop lourdes ?\n\n' + candidates.length + ' photos à analyser. La qualité reste très bonne (1920px, comme les nouveaux ajouts). Laissez cet onglet ouvert pendant l\'opération — faites-la de préférence depuis un ordinateur.')) return;
+    window._s33OptRunning = true;
+    let done = 0, shrunk = 0, savedBytes = 0;
+    for (const m of candidates) {
+      try {
+        const rows = await sbGet('media', '?select=data&id=eq.' + m.id);
+        const data = rows && rows[0] ? rows[0].data : null;
+        done++;
+        if (data && typeof data === 'string' && data.startsWith('data:image') && data.length > 700000) {
+          const small = await s33DownscaleToJpeg(data, 1920, 0.82);
+          if (small && small.length < data.length * 0.85) {
+            const thumb = await s33DownscaleToJpeg(small, 420, 0.72);
+            const ok = await sbUpdate('media', m.id, { data: small, thumb: thumb });
+            if (ok !== false) {
+              savedBytes += (data.length - small.length);
+              shrunk++;
+              if (thumb) { _mediaThumbCache[m.id] = thumb; m.thumb = thumb; }
+              delete _mediaDataCache[m.id];
+            }
+          }
+        }
+        if (done % 5 === 0) toast('Optimisation en cours… ' + done + '/' + candidates.length);
+      } catch(e) { console.warn('optimize photo', m.id, e); }
+    }
+    window._s33OptRunning = false;
+    toast('✅ Terminé : ' + shrunk + ' photo(s) allégée(s), ' + Math.round(savedBytes * 0.75 / 1048576) + ' Mo récupérés');
+  };
+
+  // ── Entrée de menu « Sauvegarde » (desktop + mobile) ─────────────
+  function injectNav() {
+    if (!document.getElementById('nav-backup')) {
+      const trash = document.querySelector('.nav-item[onclick="openTrash()"]');
+      if (trash) trash.insertAdjacentHTML('afterend',
+        '<div class="nav-item" id="nav-backup" onclick="s33ExportBackup()">' +
+          '<span class="nav-icon"><span class="mi">download</span></span><span class="nav-text">Sauvegarde</span>' +
+        '</div>');
+    }
+    if (!document.getElementById('mnav-more-backup')) {
+      const sheet = document.querySelector('.mobile-more-sheet');
+      const item = sheet ? sheet.querySelector('.mobile-more-item') : null;
+      if (item) item.insertAdjacentHTML('afterend',
+        '<div class="mobile-more-item" id="mnav-more-backup" onclick="s33ExportBackup(); closeMobileMore()">' +
+          '<span class="mnav-icon"><span class="mi">download</span></span> Sauvegarde Excel' +
+        '</div>');
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectNav);
+  else injectNav();
+
+  console.log('✓ Sauvegarde & optimisation loaded');
 })();
 </script>
 

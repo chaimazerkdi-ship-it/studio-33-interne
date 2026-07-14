@@ -1,5 +1,5 @@
 // Studio 33 — Service Worker (offline cache + Web Push)
-const CACHE = 'studio33-v2';
+const CACHE = 'studio33-v3';
 const ASSETS = ['/', '/index.html', '/logo S33.png'];
 const APP_NAME = 'Studio 33';
 const APP_ICON = '/logo S33.png';
@@ -19,7 +19,9 @@ self.addEventListener('activate', e => {
   })());
 });
 
-// ── Network-first cache (existing behaviour) ────────────────
+// ── Stale-while-revalidate ───────────────────────────────────
+// L'app (1,7 Mo) s'affiche instantanément depuis le cache ; la nouvelle
+// version est téléchargée en arrière-plan et servie à l'ouverture suivante.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   // Skip Supabase API calls — never cache
@@ -27,15 +29,21 @@ self.addEventListener('fetch', e => {
   if (url.includes('supabase.co') || url.includes('/auth/v1/') || url.includes('/rest/v1/') || url.includes('/storage/v1/')) {
     return; // let the network handle it normally
   }
-  e.respondWith(
-    fetch(e.request)
+  e.respondWith((async () => {
+    const cached = await caches.match(e.request);
+    const network = fetch(e.request)
       .then(res => {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
+        }
         return res;
       })
-      .catch(() => caches.match(e.request).then(r => r || caches.match('/index.html')))
-  );
+      .catch(() => null);
+    if (cached) { e.waitUntil(network); return cached; }
+    const res = await network;
+    return res || caches.match('/index.html');
+  })());
 });
 
 // ── Push handler ────────────────────────────────────────────

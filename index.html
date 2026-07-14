@@ -2891,7 +2891,7 @@
             <div id="notif-list" style="max-height:360px;overflow-y:auto;"></div>
           </div>
         </div>
-        <button id="theme-toggle-btn" onclick="toggleTheme()" style="cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:6px 14px;font-size:12px;font-weight:600;color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;display:flex;align-items:center;gap:6px;" title="Mode jour/nuit"><span id="theme-toggle-icon">☀️</span> <span id="theme-toggle-label">Mode nuit</span></button>
+        <button id="theme-toggle-btn" onclick="toggleTheme()" style="cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:6px 14px;font-size:12px;font-weight:600;color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;display:flex;align-items:center;gap:6px;" title="Mode jour/nuit"><span id="theme-toggle-icon"><span class="mi">dark_mode</span></span> <span id="theme-toggle-label">Mode nuit</span></button>
       </div>
     </div>
   </div>
@@ -3311,11 +3311,11 @@
             </div>
             <!-- Champs visibles uniquement pour MO public -->
             <div id="pc-public-fields" style="display:none; padding:10px; background:#f0f6ff; border:1px solid #c0d8f0; border-radius:6px; margin-bottom:10px;">
-              <div style="font-size:11px;font-weight:700;color:#3a6ea5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">⚙ Configuration panneau public</div>
+              <div style="font-size:11px;font-weight:700;color:#3a6ea5;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;"><span class="mi mi-sm">settings</span> Configuration panneau public</div>
 
               <!-- ── Logo complet gauche (ministère + royaume en une seule image) ── -->
               <div style="padding:10px;background:#e6f4e0;border:1px solid #9ecb82;border-radius:7px;margin-bottom:10px;">
-                <div style="font-size:11px;font-weight:700;color:#2e6b10;margin-bottom:3px;">🖼 Logo complet côté gauche <span style="font-weight:400;color:#666;">(optionnel — remplace tout le côté gauche)</span></div>
+                <div style="font-size:11px;font-weight:700;color:#2e6b10;margin-bottom:3px;"><span class="mi mi-sm">image</span> Logo complet côté gauche <span style="font-weight:400;color:#666;">(optionnel — remplace tout le côté gauche)</span></div>
                 <div style="font-size:11px;color:#555;margin-bottom:7px;">Uploadez l'image officielle du ministère (contient déjà ROYAUME DU MAROC + emblème + arabe). Le côté gauche affichera uniquement cette image.</div>
                 <input type="file" id="pc-moa-logo-complet-file" accept="image/*" />
                 <button id="pc-moa-logo-complet-clear" style="margin-top:5px;padding:3px 10px;font-size:11px;background:#c9e8b8;border:1px solid #9ecb82;border-radius:4px;cursor:pointer;display:none;">✕ Effacer le logo complet</button>
@@ -3352,7 +3352,7 @@
 
               <!-- ── Logo complet droit (institution avec tous les noms en une image) ── -->
               <div style="padding:10px;background:#e6f4e0;border:1px solid #9ecb82;border-radius:7px;margin-top:10px;">
-                <div style="font-size:11px;font-weight:700;color:#2e6b10;margin-bottom:3px;">🖼 Logo complet côté droit <span style="font-weight:400;color:#666;">(optionnel — remplace tout le côté droit)</span></div>
+                <div style="font-size:11px;font-weight:700;color:#2e6b10;margin-bottom:3px;"><span class="mi mi-sm">image</span> Logo complet côté droit <span style="font-weight:400;color:#666;">(optionnel — remplace tout le côté droit)</span></div>
                 <div style="font-size:11px;color:#555;margin-bottom:7px;">Uploadez le logo officiel de l'institution (contient déjà les noms FR + AR + TF). Le côté droit affichera uniquement cette image — pas besoin de remplir les champs ci-dessous.</div>
                 <input type="file" id="pc-inst-logo-complet-file" accept="image/*" />
                 <button id="pc-inst-logo-complet-clear" style="margin-top:5px;padding:3px 10px;font-size:11px;background:#c9e8b8;border:1px solid #9ecb82;border-radius:4px;cursor:pointer;display:none;">✕ Effacer le logo complet</button>
@@ -3448,7 +3448,7 @@
                 </div>
 
                 <!-- ═══ CÔTÉ DROIT ═══ -->
-                <div style="font-size:10px;font-weight:700;color:#1a4a7a;text-transform:uppercase;letter-spacing:.08em;margin-top:14px;margin-bottom:8px;">➡ Réglages côté droit</div>
+                <div style="font-size:10px;font-weight:700;color:#1a4a7a;text-transform:uppercase;letter-spacing:.08em;margin-top:14px;margin-bottom:8px;"><span class="mi mi-sm">tune</span> Réglages côté droit</div>
 
                 <div class="pc-row2">
                   <div>
@@ -3948,7 +3948,7 @@
           <div class="page-subtitle">Relevés, documents entreprise, factures, taxes — admin only</div>
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <input type="search" id="admin-doc-search" placeholder="🔍 Rechercher…" oninput="renderAdministratif()" style="padding:8px 12px;font-size:12px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);outline:none;font-family:inherit;min-width:180px;">
+          <input type="search" id="admin-doc-search" placeholder="Rechercher…" oninput="renderAdministratif()" style="padding:8px 12px;font-size:12px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);outline:none;font-family:inherit;min-width:180px;">
           <select id="admin-doc-year" onchange="renderAdministratif()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:12px;border-radius:var(--radius);font-family:inherit;outline:none;">
             <option value="all">Toutes années</option>
           </select>
@@ -3960,7 +3960,7 @@
       <div id="admin-doc-categories" style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;"></div>
       <div id="admin-doc-grid" class="grid-3" style="gap:16px;"></div>
       <div id="admin-doc-empty" style="display:none;" class="empty-state">
-        <div class="icon">📁</div>
+        <div class="icon"><span class="mi" style="font-size:34px;">folder</span></div>
         <p>Aucun document dans cette catégorie. Cliquez sur <strong>+ Ajouter document</strong>.</p>
       </div>
     </div>
@@ -4358,7 +4358,7 @@
 
         <!-- Projet lié -->
         <div class="pv-card">
-          <div class="pv-card-header"><div class="pv-icon">🔗</div> Projet lié (optionnel)</div>
+          <div class="pv-card-header"><div class="pv-icon"><span class="mi">link</span></div> Projet lié (optionnel)</div>
           <div class="pv-card-body">
             <div class="pv-row">
               <div class="pv-field">
@@ -5508,7 +5508,7 @@ function s33WriteFailToast(table) {
   const now = Date.now();
   if (now - _lastWriteFailToast < 5000) return;
   _lastWriteFailToast = now;
-  try { toast('⚠️ Enregistrement non abouti — vérifiez votre connexion et réessayez'); } catch(_) {}
+  try { toast('Enregistrement non abouti — vérifiez votre connexion et réessayez'); } catch(_) {}
 }
 
 async function sbFetch(table, method='GET', body=null, query='', throwOnError=false) {
@@ -7252,7 +7252,7 @@ async function saveTask() {
     const member = USERS.find(u => u.name.toLowerCase() === assignedTo.toLowerCase() || u.username.toLowerCase() === assignedTo.toLowerCase());
     if (member && member.id !== currentUser?.id) {
       const projName = db.projects.find(x => x.id === projId)?.name || '';
-      createNotification(member.id, '📋 Nouvelle tâche assignée', name + (projName ? ' — ' + projName : ''), 'task_assigned', 'taches', newId);
+      createNotification(member.id, '<span class="mi mi-sm">task_alt</span> Nouvelle tâche assignée', name + (projName ? ' — ' + projName : ''), 'task_assigned', 'taches', newId);
     }
   }
 }
@@ -7554,9 +7554,9 @@ function taskExtraPanelsHTML(projId, t) {
         <span class="mi mi-sm">chat_bubble</span> ${comments.length > 0 ? comments.length + ' commentaire' + (comments.length > 1 ? 's' : '') : 'Commenter'}
       </button>
       <button class="task-expand-btn" onclick="toggleTimePanel(${projId},${t.id})">
-        ⏱ ${totalTime > 0 ? formatTime(totalTime) : 'Temps'}
+        <span class="mi" style="font-size:13px;">timer</span> ${totalTime > 0 ? formatTime(totalTime) : 'Temps'}
       </button>
-      ${totalTime > 0 ? `<span class="time-badge">⏱ ${formatTime(totalTime)}</span>` : ''}
+      ${totalTime > 0 ? `<span class="time-badge"><span class="mi" style="font-size:12px;">timer</span> ${formatTime(totalTime)}</span>` : ''}
     </div>
     ${subtaskPanel}
     ${commentPanel}
@@ -7831,7 +7831,7 @@ async function saveProject() {
       toast('Projet créé');
       if (typeof s33SendPush === 'function') {
         const pname = obj.name || 'Nouveau projet';
-        s33SendPush({ roles: ['staff'] }, '🏗️ Nouveau projet', pname, '/', 'proj_' + Date.now());
+        s33SendPush({ roles: ['staff'] }, 'Nouveau projet', pname, '/', 'proj_' + Date.now());
       }
     }
     await loadDB();
@@ -7911,7 +7911,7 @@ function toggleArchivedClientsView() {
 // ══════════════════════════════════════════
 
 const MAT_CATEGORIES = ['Revêtement sol','Revêtement mur','Menuiserie','Faux plafond','Plomberie','Électricité','Structure','Peinture','Isolation','Toiture','Façade','Autre'];
-const MAT_CAT_EMOJI  = {'Revêtement sol':'🏠','Revêtement mur':'🧱','Menuiserie':'🚪','Faux plafond':'⬜','Plomberie':'🔧','Électricité':'⚡','Structure':'🏗','Peinture':'🎨','Isolation':'🌡','Toiture':'🏡','Façade':'🏢','Autre':'📦'};
+const MAT_CAT_EMOJI  = {'Revêtement sol':'<span class="mi">grid_on</span>','Revêtement mur':'<span class="mi">texture</span>','Menuiserie':'<span class="mi">meeting_room</span>','Faux plafond':'<span class="mi">grid_view</span>','Plomberie':'<span class="mi">plumbing</span>','Électricité':'<span class="mi">bolt</span>','Structure':'<span class="mi">foundation</span>','Peinture':'<span class="mi">format_paint</span>','Isolation':'<span class="mi">thermostat</span>','Toiture':'<span class="mi">roofing</span>','Façade':'<span class="mi">apartment</span>','Autre':'<span class="mi">inventory_2</span>'};
 const MAT_CAT_CLASS  = {'Revêtement sol':'mcat-sol','Revêtement mur':'mcat-mur','Menuiserie':'mcat-men','Faux plafond':'mcat-plaf','Plomberie':'mcat-plomb','Électricité':'mcat-elec','Structure':'mcat-struct','Peinture':'mcat-peinture','Isolation':'mcat-isol','Toiture':'mcat-toiture','Façade':'mcat-facade'};
 
 let _matTab      = 'materiaux'; // 'materiaux' | 'fournisseurs'
@@ -7955,7 +7955,7 @@ function renderMateriaux() {
       const projIds  = Array.isArray(m.project_ids)?m.project_ids:[];
       const projs    = projIds.map(id=>(db.projects||[]).find(p=>p.id===parseInt(id))).filter(Boolean);
       const catCls   = MAT_CAT_CLASS[m.category]||'mcat-autre';
-      const catEmoji = MAT_CAT_EMOJI[m.category]||'📦';
+      const catEmoji = MAT_CAT_EMOJI[m.category]||'<span class="mi">inventory_2</span>';
       return `<div class="mat-card">
         <div class="mat-card-header">
           <div class="mat-cat-icon ${catCls}">${catEmoji}</div>
@@ -8427,7 +8427,7 @@ async function saveConcours() {
   toast(editId ? 'Modifié ✓' : 'Ajouté ✓');
   if (!editId && typeof s33SendPush === 'function') {
     const coLabel = obj.type === 'concours' ? 'Concours' : 'Consultation';
-    s33SendPush({ roles: ['staff'] }, '🏆 ' + coLabel, obj.title + (obj.ville ? ' — ' + obj.ville : ''), '/', 'co_' + Date.now());
+    s33SendPush({ roles: ['staff'] }, coLabel, obj.title + (obj.ville ? ' — ' + obj.ville : ''), '/', 'co_' + Date.now());
   }
   closeModal('concours-modal');
   renderConcours();
@@ -8468,11 +8468,11 @@ async function openConcoursDoc(id, doc) {
 
 const INCIDENT_CATS = ['Électricité','Plomberie','Électroménager','Serrurerie / Menuiserie','Climatisation / Chauffage','Informatique','Peinture / Murs','Mobilier','Autre'];
 const INCIDENT_CAT_EMOJI = {
-  'Électricité':'⚡','Plomberie':'🔧','Électroménager':'☕','Serrurerie / Menuiserie':'🔑',
-  'Climatisation / Chauffage':'❄️','Informatique':'💻','Peinture / Murs':'🖌️','Mobilier':'🪑','Autre':'📋'
+  'Électricité':'<span class="mi mi-sm">bolt</span>','Plomberie':'<span class="mi mi-sm">plumbing</span>','Électroménager':'<span class="mi mi-sm">coffee</span>','Serrurerie / Menuiserie':'<span class="mi mi-sm">vpn_key</span>',
+  'Climatisation / Chauffage':'<span class="mi mi-sm">ac_unit</span>','Informatique':'<span class="mi mi-sm">computer</span>','Peinture / Murs':'<span class="mi mi-sm">format_paint</span>','Mobilier':'<span class="mi mi-sm">chair</span>','Autre':'<span class="mi mi-sm">assignment</span>'
 };
 const INCIDENT_STATUS_LABEL = { en_attente:'En attente', approuve:'Approuvé', refuse:'Refusé', resolu:'Résolu' };
-const INCIDENT_STATUS_EMOJI = { en_attente:'🟡', approuve:'🔵', refuse:'🔴', resolu:'✅' };
+const INCIDENT_STATUS_EMOJI = { en_attente:'<span class="mi mi-sm">schedule</span>', approuve:'<span class="mi mi-sm">thumb_up</span>', refuse:'<span class="mi mi-sm">block</span>', resolu:'<span class="mi mi-sm">check_circle</span>' };
 
 let _signFilter = 'tous';
 
@@ -8488,10 +8488,10 @@ function renderSignalements() {
 
   const filterDefs = [
     { key:'tous',       label:'Tous' },
-    { key:'en_attente', label:'🟡 En attente' },
-    { key:'approuve',   label:'🔵 Approuvés' },
-    { key:'refuse',     label:'🔴 Refusés' },
-    { key:'resolu',     label:'✅ Résolus' }
+    { key:'en_attente', label:'En attente' },
+    { key:'approuve',   label:'Approuvés' },
+    { key:'refuse',     label:'Refusés' },
+    { key:'resolu',     label:'Résolus' }
   ];
   tabs.innerHTML = filterDefs.map(f =>
     `<button class="sign-filter-tab${_signFilter===f.key?' active':''}" onclick="_signFilter='${f.key}';renderSignalements()">
@@ -8503,7 +8503,7 @@ function renderSignalements() {
 
   if (!items.length) {
     grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-faint);">
-      <div style="font-size:40px;margin-bottom:12px;">✅</div>
+      <div style="margin-bottom:12px;"><span class="mi" style="font-size:44px;color:var(--green,#27ae60);">check_circle</span></div>
       <div style="font-size:15px;font-weight:600;">Aucun signalement${_signFilter!=='tous'?' dans cette catégorie':''}</div>
       ${_signFilter==='tous'?`<button class="btn btn-gold" style="margin-top:16px;" onclick="openIncidentModal()">Signaler un problème</button>`:''}
     </div>`;
@@ -8522,19 +8522,19 @@ function renderSignalements() {
         <div style="font-size:10px;font-weight:700;color:var(--text-faint);letter-spacing:.06em;margin-bottom:6px;">RÉSOLUTION</div>
         ${inc.resolution_description ? `<div style="margin-bottom:6px;">${escHTML(inc.resolution_description)}</div>` : ''}
         <div style="display:flex;gap:16px;flex-wrap:wrap;">
-          ${inc.resolution_contact ? `<span>👤 ${escHTML(inc.resolution_contact)}${inc.resolution_contact_phone?` · <a href="tel:${escHTML(inc.resolution_contact_phone)}" style="color:var(--gold)">${escHTML(inc.resolution_contact_phone)}</a>`:''}</span>` : ''}
-          ${inc.resolution_cost != null ? `<span style="font-weight:700;color:var(--gold);">💰 ${Number(inc.resolution_cost).toLocaleString('fr-FR')} MAD</span>` : ''}
+          ${inc.resolution_contact ? `<span><span class="mi" style="font-size:12px;">person</span> ${escHTML(inc.resolution_contact)}${inc.resolution_contact_phone?` · <a href="tel:${escHTML(inc.resolution_contact_phone)}" style="color:var(--gold)">${escHTML(inc.resolution_contact_phone)}</a>`:''}</span>` : ''}
+          ${inc.resolution_cost != null ? `<span style="font-weight:700;color:var(--gold);"><span class="mi" style="font-size:12px;">payments</span> ${Number(inc.resolution_cost).toLocaleString('fr-FR')} MAD</span>` : ''}
         </div>
       </div>` : '';
 
     // Approval note
     const noteBox = (inc.status === 'approuve' && inc.approved_note) ? `
       <div style="font-size:11px;color:#1e40af;background:#dbeafe;border-radius:6px;padding:6px 10px;">
-        💬 ${escHTML(inc.approved_note)}
+        <span class="mi" style="font-size:12px;">chat_bubble</span> ${escHTML(inc.approved_note)}
       </div>` : '';
     const refBox = (inc.status === 'refuse' && inc.refused_note) ? `
       <div style="font-size:11px;color:#991b1b;background:#fee2e2;border-radius:6px;padding:6px 10px;">
-        💬 ${escHTML(inc.refused_note)}
+        <span class="mi" style="font-size:12px;">chat_bubble</span> ${escHTML(inc.refused_note)}
       </div>` : '';
 
     // Action buttons
@@ -8543,18 +8543,18 @@ function renderSignalements() {
       actions = `
         <button class="sign-btn sign-btn-approve" onclick="openApprovalModal(${inc.id},'approuve')">✓ Approuver</button>
         <button class="sign-btn sign-btn-refuse"  onclick="openApprovalModal(${inc.id},'refuse')">✗ Refuser</button>
-        <button class="sign-btn sign-btn-edit"    onclick="openIncidentModal(${inc.id})">✏️</button>
-        <button class="sign-btn sign-btn-delete"  onclick="deleteIncident(${inc.id})">🗑</button>`;
+        <button class="sign-btn sign-btn-edit"    onclick="openIncidentModal(${inc.id})"><span class="mi" style="font-size:15px;">edit</span></button>
+        <button class="sign-btn sign-btn-delete"  onclick="deleteIncident(${inc.id})"><span class="mi" style="font-size:15px;">delete</span></button>`;
     } else if (inc.status === 'approuve') {
       actions = `
         <button class="sign-btn sign-btn-resolve" onclick="openResolveModal(${inc.id})">✓ Marquer résolu</button>
-        <button class="sign-btn sign-btn-delete"  onclick="deleteIncident(${inc.id})">🗑</button>`;
+        <button class="sign-btn sign-btn-delete"  onclick="deleteIncident(${inc.id})"><span class="mi" style="font-size:15px;">delete</span></button>`;
     } else if (inc.status === 'refuse') {
       actions = `
         <button class="sign-btn sign-btn-edit"   onclick="openIncidentModal(${inc.id})">Modifier & renvoyer</button>
-        <button class="sign-btn sign-btn-delete" onclick="deleteIncident(${inc.id})">🗑</button>`;
+        <button class="sign-btn sign-btn-delete" onclick="deleteIncident(${inc.id})"><span class="mi" style="font-size:15px;">delete</span></button>`;
     } else if (inc.status === 'resolu') {
-      actions = `<button class="sign-btn sign-btn-delete" onclick="deleteIncident(${inc.id})">🗑 Archiver</button>`;
+      actions = `<button class="sign-btn sign-btn-delete" onclick="deleteIncident(${inc.id})"><span class="mi" style="font-size:15px;">delete</span> Archiver</button>`;
     }
 
     return `<div class="sign-card status-${inc.status}">
@@ -8605,7 +8605,7 @@ async function saveIncident() {
     // Notifier l'admin
     if (currentUser?.role !== 'admin' && typeof s33SendPush === 'function') {
       const by = obj.reported_by || currentUser?.name || 'Équipe';
-      s33SendPush({ roles: ['admin'] }, '🔔 Signalement bureau', by + ' — ' + obj.category + ' : ' + title, '/', 'incident_' + Date.now());
+      s33SendPush({ roles: ['admin'] }, 'Signalement bureau', by + ' — ' + obj.category + ' : ' + title, '/', 'incident_' + Date.now());
     }
   }
   closeModal('incident-modal');
@@ -10035,7 +10035,7 @@ async function confirmPayment(invoiceId, date, method, btn) {
   if (!saved) {
     btn.innerHTML = 'Confirmer';
     btn.disabled = false;
-    toast('❌ Erreur : paiement non sauvegardé — vérifiez votre connexion', 'error');
+    toast('Erreur : paiement non sauvegardé — vérifiez votre connexion', 'error');
     return;
   }
 
@@ -10359,7 +10359,7 @@ async function saveLibraryItem() {
     if (typeof s33SendPush === 'function') {
       const catLabels = { normes: 'Normes marocaines', details: 'Détails techniques', peinture: 'Références peinture', cahiers: 'Cahiers des charges' };
       const catLabel = catLabels[obj.cat] || obj.cat;
-      s33SendPush({ roles: ['staff'] }, '📄 Bibliothèque', obj.title + ' — ' + catLabel, '/', 'lib_' + Date.now());
+      s33SendPush({ roles: ['staff'] }, 'Bibliothèque', obj.title + ' — ' + catLabel, '/', 'lib_' + Date.now());
     }
   }
 
@@ -11913,7 +11913,7 @@ function renderFinance() {
   if (soldeLbl) {
     soldeLbl.textContent = solde >= 0
       ? `Solde positif : +${formatNum(solde)} MAD`
-      : `⚠ Déficit : ${formatNum(solde)} MAD`;
+      : `Déficit : ${formatNum(solde)} MAD`;
     soldeLbl.style.color = solde >= 0 ? 'var(--green)' : 'var(--red)';
   }
 
@@ -12053,7 +12053,7 @@ function taskDeadlineBadge(deadline, isDone) {
   const diff = Math.round((d - today) / 86400000); // jours
   if (diff < 0) {
     const n = Math.abs(diff);
-    return `<span style="flex-shrink:0;font-size:10px;font-weight:700;color:#c0392b;background:#fff0f0;border-radius:var(--radius-pill);padding:3px 8px;white-space:nowrap;">⚠ ${n}j de retard</span>`;
+    return `<span style="flex-shrink:0;font-size:10px;font-weight:700;color:#c0392b;background:#fff0f0;border-radius:var(--radius-pill);padding:3px 8px;white-space:nowrap;">${n}j de retard</span>`;
   }
   if (diff === 0) {
     return `<span style="flex-shrink:0;font-size:10px;font-weight:700;color:#b7600a;display:inline-flex;align-items:center;gap:2px;background:#fff7ec;border-radius:var(--radius-pill);padding:3px 8px;white-space:nowrap;"><span class="mi mi-sm">alarm</span> Aujourd'hui</span>`;
@@ -12866,7 +12866,7 @@ async function buildMessageContent(text, target) {
       parsed = await parseXlsxMinimal(file.data);
     }
     const userText = text || 'Analyse ce fichier et dis-moi ce que tu en penses.';
-    return `${userText}\n\n📊 CONTENU DU FICHIER "${file.name}":\n${parsed}`;
+    return `${userText}\n\nCONTENU DU FICHIER "${file.name}":\n${parsed}`;
   }
 
   return text;
@@ -12914,7 +12914,7 @@ function getDbContext() {
     const myTasks = (db.projects || []).flatMap(p =>
       (p.tasks || [])
         .filter(t => !isTaskDone(t) && ((t.assignedTo||'').toLowerCase() === userName.toLowerCase() || String(t.assignedUserId||'') === userId))
-        .map(t => `- [${p.name}] ${t.name}${t.deadline ? ' | échéance: '+t.deadline : ''}${t.priority==='urgent' ? ' ⚠ URGENT' : ''}`)
+        .map(t => `- [${p.name}] ${t.name}${t.deadline ? ' | échéance: '+t.deadline : ''}${t.priority==='urgent' ? ' URGENT' : ''}`)
     ).slice(0, 30).join('\n');
 
     // Rapports journaliers de cet utilisateur (10 derniers)
@@ -13040,13 +13040,13 @@ ${devisSummary || 'Aucun devis'}
 FINANCES DU MOIS:
 - Total entrées: ${totalEntrees.toLocaleString('fr-MA')} MAD
 - Total charges: ${totalCharges.toLocaleString('fr-MA')} MAD
-- Solde: ${solde.toLocaleString('fr-MA')} MAD ${solde >= 0 ? '+' : '⚠'}
+- Solde: ${solde.toLocaleString('fr-MA')} MAD ${solde >= 0 ? '+' : '-'}
 
 MEMBRES DE L'ÉQUIPE (${typeof USERS !== 'undefined' ? USERS.filter(u=>u.role==='member').length : 0} membres):
 ${typeof USERS !== 'undefined' ? USERS.filter(u=>u.role==='member').map(u => `- ${u.name} (login: ${u.username})`).join('\n') : 'Non disponible'}
 
 TÂCHES EN COURS (tous projets):
-${(db.projects||[]).flatMap(p => (p.tasks||[]).filter(t=>!isTaskDone(t)).map(t => `- [${p.name}] ${t.name}${t.assignedTo ? ' → assignée à: '+t.assignedTo : ''}${t.deadline ? ' | échéance: '+t.deadline : ''}${t.priority==='urgent' ? ' ⚠ URGENT' : ''}`)).slice(0,30).join('\n') || 'Aucune tâche en cours'}
+${(db.projects||[]).flatMap(p => (p.tasks||[]).filter(t=>!isTaskDone(t)).map(t => `- [${p.name}] ${t.name}${t.assignedTo ? ' → assignée à: '+t.assignedTo : ''}${t.deadline ? ' | échéance: '+t.deadline : ''}${t.priority==='urgent' ? ' URGENT' : ''}`)).slice(0,30).join('\n') || 'Aucune tâche en cours'}
 
 ═══ TES CAPACITÉS ═══
 1. Répondre aux questions sur les projets, clients, finances
@@ -13236,7 +13236,7 @@ async function executeSamiaActions(text, mode) {
   const _isAdmin = currentUser && currentUser.role === 'admin';
   const ADMIN_ONLY_ACTIONS = ['add_charge','add_entree','create_invoice'];
   if (!_isAdmin && ADMIN_ONLY_ACTIONS.includes(actionData.action)) {
-    addMsg('bot', '⚠ Cette action est réservée à la direction.', true);
+    addMsg('bot', 'Cette action est réservée à la direction.', true);
     return;
   }
   try {
@@ -13246,11 +13246,11 @@ async function executeSamiaActions(text, mode) {
         const pName = (actionData.projectName||'').toLowerCase().trim();
         let proj = db.projects.find(p => p.name.toLowerCase() === pName);
         if (!proj && pName) proj = db.projects.find(p => p.name.toLowerCase().includes(pName) || pName.includes(p.name.toLowerCase().split(' ')[0]));
-        if (!proj) { resultMsg = `❌ Projet introuvable : "${actionData.projectName}". Vérifie le nom.`; break; }
+        if (!proj) { resultMsg = `Projet introuvable : "${actionData.projectName}". Vérifie le nom.`; break; }
         const hours = parseFloat(actionData.hours);
-        if (!hours || hours <= 0) { resultMsg = `❌ Nombre d'heures invalide.`; break; }
+        if (!hours || hours <= 0) { resultMsg = `Nombre d'heures invalide.`; break; }
         const tasks = (actionData.tasks||'').trim();
-        if (!tasks) { resultMsg = `❌ Description des tâches manquante.`; break; }
+        if (!tasks) { resultMsg = `Description des tâches manquante.`; break; }
         const date = actionData.date || new Date().toISOString().slice(0,10);
         const newReport = {
           user_id: String(currentUser.id),
@@ -13267,21 +13267,21 @@ async function executeSamiaActions(text, mode) {
         if (r && r[0]) {
           db.dailyReports = db.dailyReports || [];
           db.dailyReports.unshift(r[0]);
-          resultMsg = `✅ Rapport du <strong>${date}</strong> soumis pour <strong>${proj.name}</strong> — <strong>${hours}h</strong>.`;
+          resultMsg = `Rapport du <strong>${date}</strong> soumis pour <strong>${proj.name}</strong> — <strong>${hours}h</strong>.`;
           if (typeof renderRapport === 'function') renderRapport();
           // Push notify admin (only if the submitter isn't the admin)
           if (currentUser.role !== 'admin' && typeof s33SendPush === 'function') {
             s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + proj.name + ' (' + hours + 'h)', '/', 'report_' + (r[0].id || Date.now()));
           }
         } else {
-          resultMsg = `❌ Échec de l'enregistrement du rapport.`;
+          resultMsg = `Échec de l'enregistrement du rapport.`;
         }
         break;
       }
       case 'create_client': {
         const nc = { name: actionData.name||'Client sans nom', phone: actionData.phone||'', email: actionData.email||'', type: actionData.type||'Standard', links: '[]', notes: actionData.notes||'' };
         const r = await sbInsert('clients', nc);
-        if (r && r.length > 0) { db.clients.push({...r[0], id: r[0].id, links: r[0].links||[]}); resultMsg = `✅ Client <strong>${nc.name}</strong> créé avec succès !`; if (typeof renderClients==='function') renderClients(); }
+        if (r && r.length > 0) { db.clients.push({...r[0], id: r[0].id, links: r[0].links||[]}); resultMsg = `Client <strong>${nc.name}</strong> créé avec succès !`; if (typeof renderClients==='function') renderClients(); }
         break;
       }
       case 'create_project': {
@@ -13289,13 +13289,13 @@ async function executeSamiaActions(text, mode) {
         if (actionData.clientName) { const cl = db.clients.find(c => c.name.toLowerCase()===actionData.clientName.toLowerCase()); if (cl) clientId = cl.id; }
         const np = { name: actionData.name||'Projet sans nom', client_id: clientId, phase: actionData.phase||'ESQ', type: actionData.type||'', budget: actionData.budget||0, tasks: '[]', pinned: false, notes: actionData.notes||'', link: '' };
         const r = await sbInsert('projects', np);
-        if (r && r.length > 0) { db.projects.push({...r[0], id: r[0].id, clientId: r[0].client_id, tasks: r[0].tasks||[], pinned: false}); resultMsg = `✅ Projet <strong>${np.name}</strong> créé avec succès !`; if (typeof renderProjects==='function') renderProjects(); }
+        if (r && r.length > 0) { db.projects.push({...r[0], id: r[0].id, clientId: r[0].client_id, tasks: r[0].tasks||[], pinned: false}); resultMsg = `Projet <strong>${np.name}</strong> créé avec succès !`; if (typeof renderProjects==='function') renderProjects(); }
         break;
       }
       case 'add_charge': {
         const nc = { label: actionData.label||'Charge', amount: actionData.amount||0, cat: actionData.cat||'', recur: actionData.recur||'mensuel', month: actionData.month||new Date().toISOString().slice(0,7) };
         const r = await sbInsert('charges', nc);
-        if (r && r.length > 0) { db.charges.push(r[0]); resultMsg = `✅ Charge <strong>${nc.label}</strong> de <strong>${nc.amount.toLocaleString('fr-MA')} MAD</strong> ajoutée !`; if (typeof renderFinance==='function') renderFinance(); }
+        if (r && r.length > 0) { db.charges.push(r[0]); resultMsg = `Charge <strong>${nc.label}</strong> de <strong>${nc.amount.toLocaleString('fr-MA')} MAD</strong> ajoutée !`; if (typeof renderFinance==='function') renderFinance(); }
         break;
       }
       case 'add_entree': {
@@ -13303,7 +13303,7 @@ async function executeSamiaActions(text, mode) {
         if (actionData.client_name) { const cl = db.clients.find(c => c.name.toLowerCase()===actionData.client_name.toLowerCase()); if (cl) clientId = cl.id; }
         const ne = { label: actionData.label||'Entrée', amount: actionData.amount||0, client_id: clientId, month: actionData.month||new Date().toISOString().slice(0,7) };
         const r = await sbInsert('entrees', ne);
-        if (r && r.length > 0) { db.entrees.push({...r[0], clientId: r[0].client_id}); resultMsg = `✅ Entrée <strong>${ne.label}</strong> de <strong>${ne.amount.toLocaleString('fr-MA')} MAD</strong> ajoutée !`; if (typeof renderFinance==='function') renderFinance(); }
+        if (r && r.length > 0) { db.entrees.push({...r[0], clientId: r[0].client_id}); resultMsg = `Entrée <strong>${ne.label}</strong> de <strong>${ne.amount.toLocaleString('fr-MA')} MAD</strong> ajoutée !`; if (typeof renderFinance==='function') renderFinance(); }
         break;
       }
       case 'create_invoice': {
@@ -13313,14 +13313,14 @@ async function executeSamiaActions(text, mode) {
         const num = 'FA-' + String(db.invoiceCounter).padStart(4,'0');
         const ni = { num, client_id: clientId, project_id: projectId, amount: actionData.amount||0, status: actionData.status||'En attente', object: actionData.description||'', date: new Date().toISOString().split('T')[0] };
         const r = await sbInsert('invoices', ni);
-        if (r && r.length > 0) { db.invoices.push({...r[0], id: r[0].id, clientId: r[0].client_id, projectId: r[0].project_id}); db.invoiceCounter++; await saveDB(); resultMsg = `✅ Facture <strong>${num}</strong> de <strong>${ni.amount.toLocaleString('fr-MA')} MAD</strong> créée !`; if (typeof renderInvoices==='function') renderInvoices(); }
+        if (r && r.length > 0) { db.invoices.push({...r[0], id: r[0].id, clientId: r[0].client_id, projectId: r[0].project_id}); db.invoiceCounter++; await saveDB(); resultMsg = `Facture <strong>${num}</strong> de <strong>${ni.amount.toLocaleString('fr-MA')} MAD</strong> créée !`; if (typeof renderInvoices==='function') renderInvoices(); }
         break;
       }
       case 'assign_task': {
         // Fuzzy match project
         const pName = (actionData.projectName||'').toLowerCase();
         const proj = db.projects.find(p => p.name.toLowerCase().includes(pName) || pName.includes(p.name.toLowerCase().split(' ')[0]));
-        if (!proj) { resultMsg = `❌ Projet introuvable : "${actionData.projectName}". Vérifiez le nom.`; break; }
+        if (!proj) { resultMsg = `Projet introuvable : "${actionData.projectName}". Vérifiez le nom.`; break; }
         // Fuzzy match user
         const uName = (actionData.assignedTo||'').toLowerCase();
         const member = (typeof USERS !== 'undefined') ? USERS.find(u => u.name.toLowerCase().includes(uName) || u.username.toLowerCase() === uName) : null;
@@ -13338,7 +13338,7 @@ async function executeSamiaActions(text, mode) {
         if (!Array.isArray(proj.tasks)) proj.tasks = [];
         proj.tasks.push(newTask);
         await sbUpdate('projects', proj.id, { tasks: proj.tasks });
-        resultMsg = `✅ Tâche <strong>"${newTask.name}"</strong> assignée à <strong>${assignedLabel}</strong> sur le projet <strong>${proj.name}</strong>${newTask.deadline ? ` — échéance : ${new Date(newTask.deadline).toLocaleDateString('fr-MA')}` : ''}.`;
+        resultMsg = `Tâche <strong>"${newTask.name}"</strong> assignée à <strong>${assignedLabel}</strong> sur le projet <strong>${proj.name}</strong>${newTask.deadline ? ` — échéance : ${new Date(newTask.deadline).toLocaleDateString('fr-MA')}` : ''}.`;
         if (typeof renderProjects === 'function') renderProjects();
         // Push notify the assignee (if different from current user)
         if (assignedUserId && typeof s33SendPush === 'function') {
@@ -13350,9 +13350,9 @@ async function executeSamiaActions(text, mode) {
         }
         break;
       }
-      default: resultMsg = `⚠ Action inconnue : ${actionData.action}`;
+      default: resultMsg = `Action inconnue : ${actionData.action}`;
     }
-  } catch(e) { console.error('Samia action error:', e); resultMsg = `❌ Erreur : ${e.message}`; }
+  } catch(e) { console.error('Samia action error:', e); resultMsg = `Erreur : ${e.message}`; }
   if (resultMsg) addMsg('bot', resultMsg, true);
 }
 
@@ -13476,7 +13476,7 @@ function _startVoice(inputId, btnId) {
   }
   // Indicateur dans le copilote panel
   const transcrEl = document.getElementById('copilote-transcript');
-  if (transcrEl) transcrEl.textContent = '🎙 Dictée en cours… parlez maintenant';
+  if (transcrEl) transcrEl.textContent = 'Dictée en cours… parlez maintenant';
 
   rec.onresult = (e) => {
     let interim = '';
@@ -13494,7 +13494,7 @@ function _startVoice(inputId, btnId) {
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
     }
-    if (transcrEl && interim) transcrEl.textContent = '🎙 ' + interim;
+    if (transcrEl && interim) transcrEl.textContent = '' + interim;
   };
 
   rec.onerror = (e) => {
@@ -13548,7 +13548,7 @@ function sendCopiloteChantier() {
     `Observations dictées :\n${obs}\n\n` +
     `---\nGénère les 4 documents suivants, clairement séparés avec des titres en gras :\n\n` +
     `**1. PV DE VISITE DE CHANTIER**\nCompte rendu formel, observations structurées par zone.\n\n` +
-    `**2. LISTE DE RÉSERVES**\nRéserves numérotées : zone · description · priorité (🔴 Urgent / 🟡 Normal).\n\n` +
+    `**2. LISTE DE RÉSERVES**\nRéserves numérotées : zone · description · priorité (Urgent / Normal).\n\n` +
     `**3. EMAIL POUR L'ENTREPRISE**\nEmail professionnel, ton neutre mais ferme, prêt à copier-coller.\n\n` +
     `**4. NOTES PLANNING**\nImpacts sur le planning : retards détectés, tâches bloquées, délais recommandés.`;
 
@@ -13583,7 +13583,7 @@ function initAiPage() {
   }
 
   // Welcome message
-  addAiPageMsg('bot', `Bonjour Chaima 👋<br><br>Je suis <strong>Samia</strong>, ton assistante IA. Je connais tes projets, clients, finances et devis en temps réel.<br><br>Utilise le <strong>Copilote Chantier</strong> pour dicter une visite, ou pose-moi une question.`, true);
+  addAiPageMsg('bot', `Bonjour Chaima,<br><br>Je suis <strong>Samia</strong>, ton assistante IA. Je connais tes projets, clients, finances et devis en temps réel.<br><br>Utilise le <strong>Copilote Chantier</strong> pour dicter une visite, ou pose-moi une question.`, true);
 
   // Suggestions
   sugEl.innerHTML = AI_SUGGESTIONS.map(s =>
@@ -13640,7 +13640,7 @@ async function aiPageSend() {
   // Hide suggestions after first message
   document.getElementById('ai-page-suggestions').style.display = 'none';
 
-  const displayText = text + (aiPendingFile.page ? ` 📎 ${aiPendingFile.page.name}` : '');
+  const displayText = text + (aiPendingFile.page ? ` · ${aiPendingFile.page.name}` : '');
   addAiPageMsg('user', displayText);
 
   const content = await buildMessageContent(text, 'page');
@@ -13772,7 +13772,7 @@ async function aiFloatSend() {
   input.style.height = 'auto';
   sendBtn.disabled = true;
 
-  const displayText = text + (aiPendingFile.float ? ` 📎 ${aiPendingFile.float.name}` : '');
+  const displayText = text + (aiPendingFile.float ? ` · ${aiPendingFile.float.name}` : '');
   addAiFloatMsg('user', displayText);
 
   const content = await buildMessageContent(text, 'float');
@@ -15084,7 +15084,7 @@ async function saveCalEvent() {
     if (conflicts.length > 0) {
       const list = conflicts.slice(0, 3).map(function(c) { return '• ' + c.title + ' (' + c.time_start + (c.time_end ? '–' + c.time_end : '') + ')'; }).join('\n');
       const more = conflicts.length > 3 ? '\n• … et ' + (conflicts.length - 3) + ' autre(s)' : '';
-      if (!confirm('⚠️ Conflit détecté avec ' + conflicts.length + ' événement(s) :\n\n' + list + more + '\n\nEnregistrer quand même ?')) return;
+      if (!confirm('Conflit détecté avec ' + conflicts.length + ' événement(s) :\n\n' + list + more + '\n\nEnregistrer quand même ?')) return;
     }
   }
 
@@ -15158,9 +15158,9 @@ function _maybeScheduleReminder(ev) {
     setTimeout(function() {
       try {
         if (Notification && Notification.permission === 'granted') {
-          new Notification('⏰ ' + (ev.title || 'Événement'), { body: (ev.lieu ? ev.lieu + ' • ' : '') + t, icon: '/logo S33.png' });
+          new Notification((ev.title || 'Événement'), { body: (ev.lieu ? ev.lieu + ' • ' : '') + t, icon: '/logo S33.png' });
         } else {
-          toast('⏰ ' + (ev.title || 'Événement') + ' dans ' + ev.reminder_minutes + ' min');
+          toast((ev.title || 'Événement') + ' dans ' + ev.reminder_minutes + ' min');
         }
       } catch(e) {}
     }, ms);
@@ -15667,7 +15667,7 @@ function _buildWeekHTML(singleDay) {
         const timeLabel = ev.time_start + (ev.time_end ? '–' + ev.time_end : '');
         const hasConflict = _calFindConflicts(ev, ev.id).length > 0;
         const conflictBadge = hasConflict ? '<span class="gcal-conflict-badge" title="Conflit avec un autre événement">!</span>' : '';
-        timedHTML += '<div class="gcal-timed-event ' + ti.cls + '" data-evid="' + ev.id + '" draggable="true" ondragstart="_calDragStart(event,' + ev.id + ')" ondragend="_calDragEnd(event)" style="top:' + top + 'px;height:' + height + 'px;" onclick="event.stopPropagation();editCalEvent(' + ev.id + ')" title="' + escHTML(ev.title + ' • ' + timeLabel + (hasConflict ? ' • ⚠ conflit' : '')) + '">' + conflictBadge + '<div style="font-weight:600;font-size:11px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHTML(ev.title) + '</div><div style="opacity:.9;font-size:10px;">' + timeLabel + '</div><div class="gcal-resize-handle" onmousedown="_calResizeStart(event,' + ev.id + ')"></div></div>';
+        timedHTML += '<div class="gcal-timed-event ' + ti.cls + '" data-evid="' + ev.id + '" draggable="true" ondragstart="_calDragStart(event,' + ev.id + ')" ondragend="_calDragEnd(event)" style="top:' + top + 'px;height:' + height + 'px;" onclick="event.stopPropagation();editCalEvent(' + ev.id + ')" title="' + escHTML(ev.title + ' • ' + timeLabel + (hasConflict ? ' • conflit' : '')) + '">' + conflictBadge + '<div style="font-weight:600;font-size:11px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHTML(ev.title) + '</div><div style="opacity:.9;font-size:10px;">' + timeLabel + '</div><div class="gcal-resize-handle" onmousedown="_calResizeStart(event,' + ev.id + ')"></div></div>';
       } else {
         evs += '<div class="cal-event ' + ti.cls + '" draggable="true" ondragstart="event.stopPropagation();_calDragStart(event,' + ev.id + ')" ondragend="_calDragEnd(event)" title="' + escHTML(ev.title) + '" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;"' + (canDel ? ' onclick="event.stopPropagation();editCalEvent(' + ev.id + ')"' : '') + '><span class="mi" style="font-size:10px;">' + ti.icon + '</span> ' + escHTML(ev.title) + '</div>';
       }
@@ -15875,7 +15875,7 @@ function _buildAgendaHTML() {
           const lieuLbl = ev.lieu ? ' • ' + escHTML(ev.lieu) : '';
           const proj = ev.project_id ? (db.projects || []).find(function(p) { return String(p.id) === String(ev.project_id); }) : null;
           const cli  = ev.client_id  ? (db.clients  || []).find(function(c) { return String(c.id) === String(ev.client_id);  }) : null;
-          const links = (proj || cli) ? '<div style="font-size:11px;color:var(--text-faint);margin-top:2px;">' + (proj ? '📁 ' + escHTML(proj.name) : '') + (proj && cli ? ' • ' : '') + (cli ? '👤 ' + escHTML(cli.name) : '') + '</div>' : '';
+          const links = (proj || cli) ? '<div style="font-size:11px;color:var(--text-faint);margin-top:2px;">' + (proj ? '<span class="mi" style="font-size:12px;">folder</span> ' + escHTML(proj.name) : '') + (proj && cli ? ' • ' : '') + (cli ? '<span class="mi" style="font-size:12px;">person</span> ' + escHTML(cli.name) : '') + '</div>' : '';
           return '<div class="cal-agenda-item" onclick="editCalEvent(\'' + ev.id + '\')" style="display:flex;gap:14px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:background .12s,transform .12s;animation:fadeSlideUp .18s ease;" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'var(--surface)\'">' +
             '<div style="width:6px;border-radius:3px;background:' + (ti.color || '#616161') + ';flex-shrink:0;"></div>' +
             '<div style="flex-shrink:0;min-width:120px;font-size:12px;color:var(--text-dim);padding-top:2px;">' + timeLbl + '</div>' +
@@ -16209,7 +16209,7 @@ async function approveConge(id) {
   toast('Congé approuvé ✓');
 
   if (c && c.user_id) {
-    createNotification(c.user_id, '✅ Congé approuvé', c.start_date + ' → ' + c.end_date, 'conge_approved', 'calendar', id);
+    createNotification(c.user_id, '<span class="mi mi-sm">check_circle</span> Congé approuvé', c.start_date + ' → ' + c.end_date, 'conge_approved', 'calendar', id);
   }
 }
 
@@ -16221,7 +16221,7 @@ async function refuseConge(id) {
   toast('Congé refusé');
 
   if (c && c.user_id) {
-    createNotification(c.user_id, '❌ Congé refusé', c.start_date + ' → ' + c.end_date, 'conge_refused', 'calendar', id);
+    createNotification(c.user_id, '<span class="mi mi-sm">cancel</span> Congé refusé', c.start_date + ' → ' + c.end_date, 'conge_refused', 'calendar', id);
   }
 }
 
@@ -16304,7 +16304,7 @@ function processDocFile(file) {
   // Validation JPEG pour photos de chantier
   if (type === 'photo_chantier') {
     if (!file.type.match(/image\/jpe?g/i)) {
-      showDocError('⚠️ Photos de chantier : fichiers JPEG uniquement (.jpg / .jpeg)');
+      showDocError('Photos de chantier : fichiers JPEG uniquement (.jpg / .jpeg)');
       return;
     }
   }
@@ -16312,7 +16312,7 @@ function processDocFile(file) {
   // Validation générale
   const allowed = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp'];
   if (!allowed.some(t => file.type.startsWith(t.split('/')[0]) || file.type === t)) {
-    showDocError('⚠️ Format non accepté.');
+    showDocError('Format non accepté.');
     return;
   }
 
@@ -16375,7 +16375,7 @@ async function saveProjectDoc() {
 
     closeAddDocModal();
     renderProjectDetailPage();
-    toast(`✅ "${name}" ajouté`);
+    toast(`"${name}" ajouté`);
   } catch(e) {
     console.error('[saveProjectDoc] ❌ Échec de l\'insert :', e);
     // Parse l'erreur pour message clair
@@ -16467,7 +16467,7 @@ async function saveNewTask() {
   const deadline = document.getElementById('at-deadline').value || null;
   const isAdmin  = currentUser && currentUser.role === 'admin';
 
-  if (!name) { toast('⚠️ Saisissez un nom de tâche'); return; }
+  if (!name) { toast('Saisissez un nom de tâche'); return; }
 
   // ── Tâche administrative (sans projet) → Supabase ──
   if (!projVal) {
@@ -16486,13 +16486,13 @@ async function saveNewTask() {
     }
     closeAddTaskModal();
     renderMesTaches();
-    toast(`✅ Tâche "${name}" ajoutée`);
+    toast(`Tâche "${name}" ajoutée`);
     return;
   }
 
   // ── Tâche liée à un projet ──
   const projId = parseInt(projVal);
-  if (!projId) { toast('⚠️ Projet invalide'); return; }
+  if (!projId) { toast('Projet invalide'); return; }
 
   const proj = db.projects.find(p => p.id === projId);
   if (!proj) return;
@@ -16532,7 +16532,7 @@ async function saveNewTask() {
   closeAddTaskModal();
   renderMesTaches();
   const label = assignedTo ? ` → ${assignedTo}` : '';
-  toast(`✅ Tâche "${name}" ajoutée${label}`);
+  toast(`Tâche "${name}" ajoutée${label}`);
 
   // Push notify the assignee (if different from current user)
   if (assignedUserId && typeof s33SendPush === 'function') {
@@ -16797,7 +16797,7 @@ function showPhotoCropModal(dataUrl, onConfirm) {
   modal.id = '__photo-crop-modal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px;';
   modal.innerHTML = `
-    <div style="color:#fff;font-size:15px;font-weight:700;letter-spacing:-.01em;">📷 Cadrez votre photo</div>
+    <div style="color:#fff;font-size:15px;font-weight:700;letter-spacing:-.01em;"><span class="mi" style="font-size:16px;vertical-align:-2px;">photo_camera</span> Cadrez votre photo</div>
     <div style="color:rgba(255,255,255,.55);font-size:12px;margin-top:-10px;">Glissez l'image pour centrer votre visage dans le cercle</div>
     <div id="__crop-vp" style="position:relative;width:${CIRCLE}px;height:${CIRCLE}px;border-radius:50%;overflow:hidden;border:3px solid #fff;cursor:grab;user-select:none;box-shadow:0 0 0 9999px rgba(0,0,0,.55);">
       <img id="__crop-img" src="${dataUrl}" style="position:absolute;max-width:none;user-select:none;pointer-events:none;" draggable="false">
@@ -17512,11 +17512,11 @@ async function ppRefreshPushBtn() {
   }
   const on = await (window.s33IsPushEnabled ? window.s33IsPushEnabled() : false);
   if (on) {
-    btn.textContent = '🔕 Désactiver les notifications';
+    btn.textContent = 'Désactiver les notifications';
     btn.classList.remove('btn-gold');
     if (hint) hint.textContent = 'Activées pour cet appareil.';
   } else {
-    btn.textContent = '🔔 Activer les notifications';
+    btn.textContent = 'Activer les notifications';
     btn.classList.add('btn-gold');
     if (hint) {
       if (Notification.permission === 'denied') hint.textContent = 'Bloquées : autorise les notifications dans les réglages du navigateur.';
@@ -17649,15 +17649,15 @@ function renderPPEquipe() {
           </label>
           <div style="font-size:11px;font-weight:700;color:var(--text-dim);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.5px;">Accès aux sections</div>
           ${[
-            ['equipe',       '👥 Équipe (rapports d\'équipe)'],
-            ['finance',      '💰 Finance'],
-            ['invoices',     '🧾 Facturation'],
-            ['devis',        '📦 Devis'],
-            ['clients',      '👤 Clients'],
-            ['contacts',     '📋 Contacts Pro'],
-            ['mediatheque',  '🖼️ Médiathèque'],
-            ['library',      '📚 Bibliothèque'],
-            ['administratif','🗂️ Administratif'],
+            ['equipe',       'Équipe (rapports d\'équipe)'],
+            ['finance',      'Finance'],
+            ['invoices',     'Facturation'],
+            ['devis',        'Devis'],
+            ['clients',      'Clients'],
+            ['contacts',     'Contacts Pro'],
+            ['mediatheque',  'Médiathèque'],
+            ['library',      'Bibliothèque'],
+            ['administratif','Administratif'],
           ].map(([key, label]) => {
             const isCoAdm = m.permissions?.is_co_admin === true;
             const sec = m.permissions?.sections || {};
@@ -18039,7 +18039,7 @@ function escHTML(str) {
     });
     renderTimerWidget();
     if (currentPage === 'project-detail') renderProjectDetailPage();
-    toast('⏱ Timer démarré');
+    toast('Timer démarré');
   };
 
   window.s33StopTimer = async function(silent) {
@@ -18069,7 +18069,7 @@ function escHTML(str) {
     } catch(e) { console.error('Timer stop save error:', e); }
     setRunningTimer(null);
     renderTimerWidget();
-    if (!silent) toast('⏹ Timer arrêté — ' + formatTime(minutes) + ' enregistré');
+    if (!silent) toast('Timer arrêté — ' + formatTime(minutes) + ' enregistré');
     if (currentPage === 'project-detail') renderProjectDetailPage();
   };
 
@@ -18097,11 +18097,11 @@ function escHTML(str) {
     const pad = n => String(n).padStart(2, '0');
     const time = (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(s);
     w.innerHTML =
-      '<div class="s33-timer-label">⏱ ' + time + '</div>' +
+      '<div class="s33-timer-label"><span class="mi" style="font-size:17px;vertical-align:-2px;">timer</span> ' + time + '</div>' +
       '<div class="s33-timer-proj">' + escHTML(t.taskName) + '</div>' +
       '<div class="s33-timer-sub">' + escHTML(t.projectName) + (t.phase ? ' · ' + escHTML(t.phase) : '') + '</div>' +
       '<div style="display:flex;gap:6px;margin-top:10px;">' +
-        '<button class="s33-timer-btn s33-timer-stop" onclick="s33StopTimer()">⏹ Arrêter & enregistrer</button>' +
+        '<button class="s33-timer-btn s33-timer-stop" onclick="s33StopTimer()"><span class="mi" style="font-size:13px;">stop</span> Arrêter & enregistrer</button>' +
         '<button class="s33-timer-btn s33-timer-cancel" onclick="s33CancelTimer()" title="Annuler sans enregistrer">×</button>' +
       '</div>';
   }
@@ -18352,7 +18352,7 @@ function escHTML(str) {
               '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text);margin-bottom:4px;">' +
                 '<span style="font-weight:600;">' + ph + '</span>' +
                 '<span style="color:' + (over ? '#c0392b' : 'var(--text-dim)') + ';">' +
-                  formatTime(usedMins) + (budget > 0 ? ' / ' + budget + 'h' : ' (pas de budget)') + (over ? ' ⚠ dépassement' : '') +
+                  formatTime(usedMins) + (budget > 0 ? ' / ' + budget + 'h' : ' (pas de budget)') + (over ? ' — dépassement' : '') +
                 '</span>' +
               '</div>' +
               '<div style="height:6px;background:var(--surface3);border-radius:99px;overflow:hidden;">' +
@@ -18448,12 +18448,12 @@ function escHTML(str) {
                     const canTimer = st !== 'done';
                     return '<div class="s33-kcard">' +
                       '<div class="s33-kcard-name">' + escHTML(t.name) + '</div>' +
-                      (t.assignedTo ? '<div class="s33-kcard-assigned">👤 ' + escHTML(t.assignedTo) + '</div>' : '') +
-                      (t.deadline ? '<div class="s33-kcard-deadline">📅 ' + t.deadline + '</div>' : '') +
+                      (t.assignedTo ? '<div class="s33-kcard-assigned"><span class="mi" style="font-size:12px;">person</span> ' + escHTML(t.assignedTo) + '</div>' : '') +
+                      (t.deadline ? '<div class="s33-kcard-deadline"><span class="mi" style="font-size:12px;">event</span> ' + t.deadline + '</div>' : '') +
                       '<div class="s33-kcard-actions">' +
                         (canTimer
                           ? (isRunning
-                              ? '<button class="s33-kbtn s33-kbtn-running" onclick="s33StopTimer()">⏹ Arrêter</button>'
+                              ? '<button class="s33-kbtn s33-kbtn-running" onclick="s33StopTimer()"><span class="mi" style="font-size:13px;">stop</span> Arrêter</button>'
                               : '<button class="s33-kbtn" onclick="s33StartTimer(' + p.id + ',' + t.id + ')">▶ Timer</button>')
                           : '') +
                         '<button class="s33-kbtn" onclick="setTaskStatus(' + p.id + ',' + t.id + ',\'' + st + '\')">→ ' + nextLabel + '</button>' +
@@ -20326,7 +20326,7 @@ function escHTML(str) {
     releaseLock();
 
     if (queued > 0) {
-      toast('📶 Hors-ligne — ' + queued + ' rapport' + (queued > 1 ? 's' : '') + ' enregistré' + (queued > 1 ? 's' : '') + ' et synchronisé' + (queued > 1 ? 's' : '') + ' dès le retour du réseau', 'warning');
+      toast('Hors-ligne — ' + queued + ' rapport' + (queued > 1 ? 's' : '') + ' enregistré' + (queued > 1 ? 's' : '') + ' et synchronisé' + (queued > 1 ? 's' : '') + ' dès le retour du réseau', 'warning');
       s33UpdateOfflineBadge();
     }
 
@@ -21382,8 +21382,8 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
         '</div>' +
         '<div class="tpl-card-desc">' + escHTML(t.description || '') + '</div>' +
         '<div class="tpl-card-stats">' +
-          '<span>📋 ' + taskCount + ' tâches</span>' +
-          '<span>📁 ' + folderCount + ' dossiers</span>' +
+          '<span><span class="mi" style="font-size:12px;">task_alt</span> ' + taskCount + ' tâches</span>' +
+          '<span><span class="mi" style="font-size:12px;">folder</span> ' + folderCount + ' dossiers</span>' +
           '<span>▶ ' + escHTML(t.default_phase || 'ESQ') + '</span>' +
         '</div>' +
         '<div style="display:flex;gap:6px;margin-top:10px;" onclick="event.stopPropagation()">' +
@@ -21570,17 +21570,17 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
           '<label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);display:block;margin-bottom:8px;">Appliquer</label>' +
           '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:8px;cursor:pointer;">' +
             '<input type="checkbox" id="tpl-apply-tasks" checked style="accent-color:var(--gold);width:15px;height:15px;">' +
-            '📋 Tâches <span style="color:var(--text-faint);font-size:11px;">(' + (tpl.tasks||[]).length + ' tâches — ajoutées aux existantes)</span>' +
+            '<span class="mi mi-sm">task_alt</span> Tâches <span style="color:var(--text-faint);font-size:11px;">(' + (tpl.tasks||[]).length + ' tâches — ajoutées aux existantes)</span>' +
           '</label>' +
           '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;">' +
             '<input type="checkbox" id="tpl-apply-folders" checked style="accent-color:var(--gold);width:15px;height:15px;">' +
-            '📁 Dossiers <span style="color:var(--text-faint);font-size:11px;">(' + (tpl.folders||[]).length + ' dossiers — ajoutés aux existants)</span>' +
+            '<span class="mi mi-sm">folder</span> Dossiers <span style="color:var(--text-faint);font-size:11px;">(' + (tpl.folders||[]).length + ' dossiers — ajoutés aux existants)</span>' +
           '</label>' +
         '</div>' +
 
         '<div style="display:flex;gap:10px;">' +
           '<button onclick="document.getElementById(\'tpl-apply-modal\').remove()" style="flex:1;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">Annuler</button>' +
-          '<button onclick="confirmApplyTemplate(' + tplId + ')" style="flex:2;padding:10px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">⚡ Appliquer</button>' +
+          '<button onclick="confirmApplyTemplate(' + tplId + ')" style="flex:2;padding:10px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;"><span class="mi mi-sm">bolt</span> Appliquer</button>' +
         '</div>' +
       '</div>';
     overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
@@ -21626,7 +21626,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
 
     try {
       await sbUpdate('projects', projId, update);
-      toast('⚡ Template appliqué sur "' + proj.name + '" — ' + msg.join(', '));
+      toast('Template appliqué sur "' + proj.name + '" — ' + msg.join(', '));
       if (typeof renderProjects === 'function') renderProjects();
     } catch(e) {
       toast('Erreur lors de l\'application du template');
@@ -21670,11 +21670,11 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
           '<label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);display:block;margin-bottom:8px;">Appliquer</label>' +
           '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:8px;cursor:pointer;">' +
             '<input type="checkbox" id="tpl-fp-tasks" checked style="accent-color:var(--gold);width:15px;height:15px;">' +
-            '📋 Tâches <span style="color:var(--text-faint);font-size:11px;">(ajoutées aux tâches existantes)</span>' +
+            '<span class="mi mi-sm">task_alt</span> Tâches <span style="color:var(--text-faint);font-size:11px;">(ajoutées aux tâches existantes)</span>' +
           '</label>' +
           '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;">' +
             '<input type="checkbox" id="tpl-fp-folders" checked style="accent-color:var(--gold);width:15px;height:15px;">' +
-            '📁 Dossiers <span style="color:var(--text-faint);font-size:11px;">(ajoutés aux dossiers existants)</span>' +
+            '<span class="mi mi-sm">folder</span> Dossiers <span style="color:var(--text-faint);font-size:11px;">(ajoutés aux dossiers existants)</span>' +
           '</label>' +
         '</div>' +
 
@@ -21727,7 +21727,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
 
     try {
       await sbUpdate('projects', projId, update);
-      toast('⚡ Template "' + tpl.name + '" appliqué — ' + msg.join(', '));
+      toast('Template "' + tpl.name + '" appliqué — ' + msg.join(', '));
       renderProjectDetailPage();
     } catch(e) {
       toast('Erreur lors de l\'application du template');
@@ -21760,7 +21760,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
         return '<option value="' + t.id + '">' + escHTML(t.name) + ' · ' + escHTML(t.project_type || '') + '</option>';
       }).join('');
     wrapper.innerHTML =
-      '<div class="tpl-picker-label">⚡ Template (optionnel)</div>' +
+      '<div class="tpl-picker-label"><span class="mi mi-sm">bolt</span> Template (optionnel)</div>' +
       '<select id="tpl-picker-select" style="width:100%;" onchange="tplApplyToProjectForm(this.value)">' + options + '</select>' +
       '<div id="tpl-picker-preview" style="font-size:11px;color:var(--text-dim);margin-top:6px;"></div>';
     if (title && title.nextSibling) title.parentNode.insertBefore(wrapper, title.nextSibling);
@@ -21844,7 +21844,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
             } catch(e) {
               try { await sbUpdate('projects', recent.id, { tasks: tasks }); } catch(e2) {}
             }
-            toast('⚡ Template appliqué — ' + tasks.length + ' tâches créées');
+            toast('Template appliqué — ' + tasks.length + ' tâches créées');
           }
         } catch(e) { console.warn('Template apply error:', e); }
       }
@@ -22057,7 +22057,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
               '</div>' +
             '</div>' +
           '</div>' +
-          '<div style="font-size:11px;color:var(--text-faint);margin-top:12px;">💡 Pour signer : utilise le doigt ou le stylet sur mobile/tablette, ou la souris sur ordinateur.</div>' +
+          '<div style="font-size:11px;color:var(--text-faint);margin-top:12px;"><span class="mi mi-sm">lightbulb</span> Pour signer : utilise le doigt ou le stylet sur mobile/tablette, ou la souris sur ordinateur.</div>' +
           '<div class="form-actions">' +
             '<button class="btn btn-outline" onclick="closeSigModal()">Annuler</button>' +
             '<button class="btn btn-gold" onclick="saveSignatures()">Enregistrer signature(s)</button>' +
@@ -22471,7 +22471,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
   // ── EMAIL RECAP (mailto:) ───────────────────────────────────
   window.sendReminderRecapEmail = function() {
     const items = collectReminders();
-    if (!items.length) { toast('Aucune alerte à envoyer 👍'); return; }
+    if (!items.length) { toast('Aucune alerte à envoyer'); return; }
     const me = (window.currentUser && window.currentUser.name) || '';
     const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const byKind = {};
@@ -22638,7 +22638,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
     const subject = '[Studio 33] Suivi de votre projet';
     const body = 'Bonjour,\n\nJe reviens vers vous concernant votre projet avec Studio 33 Architects. N\'hésitez pas à me répondre pour qu\'on planifie la suite.\n\nCordialement,\n' + ((window.currentUser && window.currentUser.name) || '') + '\nStudio 33 Architects';
     window.location.href = 'mailto:?bcc=' + encodeURIComponent(to) + '&subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-    toast('📧 Email de relance ouvert — ' + overdue.length + ' prospects');
+    toast('Email de relance ouvert — ' + overdue.length + ' prospects');
   };
 
   console.log('✓ Notifications & rappels loaded');
@@ -22822,7 +22822,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
         const lock = document.createElement('div');
         lock.className = 'empty-state';
         lock.style.padding = '60px 20px';
-        lock.innerHTML = '<div class="icon">🔒</div><p>Accès réservé à l\'administratrice.</p>';
+        lock.innerHTML = '<div class="icon"><span class="mi" style="font-size:34px;">lock</span></div><p>Accès réservé à l\'administratrice.</p>';
         // Restore full layout if this is a re-entry (login completed)
         if (!page.querySelector('.page-header')) {
           page.innerHTML = '';
@@ -22838,7 +22838,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
         + '<div class="page-header">'
         +   '<div><div class="page-title">Administratif</div><div class="page-subtitle">Relevés, documents entreprise, factures, taxes — admin only</div></div>'
         +   '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
-        +     '<input type="search" id="admin-doc-search" placeholder="🔍 Rechercher…" oninput="renderAdministratif()" style="padding:8px 12px;font-size:12px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);outline:none;font-family:inherit;min-width:180px;">'
+        +     '<input type="search" id="admin-doc-search" placeholder="Rechercher…" oninput="renderAdministratif()" style="padding:8px 12px;font-size:12px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);color:var(--text);outline:none;font-family:inherit;min-width:180px;">'
         +     '<select id="admin-doc-year" onchange="renderAdministratif()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:12px;border-radius:var(--radius);font-family:inherit;outline:none;"><option value="all">Toutes années</option></select>'
         +     '<button onclick="s33ExportAnnualAdmin()" class="btn btn-outline" style="font-size:13px;padding:8px 14px;" title="Télécharger un ZIP (PDF récap + fichiers) de l\'année sélectionnée">Export comptable</button>'
         +     '<button onclick="openAdminUploadModal()" class="btn btn-gold" style="font-size:13px;padding:8px 16px;">+ Ajouter document</button>'
@@ -22847,7 +22847,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
         + '<div id="admin-expiry-alerts" style="margin-bottom:16px;"></div>'
         + '<div id="admin-doc-categories" style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;"></div>'
         + '<div id="admin-doc-grid" class="grid-3" style="gap:16px;"></div>'
-        + '<div id="admin-doc-empty" style="display:none;" class="empty-state"><div class="icon">📁</div><p>Aucun document dans cette catégorie. Cliquez sur <strong>+ Ajouter document</strong>.</p></div>';
+        + '<div id="admin-doc-empty" style="display:none;" class="empty-state"><div class="icon"><span class="mi" style="font-size:34px;">folder</span></div><p>Aucun document dans cette catégorie. Cliquez sur <strong>+ Ajouter document</strong>.</p></div>';
     }
     await loadAdminDocs();
     renderAdministratif();
@@ -23207,7 +23207,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
       if (!db.admin_docs) db.admin_docs = [];
       db.admin_docs.push(doc);
       localStorage.setItem('s33_admin_docs_cache', JSON.stringify(db.admin_docs));
-      if (typeof toast === 'function') toast('⚠️ Sauvegardé localement (Supabase indispo)');
+      if (typeof toast === 'function') toast('Sauvegardé localement (Supabase indispo)');
     } else {
       if (!db.admin_docs) db.admin_docs = [];
       db.admin_docs.push(saved);
@@ -23238,7 +23238,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
       localStorage.setItem('s33_admin_docs_cache', JSON.stringify(db.admin_docs));
     }
     renderAdministratif();
-    if (typeof toast === 'function') toast('🗑 Document supprimé');
+    if (typeof toast === 'function') toast('Document supprimé');
   };
 
   // Resolve a doc's file source: prefer Storage signed URL, fall back to base64.
@@ -23824,7 +23824,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
       }
       const ok = await saveSubscription(sub);
       if (ok) {
-        if (typeof toast === 'function') toast('🔔 Notifications activées');
+        if (typeof toast === 'function') toast('Notifications activées');
         return true;
       } else {
         if (typeof toast === 'function') toast('Échec enregistrement (vérifie push_subscriptions)');
@@ -23844,7 +23844,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
       const endpoint = sub.endpoint;
       await sub.unsubscribe();
       await deleteSubscriptionRow(endpoint);
-      if (typeof toast === 'function') toast('🔕 Notifications désactivées');
+      if (typeof toast === 'function') toast('Notifications désactivées');
       return true;
     } catch(e) {
       console.error('disablePush err', e);
@@ -25415,7 +25415,7 @@ window.addEventListener('appinstalled', () => {
         if (!confirm(`Un panneau est déjà enregistré pour "${proj.name}".\n\nOK pour charger et modifier cet ancien panneau.\nAnnuler pour garder le formulaire actuel (le panneau sera remplacé à l'enregistrement).`)) {
           currentStateRecordId = existing.id;
           info.innerHTML = `Lié à <strong>${escapeHtml(proj.name)}</strong> — panneau existant sera remplacé à l'enregistrement.`;
-          status.innerHTML = `Lié à <strong>${escapeHtml(proj.name)}</strong>. ⚠️ Remplacera le panneau existant.`;
+          status.innerHTML = `Lié à <strong>${escapeHtml(proj.name)}</strong>. <span class="mi mi-sm" style="color:#c2410c;">warning</span> Remplacera le panneau existant.`;
           return;
         }
         applyState(parsed);
@@ -26824,7 +26824,7 @@ window.addEventListener('appinstalled', () => {
   function errorView(msg) {
     host.innerHTML = shell(
       '<div style="text-align:center;padding:70px 24px;">' +
-        '<div style="font-size:40px;margin-bottom:14px;">🔒</div>' +
+        '<div style="margin-bottom:14px;"><span class="mi" style="font-size:44px;color:#999;">lock</span></div>' +
         '<div style="font-size:18px;font-weight:700;margin-bottom:8px;">Lien indisponible</div>' +
         '<div style="font-size:13px;color:#777;max-width:360px;margin:0 auto;">' + esc(msg) + '</div>' +
       '</div>');
@@ -26891,7 +26891,7 @@ window.addEventListener('appinstalled', () => {
       html += section('Documents partagés',
         data.docs.map(function(dc) {
           return '<a href="' + (dc.src || '#') + '" target="_blank" rel="noopener" style="display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #f2f2f2;text-decoration:none;color:inherit;">' +
-            '<div style="width:34px;height:34px;border-radius:8px;background:#f7f5f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (dc.isPdf ? '📄' : '📎') + '</div>' +
+            '<div style="width:34px;height:34px;border-radius:8px;background:#f7f5f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (dc.isPdf ? '<span class="mi" style="font-size:17px;color:#8a7340;">description</span>' : '<span class="mi" style="font-size:17px;color:#8a7340;">attach_file</span>') + '</div>' +
             '<div style="flex:1;min-width:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(dc.name) + '</div>' +
             '<div style="font-size:12px;color:#B5870A;font-weight:600;flex-shrink:0;">Ouvrir →</div>' +
           '</a>';
@@ -27143,7 +27143,7 @@ window.addEventListener('appinstalled', () => {
         '<div class="msg-bubble">' + esc(m.body) + '</div></div>' +
         '<div class="msg-meta">' + fmtTime(m.created_at) + (m._pending ? ' · envoi…' : '') + '</div>';
     });
-    if (!msgs.length) html = '<div style="margin:auto;color:var(--text-faint);font-size:13px;text-align:center;">Démarrez la conversation 👋</div>';
+    if (!msgs.length) html = '<div style="margin:auto;color:var(--text-faint);font-size:13px;text-align:center;">Démarrez la conversation</div>';
     scroll.innerHTML = html;
     if (!keepScroll || atBottom) scroll.scrollTop = scroll.scrollHeight;
     markRead(ch);
@@ -27812,7 +27812,7 @@ window.addEventListener('appinstalled', () => {
       add('Événements calendrier', db.calEvents);
       add('Bibliothèque', db.library);
       XLSX.writeFile(wb, 'Sauvegarde-Studio33-' + new Date().toISOString().slice(0, 10) + '.xlsx');
-      toast('✅ Sauvegarde Excel téléchargée — gardez-la en lieu sûr');
+      toast('Sauvegarde Excel téléchargée — gardez-la en lieu sûr');
     } catch(e) {
       console.error('export backup', e);
       toast('Échec de l\'export — vérifiez votre connexion et réessayez');
@@ -27850,7 +27850,7 @@ window.addEventListener('appinstalled', () => {
       } catch(e) { console.warn('optimize photo', m.id, e); }
     }
     window._s33OptRunning = false;
-    toast('✅ Terminé : ' + shrunk + ' photo(s) allégée(s), ' + Math.round(savedBytes * 0.75 / 1048576) + ' Mo récupérés');
+    toast('Terminé : ' + shrunk + ' photo(s) allégée(s), ' + Math.round(savedBytes * 0.75 / 1048576) + ' Mo récupérés');
   };
 
   // ── Entrée de menu « Sauvegarde » (desktop + mobile) ─────────────

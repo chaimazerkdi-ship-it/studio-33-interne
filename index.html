@@ -24055,6 +24055,8 @@ function isInStandaloneMode() {
 
 let _installBannerTimer = null;
 function showInstallBanner(type) {
+  // Jamais sur l'espace client (lien partagé avec un client) : l'app interne ne le concerne pas
+  try { if (new URLSearchParams(location.search).get('portal')) return; } catch(_) {}
   if (localStorage.getItem('s33_install_dismissed')) return;
   if (isInStandaloneMode()) return; // Déjà installée
 
@@ -26900,20 +26902,22 @@ window.addEventListener('appinstalled', () => {
     const prog = Math.max(0, Math.min(100, p.progress || 0));
 
     let html = '';
-    // En-tête marque
+    // En-tête marque : logo S33 (repli texte sur une seule ligne si absent)
     html += '<div style="text-align:center;margin-bottom:26px;">' +
-      '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:15px;letter-spacing:.35em;color:#B5870A;font-weight:600;">STUDIO 33 ARCHITECTS</div>' +
-      '<div style="font-size:11px;color:#aaa;letter-spacing:.1em;text-transform:uppercase;margin-top:4px;">Espace client · Suivi de projet</div>' +
+      '<img src="logo%20S33.png" alt="Studio 33 Architects" style="height:56px;width:auto;display:inline-block;" ' +
+        'onerror="this.style.display=\'none\';document.getElementById(\'s33p-brand-txt\').style.display=\'block\';">' +
+      '<div id="s33p-brand-txt" style="display:none;font-family:\'Cormorant Garamond\',Georgia,serif;font-size:clamp(13px,4vw,17px);letter-spacing:.22em;color:#F97316;font-weight:600;white-space:nowrap;">STUDIO 33 ARCHITECTS</div>' +
+      '<div style="font-size:11px;color:#aaa;letter-spacing:.1em;text-transform:uppercase;margin-top:6px;">Espace client · Suivi de projet</div>' +
     '</div>';
 
     // Carte projet + avancement
     html += '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,.05);margin-bottom:20px;">' +
       '<div style="font-size:22px;font-weight:800;line-height:1.2;">' + esc(p.name || 'Projet') + '</div>' +
       (p.clientName ? '<div style="font-size:13px;color:#888;margin-top:3px;">' + esc(p.clientName) + '</div>' : '') +
-      (phaseNice ? '<div style="display:inline-block;margin-top:12px;background:#f7f5f0;color:#8a6d0a;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">Phase : ' + esc(phaseNice) + '</div>' : '') +
+      (phaseNice ? '<div style="display:inline-block;margin-top:12px;background:#FFF1E6;color:#E4640B;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">Phase : ' + esc(phaseNice) + '</div>' : '') +
       '<div style="margin-top:20px;">' +
-        '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;"><span>Avancement</span><span style="font-weight:800;color:#B5870A;">' + prog + '%</span></div>' +
-        '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + prog + '%;background:linear-gradient(90deg,#B5870A,#d4af37);border-radius:99px;"></div></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;"><span>Avancement</span><span style="font-weight:800;color:#F97316;">' + prog + '%</span></div>' +
+        '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + prog + '%;background:linear-gradient(90deg,#F97316,#FB923C);border-radius:99px;"></div></div>' +
       '</div>' +
     '</div>';
 
@@ -26923,8 +26927,8 @@ window.addEventListener('appinstalled', () => {
         data.events.map(function(e) {
           const d = fmtDate(e.date);
           return '<div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #f2f2f2;">' +
-            '<div style="width:44px;flex-shrink:0;text-align:center;background:#f7f5f0;border-radius:8px;padding:6px 0;">' +
-              '<div style="font-size:15px;font-weight:800;color:#B5870A;line-height:1;">' + d.day + '</div>' +
+            '<div style="width:44px;flex-shrink:0;text-align:center;background:#FFF1E6;border-radius:8px;padding:6px 0;">' +
+              '<div style="font-size:15px;font-weight:800;color:#F97316;line-height:1;">' + d.day + '</div>' +
               '<div style="font-size:9px;color:#999;text-transform:uppercase;">' + d.mon + '</div>' +
             '</div>' +
             '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + esc(e.title || 'Événement') + '</div>' +
@@ -26938,9 +26942,9 @@ window.addEventListener('appinstalled', () => {
       html += section('Documents partagés',
         data.docs.map(function(dc) {
           return '<a href="' + (dc.src || '#') + '" target="_blank" rel="noopener" style="display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #f2f2f2;text-decoration:none;color:inherit;">' +
-            '<div style="width:34px;height:34px;border-radius:8px;background:#f7f5f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (dc.isPdf ? '<span class="mi" style="font-size:17px;color:#8a7340;">description</span>' : '<span class="mi" style="font-size:17px;color:#8a7340;">attach_file</span>') + '</div>' +
+            '<div style="width:34px;height:34px;border-radius:8px;background:#FFF1E6;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (dc.isPdf ? '<span class="mi" style="font-size:17px;color:#F97316;">description</span>' : '<span class="mi" style="font-size:17px;color:#F97316;">attach_file</span>') + '</div>' +
             '<div style="flex:1;min-width:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(dc.name) + '</div>' +
-            '<div style="font-size:12px;color:#B5870A;font-weight:600;flex-shrink:0;">Ouvrir →</div>' +
+            '<div style="font-size:12px;color:#F97316;font-weight:600;flex-shrink:0;">Ouvrir →</div>' +
           '</a>';
         }).join(''));
     }
@@ -26966,7 +26970,7 @@ window.addEventListener('appinstalled', () => {
 
   function section(title, inner) {
     return '<div style="margin-bottom:20px;">' +
-      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#B5870A;margin-bottom:8px;padding-left:2px;">' + esc(title) + '</div>' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#F97316;margin-bottom:8px;padding-left:2px;">' + esc(title) + '</div>' +
       '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:16px 18px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' + inner + '</div>' +
     '</div>';
   }

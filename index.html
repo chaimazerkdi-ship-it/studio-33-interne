@@ -5607,6 +5607,68 @@ async function getMediaData(id) {
   return d;
 }
 
+// ── Vignettes légères pour les grilles ───────────────────────────────
+// Les photos sont stockées en pleine résolution (plusieurs Mo chacune) :
+// les afficher telles quelles dans une grille sature la mémoire des
+// tablettes/téléphones. On affiche donc une vignette (colonne `thumb`),
+// générée à la volée la première fois puis sauvegardée en base pour que
+// tous les appareils en profitent. L'original n'est chargé que pour le
+// plein écran, le PDF ou le téléchargement.
+const _mediaThumbCache = {};
+let _thumbBuildQueue = Promise.resolve();
+
+function s33DownscaleToJpeg(src, maxDim, quality) {
+  return new Promise(resolve => {
+    if (typeof src !== 'string') return resolve(null);
+    const img = new Image();
+    if (!src.startsWith('data:')) img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) return resolve(null);
+        const k = Math.min(1, maxDim / Math.max(w, h));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w * k));
+        c.height = Math.max(1, Math.round(h * k));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', quality || 0.75));
+      } catch(e) { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function getMediaThumb(id) {
+  if (_mediaThumbCache[id] !== undefined) return _mediaThumbCache[id];
+  const m = (db.media || []).find(x => parseInt(x.id) === parseInt(id));
+  if (m && m.thumb) { _mediaThumbCache[id] = m.thumb; return m.thumb; }
+  // Vignette déjà en base ?
+  try {
+    const rows = await sbGet('media', `?select=thumb&id=eq.${id}`);
+    const t = rows?.[0]?.thumb;
+    if (t) { _mediaThumbCache[id] = t; if (m) m.thumb = t; return t; }
+  } catch(_) {}
+  // Pas encore de vignette : générer depuis l'original, une image à la fois
+  const job = _thumbBuildQueue.then(async () => {
+    if (_mediaThumbCache[id] !== undefined) return _mediaThumbCache[id];
+    const full = await getMediaData(id);
+    if (!full) { _mediaThumbCache[id] = null; return null; }
+    const small = await s33DownscaleToJpeg(full, 420, 0.72);
+    if (small && small.length < full.length * 0.9) {
+      _mediaThumbCache[id] = small;
+      if (m) m.thumb = small;
+      sbUpdate('media', id, { thumb: small }); // migration progressive, partagée
+      if (full.startsWith('data:')) delete _mediaDataCache[id]; // libérer la RAM
+      return small;
+    }
+    _mediaThumbCache[id] = full;
+    return full;
+  });
+  _thumbBuildQueue = job.catch(() => {});
+  return job;
+}
+
 async function downloadDocById(id, name) {
   const data = await getMediaData(id);
   if (!data) { toast('Fichier introuvable ou non chargé'); return; }
@@ -5635,7 +5697,9 @@ function applyLazyMediaImages() {
   const loadImg = async (img) => {
     if (img.dataset.loaded === '1') return;
     img.dataset.loaded = '1';
-    const data = await getMediaData(parseInt(img.dataset.mid));
+    img.decoding = 'async';
+    // Vignette légère pour les grilles ; l'original n'est chargé qu'en plein écran
+    const data = await getMediaThumb(parseInt(img.dataset.mid));
     if (data) { img.src = data; img.style.opacity = '1'; }
   };
   if ('IntersectionObserver' in window) {
@@ -10906,6 +10970,10 @@ function printDevis() {
 // ===== MEDIATHEQUE =====
 let mediaView = 'grid';
 let mediaTypeFilter = 'Tout';
+// Pagination : rendre 678 cartes d'un coup fige les tablettes
+let _mediaShowCount = 60;
+let _mediaFilterKey = '';
+window.s33MediaMore = function() { _mediaShowCount += 120; renderMediatheque(); };
 let lightboxIndex = 0;
 let lightboxItems = [];
 
@@ -10942,21 +11010,35 @@ function handleMediaUpload(input) {
       const isPDF = file.type === 'application/pdf';
       const chosenType = document.getElementById('media-upload-type')?.value || '3D / Rendu';
       const type = isPDF ? 'Plan PDF' : chosenType;
-      const newId = db.media.length > 0 ? Math.max(...db.media.map(m => m.id)) + 1 : 1;
+      // Compression : les photos brutes (3-10 Mo) rendaient l'app très lente
+      // sur tablette/téléphone. Max 1920px pour l'original, vignette 420px.
+      let data = e.target.result;
+      let thumb = null;
+      if (!isPDF) {
+        const compressed = await s33DownscaleToJpeg(data, 1920, 0.82);
+        if (compressed && compressed.length < data.length) data = compressed;
+        thumb = await s33DownscaleToJpeg(data, 420, 0.72);
+      }
       const mediaObj = {
         name: file.name.replace(/\.[^.]+$/, ''),
         type,
         is_pdf: isPDF,
-        data: e.target.result,
+        data,
+        thumb,
         project_id: projectId === 'all' || projectId === 'general' ? null : parseInt(projectId),
         is_general: projectId === 'general',
-        size: formatFileSize(file.size),
+        size: isPDF ? formatFileSize(file.size) : formatFileSize(Math.round(data.length * 0.75)),
         added_at: new Date().toISOString().split('T')[0]
       };
-      await sbInsert('media', mediaObj);
+      const res = await sbInsert('media', mediaObj);
+      // Ajout local sans recharger toute la base (loadDB complet = très lourd)
+      if (res && res[0]) {
+        const r = res[0];
+        if (r.thumb) _mediaThumbCache[r.id] = r.thumb;
+        db.media.push({ ...r, data: undefined, thumb: r.thumb || null, isPDF: r.is_pdf, isGeneral: r.is_general, addedAt: r.added_at, projectId: r.project_id });
+      }
       processed++;
       if (processed === files.length) {
-        await loadDB();
         renderMediatheque();
         toast(files.length + ' fichier(s) ajouté(s)');
       }
@@ -11007,6 +11089,12 @@ function renderMediatheque() {
   // Store for lightbox (regular images only)
   lightboxItems = items.filter(m => !m.isPDF);
 
+  // Pagination — remise à zéro quand le filtre change
+  const _fk = projectFilter + '|' + mediaTypeFilter;
+  if (_fk !== _mediaFilterKey) { _mediaFilterKey = _fk; _mediaShowCount = 60; }
+  const shownItems = items.slice(0, _mediaShowCount);
+  const remaining = items.length - shownItems.length;
+
   // Panneau state cards (special design — opens panneau editor)
   const panneauCards = panneauStates.map(m => {
     const proj = m.projectId ? db.projects.find(p => p.id === m.projectId) : null;
@@ -11027,8 +11115,8 @@ function renderMediatheque() {
     </div>`;
   }).join('');
 
-  // Grid view
-  document.getElementById('media-grid').innerHTML = panneauCards + items.map((m, i) => {
+  // Grid view (seule la vue active est rendue)
+  document.getElementById('media-grid').innerHTML = mediaView !== 'grid' ? '' : panneauCards + shownItems.map((m, i) => {
     const proj = m.projectId ? db.projects.find(p => p.id === m.projectId) : null;
     const typeColor = m.type === '3D / Rendu' ? 'badge-gold' : m.type === 'Plan PDF' ? 'badge-blue' : 'badge-dim';
     const thumb = m.isPDF
@@ -11046,13 +11134,13 @@ function renderMediatheque() {
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).join('') + (remaining > 0 ? `<div style="grid-column:1/-1;text-align:center;padding:12px;"><button class="btn btn-outline" onclick="s33MediaMore()">Afficher plus (${remaining} restant${remaining > 1 ? 's' : ''})</button></div>` : '');
 
   // Charger les images en lazy après rendu de la grid
   requestAnimationFrame(() => applyLazyMediaImages());
 
-  // List view
-  document.getElementById('media-list-tbody').innerHTML = items.map(m => {
+  // List view (seule la vue active est rendue)
+  document.getElementById('media-list-tbody').innerHTML = mediaView !== 'list' ? '' : shownItems.map(m => {
     const proj = m.projectId ? db.projects.find(p => p.id === m.projectId) : null;
     return `<tr>
       <td class="primary" style="cursor:pointer;" onclick="${m.isPDF ? `openPDF(${m.id})` : `openLightbox(${m.id})`}">${m.name}</td>
@@ -11062,7 +11150,7 @@ function renderMediatheque() {
       <td style="font-size:11px;">${m.addedAt || '—'}</td>
       <td><button class="btn btn-danger" onclick="deleteMedia(${m.id})">Suppr.</button></td>
     </tr>`;
-  }).join('');
+  }).join('') + (mediaView === 'list' && remaining > 0 ? `<tr><td colspan="6" style="text-align:center;padding:12px;"><button class="btn btn-outline" onclick="s33MediaMore()">Afficher plus (${remaining} restant${remaining > 1 ? 's' : ''})</button></td></tr>` : '');
 }
 
 function setMediaTypeFilter(t) {

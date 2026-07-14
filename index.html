@@ -28046,5 +28046,105 @@ window.addEventListener('appinstalled', () => {
 })();
 </script>
 
+<!-- ═══ FICHE PROJET : SECTIONS EN MENUS DÉROULANTS ═══ -->
+<script>
+(function() {
+  'use strict';
+
+  // Chaque grande section de la fiche projet devient un menu dépliant
+  // (même style que l'accordéon « Tâches » existant). L'état ouvert/fermé
+  // est mémorisé par appareil.
+  const KEY = k => 's33_pjacc_' + k;
+  const isOpen = k => localStorage.getItem(KEY(k)) === '1';
+
+  function injectCSS() {
+    if (document.getElementById('s33-pjacc-css')) return;
+    const st = document.createElement('style');
+    st.id = 's33-pjacc-css';
+    st.textContent =
+      '.pj-acc{margin-top:16px;}' +
+      '.pj-acc-body{margin-top:14px;}' +
+      // Les modules ont déjà leur propre ligne de titre : on masque le titre
+      // doublon, les boutons/compteurs de la ligne restent visibles.
+      '.pj-acc.pj-hide-title .pj-acc-body .section-title{display:none;}' +
+      '.pj-acc .proj-tasks-header .pj-acc-count{font-size:11px;color:var(--text-dim);font-weight:500;}';
+    document.head.appendChild(st);
+  }
+
+  window.s33PjAccToggle = function(key) {
+    const acc = document.getElementById('pj-acc-' + key);
+    if (!acc) return;
+    const body = acc.querySelector('.pj-acc-body');
+    const head = acc.querySelector('.proj-tasks-header');
+    const open = body.style.display === 'none';
+    body.style.display = open ? '' : 'none';
+    if (head) head.classList.toggle('open', open);
+    localStorage.setItem(KEY(key), open ? '1' : '0');
+    // Charger les images lazy qui viennent d'apparaître
+    if (open && typeof applyLazyMediaImages === 'function') requestAnimationFrame(() => applyLazyMediaImages());
+  };
+
+  function wrap(el, key, label, icon, count, hideTitle) {
+    if (!el || el.closest('.pj-acc')) return;
+    const acc = document.createElement('div');
+    acc.className = 'pj-acc' + (hideTitle ? ' pj-hide-title' : '');
+    acc.id = 'pj-acc-' + key;
+    const open = isOpen(key);
+    acc.innerHTML =
+      '<div onclick="s33PjAccToggle(\'' + key + '\')" class="proj-tasks-header' + (open ? ' open' : '') + '" role="button" tabindex="0">' +
+        '<span style="display:flex;align-items:center;gap:12px;min-width:0;">' +
+          '<span class="mi chev">expand_more</span>' +
+          '<span class="mi" style="color:var(--gold);font-size:18px;">' + icon + '</span>' +
+          '<span style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:17px;font-weight:600;letter-spacing:.5px;">' + label + '</span>' +
+          (count ? '<span class="pj-acc-count">· ' + count + '</span>' : '') +
+        '</span>' +
+      '</div>' +
+      '<div class="pj-acc-body" style="' + (open ? '' : 'display:none;') + '"></div>';
+    el.parentNode.insertBefore(acc, el);
+    acc.querySelector('.pj-acc-body').appendChild(el);
+  }
+
+  const _origRPD = window.renderProjectDetailPage;
+  window.renderProjectDetailPage = function() {
+    if (typeof _origRPD === 'function') { try { _origRPD.apply(this, arguments); } catch(e) { console.error(e); } }
+    const host = document.getElementById('project-detail-content');
+    const pid = window._currentProjectDetailId;
+    if (!host || pid == null) return;
+    injectCSS();
+
+    // 1. Documents + Événements (bloc deux colonnes)
+    const topRow = host.querySelector('.proj-top-row');
+    if (topRow) {
+      const nDocs = (db.media || []).filter(m => m.project_id === pid && m.is_project_doc).length;
+      wrap(topRow, 'docs', 'Documents & Événements', 'folder', nDocs ? nDocs + ' document' + (nDocs > 1 ? 's' : '') : '', false);
+
+      // 2. Documents générés (bloc suivant, admin uniquement)
+      const accDocs = document.getElementById('pj-acc-docs');
+      const next = accDocs ? accDocs.nextElementSibling : null;
+      if (next && !next.querySelector('.proj-tasks-header') && next.textContent.includes('Documents générés')) {
+        const nGen = (db.generatedDocs || []).filter(d => String(d.project_id || '') === String(pid)).length;
+        wrap(next, 'gendocs', 'Documents générés', 'auto_awesome', nGen ? String(nGen) : '', true);
+      }
+    }
+
+    // Blocs Sprint 1 : budgets d'heures, rentabilité, kanban
+    host.querySelectorAll('.s33-addon-block').forEach(el => {
+      const t = el.textContent || '';
+      if (t.includes('Budget heures par phase')) wrap(el, 'budgets', 'Budget heures par phase', 'schedule', '', true);
+      else if (t.includes('Rentabilité du projet')) wrap(el, 'rentabilite', 'Rentabilité du projet', 'trending_up', '', true);
+      else if (t.includes('Tableau Kanban')) wrap(el, 'kanban', 'Tableau Kanban des tâches', 'view_kanban', '', true);
+    });
+
+    // 3-5. Modules : suivi de chantier, honoraires, rapports
+    wrap(document.getElementById('s33-chantier-box'), 'chantier', 'Suivi de chantier', 'construction', '', true);
+    wrap(document.getElementById('s33-honoraires-box'), 'honoraires', 'Honoraires — échéancier', 'payments', '', true);
+    const nRep = (db.dailyReports || []).filter(r => String(r.project_id) === String(pid)).length;
+    wrap(document.getElementById('s33-proj-reports-box'), 'rapports', 'Rapports de l\'équipe', 'assignment', nRep ? nRep + '+' : '', true);
+  };
+
+  console.log('✓ Accordéons fiche projet loaded');
+})();
+</script>
+
 </body>
 </html>

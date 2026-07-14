@@ -27885,24 +27885,41 @@ window.addEventListener('appinstalled', () => {
 
   let _rpPid = null;
   let _rpShow = 8;
+  let _rpOthers = []; // métadonnées des rapports des autres (membres simples uniquement)
 
   const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
   const fmtD = s => { try { return new Date(s + 'T00:00').toLocaleDateString('fr-MA', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); } catch(_) { return s || ''; } };
+  // Qui voit le contenu de tous les rapports : admin + co-admin (architecte associée).
+  // Même règle que la base de données (RLS daily_reports).
+  const canSeeAll = () => window.currentUser && (currentUser.role === 'admin' || (currentUser.permissions || {}).is_co_admin === true);
 
   function projectReports(pid) {
+    // Grâce aux règles de la base, un membre simple ne reçoit ici que SES rapports
     return (db.dailyReports || [])
       .filter(r => String(r.project_id) === String(pid))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }
 
+  async function loadOthers(pid) {
+    _rpOthers = [];
+    if (canSeeAll()) return;
+    // Liste de présence : qui a soumis un rapport sur ce projet (sans le contenu)
+    const rows = await sbGet('daily_reports_status', '?project_id=eq.' + pid + '&order=date.desc');
+    const uid = String(currentUser.id);
+    _rpOthers = (Array.isArray(rows) ? rows : []).filter(r => String(r.user_id) !== uid);
+  }
+
   function render() {
     const box = document.getElementById('s33-proj-reports-box');
     if (!box) return;
-    const reports = projectReports(_rpPid);
+    const full = projectReports(_rpPid);
+    const all = full.map(r => ({ r, masked: false }))
+      .concat(_rpOthers.map(r => ({ r, masked: true })))
+      .sort((a, b) => (b.r.date || '').localeCompare(a.r.date || ''));
 
-    // Total d'heures par personne
+    // Total d'heures par personne (seulement sur les rapports dont on voit le contenu)
     const byUser = {};
-    reports.forEach(r => {
+    full.forEach(r => {
       const n = r.user_name || 'Inconnu';
       byUser[n] = (byUser[n] || 0) + (parseFloat(r.hours) || 0);
     });
@@ -27911,18 +27928,18 @@ window.addEventListener('appinstalled', () => {
     let html =
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:30px 0 14px;">' +
         '<div class="section-title" style="margin:0;">Rapports de l\'équipe sur ce projet</div>' +
-        '<span class="ch-chip">' + reports.length + ' rapport' + (reports.length > 1 ? 's' : '') + '</span>' +
-        (totalH > 0 ? '<span class="ch-chip">' + (Math.round(totalH * 10) / 10) + ' h au total</span>' : '') +
+        '<span class="ch-chip">' + all.length + ' rapport' + (all.length > 1 ? 's' : '') + '</span>' +
+        (totalH > 0 ? '<span class="ch-chip">' + (Math.round(totalH * 10) / 10) + ' h' + (canSeeAll() ? ' au total' : ' (vous)') + '</span>' : '') +
       '</div>';
 
-    if (!reports.length) {
+    if (!all.length) {
       html += '<div style="font-size:12.5px;color:var(--text-faint);background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius);padding:16px;">' +
         'Aucun rapport journalier ne mentionne ce projet pour l\'instant. Quand un membre de l\'équipe soumet son rapport quotidien en sélectionnant ce projet, il apparaît ici.</div>';
       box.innerHTML = html;
       return;
     }
 
-    if (Object.keys(byUser).length > 1) {
+    if (canSeeAll() && Object.keys(byUser).length > 1) {
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
         Object.entries(byUser).sort((a, b) => b[1] - a[1]).map(([n, h]) =>
           '<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:4px 12px;">' +
@@ -27932,8 +27949,20 @@ window.addEventListener('appinstalled', () => {
     }
 
     html += '<div style="display:flex;flex-direction:column;gap:8px;">' +
-      reports.slice(0, _rpShow).map(r => {
+      all.slice(0, _rpShow).map(({ r, masked }) => {
         const ava = (typeof avatarHTML === 'function' && r.user_id) ? avatarHTML(r.user_id, 30) : '';
+        if (masked) {
+          return '<div class="ch-item" style="margin-bottom:0;opacity:.75;">' +
+            '<div style="display:flex;align-items:center;gap:11px;">' +
+              ava +
+              '<div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+                '<span style="font-size:12.5px;font-weight:700;color:var(--text);">' + esc(r.user_name || '') + '</span>' +
+                '<span style="font-size:11px;color:var(--text-faint);">' + fmtD(r.date) + '</span>' +
+                '<span style="font-size:11px;color:var(--text-dim);display:inline-flex;align-items:center;gap:5px;"><span class="mi" style="font-size:14px;color:#27ae60;">check_circle</span> a soumis son rapport <span class="mi" style="font-size:13px;color:var(--text-faint);">lock</span></span>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }
         return '<div class="ch-item" style="margin-bottom:0;">' +
           '<div style="display:flex;align-items:flex-start;gap:11px;">' +
             ava +
@@ -27951,9 +27980,9 @@ window.addEventListener('appinstalled', () => {
       }).join('') +
     '</div>';
 
-    if (reports.length > _rpShow) {
+    if (all.length > _rpShow) {
       html += '<div style="text-align:center;margin-top:10px;">' +
-        '<button class="ch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33ProjReportsMore()">Voir plus (' + (reports.length - _rpShow) + ' restants)</button></div>';
+        '<button class="ch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33ProjReportsMore()">Voir plus (' + (all.length - _rpShow) + ' restants)</button></div>';
     }
     box.innerHTML = html;
   }
@@ -27971,8 +28000,47 @@ window.addEventListener('appinstalled', () => {
     }
     if (_rpPid !== pid) _rpShow = 8;
     _rpPid = pid;
-    render();
+    render(); // affichage immédiat avec ce qu'on a
+    loadOthers(pid).then(render).catch(e => console.error('rapports statut', e));
   };
+
+  // ── Encart « Équipe aujourd'hui » sur la page Rapport (membres) ──
+  async function teamTodayStrip() {
+    if (!window.currentUser || canSeeAll()) return; // l'admin a déjà la vue complète
+    const today = new Date().toISOString().slice(0, 10);
+    const roster = (db.teamMembers || []).filter(m => m.active !== false && m.role !== 'admin');
+    if (!roster.length) return;
+    let submitted = {};
+    try {
+      const rows = await sbGet('daily_reports_status', '?date=eq.' + today + '&select=user_id,submitted_at');
+      (rows || []).forEach(r => { submitted[String(r.user_id)] = r.submitted_at; });
+    } catch(_) {}
+    const header = document.querySelector('#page-rapport .page-header');
+    if (!header) return;
+    const old = document.getElementById('s33-team-today');
+    if (old) old.remove();
+    header.insertAdjacentHTML('afterend',
+      '<div id="s33-team-today" class="card" style="margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+        '<span style="font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:.06em;">ÉQUIPE AUJOURD\'HUI</span>' +
+        roster.map(m => {
+          const ok = !!submitted[String(m.user_id)];
+          const heure = ok ? new Date(submitted[String(m.user_id)]).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+          return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;border-radius:99px;padding:4px 12px;border:1px solid ' + (ok ? 'rgba(39,174,96,.35)' : 'var(--border)') + ';background:' + (ok ? 'rgba(39,174,96,.08)' : 'var(--surface2)') + ';color:' + (ok ? '#27ae60' : 'var(--text-faint)') + ';">' +
+            '<span class="mi" style="font-size:14px;">' + (ok ? 'check_circle' : 'schedule') + '</span>' +
+            esc(m.display_name || m.username) + (ok ? ' · ' + heure : '') +
+          '</span>';
+        }).join('') +
+      '</div>');
+  }
+
+  const _origRR = window.renderRapport;
+  if (typeof _origRR === 'function') {
+    window.renderRapport = function() {
+      const res = _origRR.apply(this, arguments);
+      try { teamTodayStrip(); } catch(_) {}
+      return res;
+    };
+  }
 
   console.log('✓ Rapports projet loaded');
 })();

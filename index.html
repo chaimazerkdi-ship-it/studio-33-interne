@@ -2753,6 +2753,53 @@
 </head>
 <body>
 
+<!-- ═══ GARDE DE COMPATIBILITÉ (ES5 uniquement — doit marcher partout) ═══
+     Si le navigateur est trop ancien pour le JavaScript moderne de l'app,
+     les scripts principaux meurent en silence et l'écran reste à moitié
+     rendu. Ce garde affiche alors un message clair avec la solution. -->
+<script>
+(function() {
+  var modernOk = true;
+  try { eval('var _t = {}; _t?.x; _t ?? 1;'); } catch (e) { modernOk = false; }
+  var firstError = '';
+  window.addEventListener('error', function(ev) {
+    if (!firstError && ev && ev.message) firstError = String(ev.message);
+  });
+  function showHelp(detail) {
+    if (document.getElementById('s33-compat-help')) return;
+    var d = document.createElement('div');
+    d.id = 's33-compat-help';
+    d.setAttribute('style', 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;background:#faf8f4;color:#1a1a1a;font-family:Arial,Helvetica,sans-serif;overflow:auto;padding:20px;text-align:center;');
+    d.innerHTML =
+      '<div style="max-width:430px;margin:48px auto;">' +
+        '<div style="width:58px;height:58px;line-height:58px;border-radius:50%;background:#C9A84C;color:#fff;font-size:30px;font-weight:bold;margin:0 auto 18px;">!</div>' +
+        '<div style="font-size:20px;font-weight:bold;margin-bottom:10px;">Navigateur trop ancien</div>' +
+        '<div style="font-size:14px;line-height:1.6;color:#444;">' +
+          'L\'application Studio 33 ne peut pas démarrer sur cette version du navigateur.<br><br>' +
+          '<strong>Solution :</strong> ouvrez le <strong>Play Store</strong>, recherchez <strong>Chrome</strong> (ou Samsung Internet), appuyez sur <strong>Mettre à jour</strong>, puis rouvrez cette page.<br><br>' +
+          'Si la mise à jour n\'est pas possible, essayez avec un autre navigateur récent ou un autre appareil.' +
+        '</div>' +
+        (detail ? '<div style="margin-top:22px;font-size:10px;color:#aaa;word-break:break-all;">Détail technique : ' + String(detail).replace(/</g, '&lt;') + '</div>' : '') +
+      '</div>';
+    (document.body || document.documentElement).appendChild(d);
+  }
+  if (!modernOk) {
+    if (document.body) showHelp('optional chaining non supporté');
+    else document.addEventListener('DOMContentLoaded', function() { showHelp('optional chaining non supporté'); });
+  } else {
+    // Filet : si le coeur de l'app n'a pas pu se charger (erreur de syntaxe
+    // ou de parsing plus subtile), on le détecte après le chargement.
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        if (typeof window.login !== 'function' || typeof window.navigate !== 'function') {
+          showHelp(firstError || 'scripts principaux non chargés');
+        }
+      }, 1500);
+    });
+  }
+})();
+</script>
+
 <!-- ESPACE CLIENT (lecture seule, servi via jeton) -->
 <div id="s33-portal"></div>
 

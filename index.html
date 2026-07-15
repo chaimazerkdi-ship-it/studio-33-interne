@@ -11629,11 +11629,15 @@ function renderClientPortalShare(projectId) {
       '<input id="s33-portal-link" type="text" readonly value="' + escHTML(link) + '" onclick="this.select()" style="flex:1;min-width:0;font-size:12px;background:transparent;border:none;color:var(--text);padding:0;">' +
       '<button onclick="s33PortalCopy()" class="btn btn-gold" style="padding:7px 12px;font-size:11px;flex-shrink:0;"><span class="mi" style="font-size:14px;">content_copy</span> Copier</button>' +
     '</div>' +
-    '<div style="display:flex;gap:8px;margin-bottom:20px;">' +
+    '<div style="display:flex;gap:8px;margin-bottom:14px;">' +
       '<button onclick="s33PortalCopy(true)" style="flex:1;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;"><span class="mi" style="font-size:14px;vertical-align:-2px;">send</span> WhatsApp / SMS</button>' +
+      '<button onclick="s33PortalNotifyWA(' + p.id + ')" style="flex:1;padding:8px;background:rgba(37,211,102,.12);border:1px solid rgba(37,211,102,.4);border-radius:var(--radius-pill);font-size:11px;font-weight:700;color:#1da851;cursor:pointer;font-family:inherit;" title="Ouvre WhatsApp avec un message prérempli « du nouveau sur votre projet »"><span class="mi" style="font-size:14px;vertical-align:-2px;">notifications_active</span> Prévenir le client</button>' +
       '<button onclick="s33PortalGenerate(' + p.id + ', true)" style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:var(--text-dim);cursor:pointer;font-family:inherit;" title="Nouveau lien (l\'ancien cesse de marcher)"><span class="mi" style="font-size:14px;">refresh</span></button>' +
       '<button onclick="s33PortalRevoke(' + p.id + ')" style="padding:8px 12px;background:#fff0f0;border:1px solid #f5c6cb;border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:#c0392b;cursor:pointer;font-family:inherit;" title="Désactiver le lien">Révoquer</button>' +
     '</div>';
+
+    // Visites du client (journal rempli par la fonction client-portal)
+    html += '<div id="s33-portal-visits" style="margin-bottom:16px;"></div>';
 
     // Sélection des documents/photos visibles — regroupés par dossier :
     // cocher le dossier entier, ou le déplier pour choisir un par un.
@@ -11677,6 +11681,7 @@ function renderClientPortalShare(projectId) {
               '<input type="checkbox" ' + (m.client_visible ? 'checked' : '') + ' onchange="s33PortalToggleDoc(' + m.id + ',this.checked,' + p.id + ')" style="width:16px;height:16px;accent-color:var(--gold);flex-shrink:0;">' +
               '<span class="mi" style="font-size:16px;color:var(--text-dim);flex-shrink:0;">' + (isImg ? 'image' : (m.isPDF || m.is_pdf) ? 'picture_as_pdf' : 'description') + '</span>' +
               '<span style="flex:1;min-width:0;font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHTML(m.name) + '</span>' +
+              (m.client_approved_at ? '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:#16a34a;background:rgba(22,163,74,.1);border-radius:99px;padding:2px 8px;flex-shrink:0;" title="Validé par ' + escHTML(m.client_approved_by || 'le client') + ' le ' + new Date(m.client_approved_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) + ' à ' + new Date(m.client_approved_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + '"><span class="mi" style="font-size:12px;">task_alt</span> Validé</span>' : '') +
             '</label>';
           });
         }
@@ -11690,6 +11695,41 @@ function renderClientPortalShare(projectId) {
   body.querySelectorAll('input[data-fgroup]').forEach(inp => {
     inp.indeterminate = !!(window._s33ShareSome || [])[parseInt(inp.dataset.fgroup)];
   });
+  s33PortalLoadVisits(projectId);
+}
+
+// Journal des visites du client sur son espace
+async function s33PortalLoadVisits(projectId) {
+  const box = document.getElementById('s33-portal-visits');
+  if (!box) return;
+  const p = db.projects.find(x => x.id === projectId);
+  if (!p || !p.portal_token) { box.innerHTML = ''; return; }
+  const rows = await sbGet('portal_visits', '?project_id=eq.' + projectId + '&order=visited_at.desc&limit=8');
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) {
+    box.innerHTML = '<div style="font-size:11.5px;color:var(--text-faint);"><span class="mi" style="font-size:13px;vertical-align:-2px;">visibility_off</span> Le client n\'a pas encore ouvert son espace.</div>';
+    return;
+  }
+  const fmt = iso => { try { const d = new Date(iso); return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } };
+  box.innerHTML =
+    '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px;"><span class="mi" style="font-size:13px;vertical-align:-2px;">visibility</span> Visites du client</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' +
+      '<span style="font-size:11.5px;background:rgba(39,174,96,.1);color:#27ae60;border:1px solid rgba(39,174,96,.25);border-radius:99px;padding:3px 10px;font-weight:700;">Dernière : ' + fmt(list[0].visited_at) + '</span>' +
+      list.slice(1).map(v => '<span style="font-size:11px;background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);border-radius:99px;padding:3px 10px;">' + fmt(v.visited_at) + '</span>').join('') +
+    '</div>';
+}
+
+// Ouvrir WhatsApp avec un message « du nouveau sur votre projet » prérempli
+function s33PortalNotifyWA(projectId) {
+  const p = db.projects.find(x => x.id === projectId);
+  if (!p) return;
+  const c = db.clients.find(x => x.id === (p.clientId ?? p.client_id));
+  const digits = c && c.phone ? String(c.phone).replace(/\D/g, '') : '';
+  if (!digits) { toast('Ajoutez le numéro de téléphone dans la fiche client'); return; }
+  const intl = digits.startsWith('0') ? '212' + digits.slice(1) : digits;
+  const link = p.portal_token ? _s33PortalLink(p.portal_token) : '';
+  const txt = encodeURIComponent('Bonjour, du nouveau sur votre projet « ' + p.name + ' » — consultez votre espace client : ' + link);
+  window.open('https://wa.me/' + intl + '?text=' + txt, '_blank');
 }
 
 // Déplier / replier un dossier dans la fenêtre de partage
@@ -26929,21 +26969,76 @@ window.addEventListener('appinstalled', () => {
   const token = (function(){ try { return new URLSearchParams(location.search).get('portal'); } catch(_) { return null; } })();
   if (!token) return; // pas en mode portail → app normale
 
-  const PHASE_LABELS = { ESQ:'Esquisse', APS:'Avant-projet sommaire', APD:'Avant-projet définitif', EXE:'Études d\'exécution', Chantier:'Chantier' };
+  // ── Bilingue français / arabe (mémorisé sur l'appareil du client) ──
+  let LANG = 'fr';
+  try { LANG = localStorage.getItem('s33p_lang') === 'ar' ? 'ar' : 'fr'; } catch(_) {}
+  const T = {
+    fr: {
+      subtitle: 'Espace client · Suivi de projet', loading: 'Chargement de votre espace projet…',
+      linkUnavailable: 'Lien indisponible',
+      linkInvalid: 'Ce lien n\'est plus valide. Contactez Studio 33 pour en obtenir un nouveau.',
+      cantShow: 'Impossible d\'afficher ce projet pour le moment.',
+      checkConnection: 'Vérifiez votre connexion internet et réessayez.',
+      phase: 'Phase : ', progress: 'Avancement', fees: 'Règlement des honoraires',
+      feesPct: 'du budget d\'honoraires réglé', remaining: 'reste', settled: 'solde réglé, merci !', mad: 'MAD',
+      nextSteps: 'Prochaines étapes', docs: 'Documents partagés', photos: 'Photos du chantier', messages: 'Messages',
+      open: 'Ouvrir →', event: 'Événement', approve: 'Valider', approvedOn: 'Validé le',
+      confirmApprove: 'Confirmer votre accord sur ce document ?\n\nVotre validation sera enregistrée avec votre nom, la date et l\'heure.',
+      approveDone: 'Merci ! Votre validation a bien été enregistrée.',
+      approveFail: 'Validation impossible — vérifiez votre connexion et réessayez.',
+      emptyShared: 'Aucun élément partagé pour le moment. Votre architecte mettra cet espace à jour prochainement.',
+      msgEmpty: 'Une question sur votre projet ? Écrivez-nous ici.',
+      msgPlaceholder: 'Écrivez votre message à votre architecte…',
+      send: 'Envoyer', sending: 'Envoi…', you: 'Vous',
+      msgNote: 'Votre message est transmis à l\'équipe Studio 33 — la réponse s\'affichera ici.',
+      rateLimited: 'Trop de messages envoyés aujourd\'hui — réessayez demain.',
+      sendFailed: 'Message non envoyé — vérifiez votre connexion et réessayez.',
+      footer: 'Studio 33 Architects · Agadir, Maroc', footer2: 'Espace en lecture seule — mis à jour en temps réel',
+      phases: { ESQ: 'Esquisse', APS: 'Avant-projet sommaire', APD: 'Avant-projet définitif', EXE: 'Études d\'exécution', Chantier: 'Chantier' },
+      locale: 'fr-FR', langBtn: 'العربية'
+    },
+    ar: {
+      subtitle: 'فضاء العميل · تتبع المشروع', loading: 'جارٍ تحميل فضاء مشروعكم…',
+      linkUnavailable: 'الرابط غير متاح',
+      linkInvalid: 'هذا الرابط لم يعد صالحًا. تواصلوا مع Studio 33 للحصول على رابط جديد.',
+      cantShow: 'تعذّر عرض هذا المشروع حاليًا.',
+      checkConnection: 'تحقّقوا من اتصالكم بالإنترنت وحاولوا مجددًا.',
+      phase: 'المرحلة : ', progress: 'تقدّم الأشغال', fees: 'أداء الأتعاب',
+      feesPct: 'من ميزانية الأتعاب تم أداؤها', remaining: 'المتبقي', settled: 'تم أداء كامل المبلغ، شكرًا لكم!', mad: 'درهم',
+      nextSteps: 'المواعيد القادمة', docs: 'الوثائق المشتركة', photos: 'صور الورش', messages: 'الرسائل',
+      open: 'فتح', event: 'موعد', approve: 'مصادقة', approvedOn: 'تمت المصادقة في',
+      confirmApprove: 'هل تؤكدون موافقتكم على هذه الوثيقة؟\n\nستُسجَّل المصادقة باسمكم مع التاريخ والوقت.',
+      approveDone: 'شكرًا لكم! تم تسجيل مصادقتكم.',
+      approveFail: 'تعذّرت المصادقة — تحقّقوا من الاتصال وحاولوا مجددًا.',
+      emptyShared: 'لا توجد عناصر مشتركة حاليًا. سيقوم مهندسكم المعماري بتحديث هذا الفضاء قريبًا.',
+      msgEmpty: 'لديكم سؤال حول مشروعكم؟ راسلونا هنا.',
+      msgPlaceholder: 'اكتبوا رسالتكم إلى مهندسكم المعماري…',
+      send: 'إرسال', sending: 'جارٍ الإرسال…', you: 'أنتم',
+      msgNote: 'تصل رسالتكم إلى فريق Studio 33 — وسيظهر الرد هنا.',
+      rateLimited: 'تم إرسال عدد كبير من الرسائل اليوم — حاولوا غدًا.',
+      sendFailed: 'لم يتم إرسال الرسالة — تحقّقوا من الاتصال وحاولوا مجددًا.',
+      footer: 'Studio 33 Architects · أكادير، المغرب', footer2: 'فضاء للقراءة فقط — يُحدَّث في الوقت الفعلي',
+      phases: { ESQ: 'التصميم الأولي', APS: 'المشروع التمهيدي الموجز', APD: 'المشروع التمهيدي النهائي', EXE: 'دراسات التنفيذ', Chantier: 'الورش' },
+      locale: 'ar-MA', langBtn: 'Français'
+    }
+  };
+  const L = () => T[LANG];
+
   const esc = s => { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; };
   const host = document.getElementById('s33-portal');
+  let _lastData = null;
 
   function shell(inner) {
-    return '<div style="max-width:820px;margin:0 auto;padding:28px 18px 60px;font-family:Inter,system-ui,-apple-system,sans-serif;color:#1a1a1a;">' + inner + '</div>';
+    return '<div dir="' + (LANG === 'ar' ? 'rtl' : 'ltr') + '" style="max-width:820px;margin:0 auto;padding:28px 18px 60px;font-family:Inter,system-ui,-apple-system,sans-serif;color:#1a1a1a;">' + inner + '</div>';
   }
   function loading() {
-    host.innerHTML = shell('<div style="text-align:center;padding:80px 20px;color:#888;font-size:14px;">Chargement de votre espace projet…</div>');
+    host.innerHTML = shell('<div style="text-align:center;padding:80px 20px;color:#888;font-size:14px;">' + L().loading + '</div>');
   }
   function errorView(msg) {
     host.innerHTML = shell(
       '<div style="text-align:center;padding:70px 24px;">' +
         '<div style="margin-bottom:14px;"><span class="mi" style="font-size:44px;color:#999;">lock</span></div>' +
-        '<div style="font-size:18px;font-weight:700;margin-bottom:8px;">Lien indisponible</div>' +
+        '<div style="font-size:18px;font-weight:700;margin-bottom:8px;">' + L().linkUnavailable + '</div>' +
         '<div style="font-size:13px;color:#777;max-width:360px;margin:0 auto;">' + esc(msg) + '</div>' +
       '</div>');
   }
@@ -26956,39 +27051,45 @@ window.addEventListener('appinstalled', () => {
     .then(r => r.json().then(j => ({ ok: r.ok, j })))
     .then(({ ok, j }) => {
       if (!ok || !j || j.error) {
-        errorView(j && j.error === 'not_found'
-          ? 'Ce lien n\'est plus valide. Contactez Studio 33 pour en obtenir un nouveau.'
-          : 'Impossible d\'afficher ce projet pour le moment.');
+        errorView(j && j.error === 'not_found' ? L().linkInvalid : L().cantShow);
         return;
       }
       render(j);
     })
-    .catch(() => errorView('Vérifiez votre connexion internet et réessayez.'));
+    .catch(() => errorView(L().checkConnection));
+
+  window.s33pSetLang = function(lang) {
+    LANG = lang === 'ar' ? 'ar' : 'fr';
+    try { localStorage.setItem('s33p_lang', LANG); } catch(_) {}
+    if (_lastData) render(_lastData);
+  };
 
   function render(data) {
+    _lastData = data;
+    const t = L();
     const p = data.project || {};
-    const phaseNice = PHASE_LABELS[p.phase] || p.phase || '';
+    const phaseNice = t.phases[p.phase] || p.phase || '';
     const prog = Math.max(0, Math.min(100, p.progress || 0));
 
     let html = '';
-    // En-tête marque : logo S33 (repli texte sur une seule ligne si absent)
-    html += '<div style="text-align:center;margin-bottom:26px;">' +
+    // En-tête marque + bouton de langue
+    html += '<div style="position:relative;text-align:center;margin-bottom:26px;">' +
+      '<button onclick="s33pSetLang(\'' + (LANG === 'ar' ? 'fr' : 'ar') + '\')" style="position:absolute;top:0;' + (LANG === 'ar' ? 'left' : 'right') + ':0;background:#fff;border:1px solid #eee;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;color:#F97316;cursor:pointer;font-family:inherit;box-shadow:0 2px 10px rgba(0,0,0,.05);">' + t.langBtn + '</button>' +
       '<img src="logo%20S33.png" alt="Studio 33 Architects" style="height:56px;width:auto;display:inline-block;" ' +
         'onerror="this.style.display=\'none\';document.getElementById(\'s33p-brand-txt\').style.display=\'block\';">' +
       '<div id="s33p-brand-txt" style="display:none;font-family:\'Cormorant Garamond\',Georgia,serif;font-size:clamp(13px,4vw,17px);letter-spacing:.22em;color:#F97316;font-weight:600;white-space:nowrap;">STUDIO 33 ARCHITECTS</div>' +
-      '<div style="font-size:11px;color:#aaa;letter-spacing:.1em;text-transform:uppercase;margin-top:6px;">Espace client · Suivi de projet</div>' +
+      '<div style="font-size:11px;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">' + t.subtitle + '</div>' +
     '</div>';
 
-    // Carte projet + avancement
+    // Carte projet : avancement + règlement des honoraires
     html += '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,.05);margin-bottom:20px;">' +
       '<div style="font-size:22px;font-weight:800;line-height:1.2;">' + esc(p.name || 'Projet') + '</div>' +
       (p.clientName ? '<div style="font-size:13px;color:#888;margin-top:3px;">' + esc(p.clientName) + '</div>' : '') +
-      (phaseNice ? '<div style="display:inline-block;margin-top:12px;background:#FFF1E6;color:#E4640B;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">Phase : ' + esc(phaseNice) + '</div>' : '') +
+      (phaseNice ? '<div style="display:inline-block;margin-top:12px;background:#FFF1E6;color:#E4640B;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">' + t.phase + esc(phaseNice) + '</div>' : '') +
       '<div style="margin-top:20px;">' +
-        '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;"><span>Avancement</span><span style="font-weight:800;color:#F97316;">' + prog + '%</span></div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;"><span>' + t.progress + '</span><span style="font-weight:800;color:#F97316;">' + prog + '%</span></div>' +
         '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + prog + '%;background:linear-gradient(90deg,#F97316,#FB923C);border-radius:99px;"></div></div>' +
       '</div>' +
-      // Jauge de règlement des honoraires (payé / budget)
       (function() {
         const f = data.finance;
         if (!f || !(f.budget > 0)) return '';
@@ -26996,18 +27097,18 @@ window.addEventListener('appinstalled', () => {
         const pctPaid = Math.max(0, Math.min(100, Math.round((f.paid / f.budget) * 100)));
         return '<div style="margin-top:18px;">' +
           '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;flex-wrap:wrap;gap:4px;">' +
-            '<span>Règlement des honoraires</span>' +
-            '<span style="font-weight:800;color:#16a34a;">' + money(f.paid) + ' / ' + money(f.budget) + ' MAD</span>' +
+            '<span>' + t.fees + '</span>' +
+            '<span style="font-weight:800;color:#16a34a;">' + money(f.paid) + ' / ' + money(f.budget) + ' ' + t.mad + '</span>' +
           '</div>' +
           '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + pctPaid + '%;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:99px;"></div></div>' +
-          '<div style="font-size:10.5px;color:#999;margin-top:5px;">' + pctPaid + '% du budget d\'honoraires réglé' + (f.budget > f.paid ? ' · reste ' + money(f.budget - f.paid) + ' MAD' : ' · solde réglé, merci !') + '</div>' +
+          '<div style="font-size:10.5px;color:#999;margin-top:5px;">' + pctPaid + '% ' + t.feesPct + (f.budget > f.paid ? ' · ' + t.remaining + ' ' + money(f.budget - f.paid) + ' ' + t.mad : ' · ' + t.settled) + '</div>' +
         '</div>';
       })() +
     '</div>';
 
     // Prochaines étapes
     if (data.events && data.events.length) {
-      html += section('Prochaines étapes',
+      html += section('steps', t.nextSteps,
         data.events.map(function(e) {
           const d = fmtDate(e.date);
           return '<div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #f2f2f2;">' +
@@ -27015,27 +27116,36 @@ window.addEventListener('appinstalled', () => {
               '<div style="font-size:15px;font-weight:800;color:#F97316;line-height:1;">' + d.day + '</div>' +
               '<div style="font-size:9px;color:#999;text-transform:uppercase;">' + d.mon + '</div>' +
             '</div>' +
-            '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + esc(e.title || 'Événement') + '</div>' +
+            '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + esc(e.title || t.event) + '</div>' +
               (e.time_start ? '<div style="font-size:11px;color:#999;">' + esc(e.time_start) + '</div>' : '') + '</div>' +
           '</div>';
         }).join(''), { open: true, count: data.events.length });
     }
 
-    // Documents
+    // Documents (avec validation « Bon pour accord »)
     if (data.docs && data.docs.length) {
-      html += section('Documents partagés',
+      html += section('docs', t.docs,
         data.docs.map(function(dc) {
-          return '<a href="' + (dc.src || '#') + '" target="_blank" rel="noopener" style="display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #f2f2f2;text-decoration:none;color:inherit;">' +
-            '<div style="width:34px;height:34px;border-radius:8px;background:#FFF1E6;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (dc.isPdf ? '<span class="mi" style="font-size:17px;color:#F97316;">description</span>' : '<span class="mi" style="font-size:17px;color:#F97316;">attach_file</span>') + '</div>' +
-            '<div style="flex:1;min-width:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(dc.name) + '</div>' +
-            '<div style="font-size:12px;color:#F97316;font-weight:600;flex-shrink:0;">Ouvrir →</div>' +
-          '</a>';
+          const approvedTxt = dc.approved_at
+            ? (function() { try { const d = new Date(dc.approved_at); return t.approvedOn + ' ' + d.toLocaleDateString(t.locale, { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' }); } catch(_) { return t.approvedOn; } })()
+            : '';
+          return '<div style="display:flex;gap:11px;align-items:center;padding:11px 0;border-bottom:1px solid #f2f2f2;flex-wrap:wrap;">' +
+            '<div style="width:34px;height:34px;border-radius:8px;background:#FFF1E6;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="mi" style="font-size:17px;color:#F97316;">' + (dc.isPdf ? 'description' : 'attach_file') + '</span></div>' +
+            '<div style="flex:1;min-width:140px;">' +
+              '<div style="font-size:14px;font-weight:500;word-break:break-word;">' + esc(dc.name) + '</div>' +
+              (approvedTxt ? '<div style="font-size:11px;color:#16a34a;font-weight:700;margin-top:2px;"><span class="mi" style="font-size:12px;vertical-align:-2px;">check_circle</span> ' + approvedTxt + '</div>' : '') +
+            '</div>' +
+            (!dc.approved_at && dc.id
+              ? '<button onclick="s33pApprove(' + dc.id + ')" style="background:#fff;border:1.5px solid #16a34a;color:#16a34a;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;"><span class="mi" style="font-size:13px;vertical-align:-2px;">task_alt</span> ' + t.approve + '</button>'
+              : '') +
+            '<a href="' + (dc.src || '#') + '" target="_blank" rel="noopener" style="font-size:12px;color:#F97316;font-weight:700;flex-shrink:0;text-decoration:none;">' + t.open + '</a>' +
+          '</div>';
         }).join(''), { count: data.docs.length });
     }
 
     // Photos
     if (data.photos && data.photos.length) {
-      html += section('Photos du chantier',
+      html += section('photos', t.photos,
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">' +
         data.photos.map(function(ph) {
           return '<a href="' + (ph.src || '#') + '" target="_blank" rel="noopener" style="display:block;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#f0f0f0;">' +
@@ -27045,33 +27155,52 @@ window.addEventListener('appinstalled', () => {
     }
 
     if (!(data.events||[]).length && !(data.docs||[]).length && !(data.photos||[]).length) {
-      html += '<div style="text-align:center;padding:30px;color:#aaa;font-size:13px;">Aucun élément partagé pour le moment. Votre architecte mettra cet espace à jour prochainement.</div>';
+      html += '<div style="text-align:center;padding:30px;color:#aaa;font-size:13px;">' + t.emptyShared + '</div>';
     }
 
     // Messages client <-> cabinet (historique complet conservé)
-    html += section('Messages',
+    html += section('messages', t.messages,
       '<div id="s33p-msg-thread" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px;">' + msgsHTML(data.messages || []) + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:12px;align-items:flex-end;">' +
-        '<textarea id="s33p-msg-input" rows="2" placeholder="Écrivez votre message à votre architecte…" style="flex:1;border:1px solid #e5e5e5;border-radius:12px;padding:10px 12px;font-family:inherit;font-size:14px;resize:none;outline:none;box-sizing:border-box;"></textarea>' +
-        '<button id="s33p-msg-send" onclick="s33pSendMsg()" style="background:#F97316;color:#fff;border:none;border-radius:12px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">Envoyer</button>' +
+        '<textarea id="s33p-msg-input" rows="2" placeholder="' + t.msgPlaceholder + '" style="flex:1;border:1px solid #e5e5e5;border-radius:12px;padding:10px 12px;font-family:inherit;font-size:14px;resize:none;outline:none;box-sizing:border-box;"></textarea>' +
+        '<button id="s33p-msg-send" onclick="s33pSendMsg()" style="background:#F97316;color:#fff;border:none;border-radius:12px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">' + t.send + '</button>' +
       '</div>' +
-      '<div style="font-size:10.5px;color:#bbb;margin-top:6px;">Votre message est transmis à l\'équipe Studio 33 — la réponse s\'affichera ici.</div>', { open: true, count: (data.messages || []).length });
+      '<div style="font-size:10.5px;color:#bbb;margin-top:6px;">' + t.msgNote + '</div>', { open: true, count: (data.messages || []).length });
 
-    html += '<div style="text-align:center;margin-top:34px;font-size:11px;color:#bbb;">Studio 33 Architects · Agadir, Maroc<br>Espace en lecture seule — mis à jour en temps réel</div>';
+    html += '<div style="text-align:center;margin-top:34px;font-size:11px;color:#bbb;">' + t.footer + '<br>' + t.footer2 + '</div>';
     host.innerHTML = shell(html);
+    setTimeout(scrollThread, 100);
   }
 
-  // Sections en menus déroulants : indispensable quand il y a beaucoup
-  // de rendus 3D / photos de chantier. L'état ouvert/fermé est mémorisé
-  // sur l'appareil du client.
-  function section(title, inner, opts) {
+  // Validation « Bon pour accord » d'un document
+  window.s33pApprove = async function(mediaId) {
+    const t = L();
+    if (!confirm(t.confirmApprove)) return;
+    try {
+      const r = await fetch(FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve', media_id: mediaId }) });
+      const j = await r.json().catch(function() { return null; });
+      if (r.ok && j && j.ok) {
+        if (_lastData) {
+          const dc = (_lastData.docs || []).find(function(d) { return d.id === mediaId; });
+          if (dc) { dc.approved_at = j.approved_at || new Date().toISOString(); dc.approved_by = j.approved_by || ''; }
+          render(_lastData);
+        }
+        alert(t.approveDone);
+      } else {
+        alert(t.approveFail);
+      }
+    } catch(_) { alert(t.approveFail); }
+  };
+
+  // Sections en menus déroulants (état mémorisé sur l'appareil du client)
+  function section(key0, title, inner, opts) {
     opts = opts || {};
-    const key = 's33p_acc_' + title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const key = 's33p_acc_' + key0;
     let open = !!opts.open;
     try { const v = localStorage.getItem(key); if (v !== null) open = v === '1'; } catch(_) {}
     return '<div style="margin-bottom:12px;">' +
       '<div onclick="s33pAccToggle(this,\'' + key + '\')" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #eee;border-radius:14px;padding:13px 16px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.05);user-select:none;">' +
-        '<span style="flex:1;font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#F97316;">' + esc(title) + '</span>' +
+        '<span style="flex:1;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#F97316;">' + esc(title) + '</span>' +
         (opts.count != null ? '<span style="font-size:11.5px;color:#999;font-weight:700;flex-shrink:0;">' + opts.count + '</span>' : '') +
         '<span class="mi s33p-chev" style="font-size:20px;color:#bbb;flex-shrink:0;transition:transform .2s;transform:rotate(' + (open ? 180 : 0) + 'deg);">expand_more</span>' +
       '</div>' +
@@ -27096,23 +27225,24 @@ window.addEventListener('appinstalled', () => {
   function fmtDate(s) {
     try {
       const d = new Date(s + 'T00:00');
-      return { day: d.getDate(), mon: d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '') };
+      return { day: d.getDate(), mon: d.toLocaleDateString(L().locale, { month: 'short' }).replace('.', '') };
     } catch(_) { return { day: '?', mon: '' }; }
   }
 
   // ── Messagerie client ────────────────────────────────────────────
   function msgsHTML(msgs) {
+    const t = L();
     if (!msgs.length) {
-      return '<div style="text-align:center;color:#bbb;font-size:13px;padding:14px 0;">Une question sur votre projet ? Écrivez-nous ici.</div>';
+      return '<div style="text-align:center;color:#bbb;font-size:13px;padding:14px 0;">' + t.msgEmpty + '</div>';
     }
     return msgs.map(function(m) {
       const mine = m.sender === 'client';
-      const when = (function() { try { const d = new Date(m.created_at); return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } })();
+      const when = (function() { try { const d = new Date(m.created_at); return d.toLocaleDateString(t.locale, { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } })();
       return '<div style="max-width:82%;align-self:' + (mine ? 'flex-end' : 'flex-start') + ';">' +
         '<div style="padding:9px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;' +
           (mine ? 'background:#F97316;color:#fff;' : 'background:#f4f4f4;color:#1a1a1a;') + '">' + esc(m.body) + '</div>' +
-        '<div style="font-size:10px;color:#bbb;margin:3px 6px;' + (mine ? 'text-align:right;' : '') + '">' +
-          (mine ? 'Vous' : 'Studio 33' + (m.author_name ? ' · ' + esc(m.author_name) : '')) + ' · ' + when + '</div>' +
+        '<div style="font-size:10px;color:#bbb;margin:3px 6px;' + (mine ? 'text-align:end;' : '') + '">' +
+          (mine ? t.you : 'Studio 33' + (m.author_name ? ' · ' + esc(m.author_name) : '')) + ' · ' + when + '</div>' +
       '</div>';
     }).join('');
   }
@@ -27123,38 +27253,35 @@ window.addEventListener('appinstalled', () => {
   }
 
   window.s33pSendMsg = async function() {
+    const t = L();
     const inp = document.getElementById('s33p-msg-input');
     const btn = document.getElementById('s33p-msg-send');
     if (!inp || !inp.value.trim()) return;
     const body = inp.value.trim();
-    if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+    if (btn) { btn.disabled = true; btn.textContent = t.sending; }
     try {
       const r = await fetch(FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: body }) });
       const j = await r.json().catch(function() { return null; });
       if (r.ok && j && j.ok) {
         inp.value = '';
+        if (_lastData) (_lastData.messages = _lastData.messages || []).push(j.message);
         const th = document.getElementById('s33p-msg-thread');
-        if (th) {
-          if (th.textContent.indexOf('Écrivez-nous ici') > -1) th.innerHTML = '';
-          th.insertAdjacentHTML('beforeend', msgsHTML([j.message]));
-          scrollThread();
-        }
+        if (th) { th.innerHTML = msgsHTML((_lastData && _lastData.messages) || [j.message]); scrollThread(); }
       } else {
-        alert(j && j.error === 'rate_limited'
-          ? 'Trop de messages envoyés aujourd\'hui — réessayez demain.'
-          : 'Message non envoyé — vérifiez votre connexion et réessayez.');
+        alert(j && j.error === 'rate_limited' ? t.rateLimited : t.sendFailed);
       }
     } catch(_) {
-      alert('Message non envoyé — vérifiez votre connexion et réessayez.');
+      alert(t.sendFailed);
     }
-    if (btn) { btn.disabled = false; btn.textContent = 'Envoyer'; }
+    if (btn) { btn.disabled = false; btn.textContent = t.send; }
   };
 
-  // Rafraîchir le fil toutes les 60 s (sans toucher au message en cours de frappe)
+  // Rafraîchir le fil toutes les 60 s (poll=1 : pas compté comme une visite)
   setInterval(function() {
     if (!document.getElementById('s33p-msg-thread')) return;
-    fetch(FN_URL).then(function(r) { return r.json(); }).then(function(j) {
+    fetch(FN_URL + '&poll=1').then(function(r) { return r.json(); }).then(function(j) {
       if (!j || j.error) return;
+      if (_lastData) _lastData.messages = j.messages || [];
       const th = document.getElementById('s33p-msg-thread');
       if (!th) return;
       const atBottom = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
@@ -27162,8 +27289,6 @@ window.addEventListener('appinstalled', () => {
       if (atBottom) scrollThread();
     }).catch(function() {});
   }, 60000);
-
-  setTimeout(scrollThread, 600);
 })();
 </script>
 

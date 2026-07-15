@@ -11635,26 +11635,87 @@ function renderClientPortalShare(projectId) {
       '<button onclick="s33PortalRevoke(' + p.id + ')" style="padding:8px 12px;background:#fff0f0;border:1px solid #f5c6cb;border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:#c0392b;cursor:pointer;font-family:inherit;" title="Désactiver le lien">Révoquer</button>' +
     '</div>';
 
-    // Sélection des documents/photos visibles
+    // Sélection des documents/photos visibles — regroupés par dossier :
+    // cocher le dossier entier, ou le déplier pour choisir un par un.
     html += '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:8px;">Éléments partagés avec le client</div>';
     if (!media.length) {
       html += '<div style="padding:16px;background:var(--surface2);border-radius:var(--radius);color:var(--text-faint);font-size:12px;text-align:center;">Aucun document dans ce projet. Ajoutez-en, puis cochez ceux à partager.</div>';
     } else {
-      html += '<div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);">';
-      media.forEach(m => {
-        const isImg = !(m.isPDF || m.is_pdf) && ((m.mime && m.mime.startsWith('image/')) || m.doc_type === 'photo_chantier');
-        const checked = m.client_visible ? 'checked' : '';
-        html += '<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;">' +
-          '<input type="checkbox" ' + checked + ' onchange="s33PortalToggleDoc(' + m.id + ',this.checked,' + p.id + ')" style="width:16px;height:16px;accent-color:var(--gold);flex-shrink:0;">' +
-          '<span class="mi" style="font-size:16px;color:var(--text-dim);flex-shrink:0;">' + (isImg ? 'image' : (m.isPDF || m.is_pdf) ? 'picture_as_pdf' : 'description') + '</span>' +
-          '<span style="flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHTML(m.name) + '</span>' +
-        '</label>';
+      const LEGACY = { contrat: 'Documents administratifs', doc_admin: 'Documents administratifs', certif_propriete: 'Documents administratifs', calcul_contenance: 'Documents administratifs', plan_cadastral: 'Plans / Coupes / Façades', pv_chantier: 'PV de chantier', photo_chantier: 'Photos de chantier' };
+      const folderOf = m => m.folder || LEGACY[m.doc_type] || 'Documents administratifs';
+      const groups = {};
+      media.forEach(m => { const f = folderOf(m); (groups[f] = groups[f] || []).push(m); });
+      // Ordre : les dossiers du projet d'abord, puis les autres
+      const projFolders = (Array.isArray(p.document_folders) ? p.document_folders : []).map(f => (typeof f === 'string' ? { name: f } : (f || {})));
+      const order = projFolders.map(f => f.name).filter(n => n && groups[n]);
+      Object.keys(groups).sort().forEach(n => { if (!order.includes(n)) order.push(n); });
+      const fmeta = {}; projFolders.forEach(f => { if (f.name) fmeta[f.name] = f; });
+
+      window._s33ShareFolders = order;
+      window._s33ShareOpen = window._s33ShareOpen || {};
+      window._s33ShareSome = [];
+
+      html += '<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);">';
+      order.forEach((fn, gi) => {
+        const items = groups[fn];
+        const shared = items.filter(m => m.client_visible).length;
+        const all = shared === items.length;
+        window._s33ShareSome[gi] = shared > 0 && !all;
+        const open = !!window._s33ShareOpen[fn];
+        const meta = fmeta[fn] || {};
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--surface2);cursor:pointer;user-select:none;" onclick="s33PortalGroupOpen(' + gi + ',' + p.id + ')">' +
+          '<input type="checkbox" ' + (all ? 'checked' : '') + ' data-fgroup="' + gi + '" onclick="event.stopPropagation()" onchange="s33PortalToggleFolder(' + p.id + ',' + gi + ',this.checked)" style="width:17px;height:17px;accent-color:var(--gold);flex-shrink:0;" title="Partager tout le dossier">' +
+          '<span class="mi" style="font-size:18px;color:' + (meta.color || 'var(--gold)') + ';flex-shrink:0;">' + (meta.icon || 'folder') + '</span>' +
+          '<span style="flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHTML(fn) + '</span>' +
+          '<span style="font-size:11px;color:' + (shared ? 'var(--gold)' : 'var(--text-faint)') + ';font-weight:600;flex-shrink:0;">' + shared + '/' + items.length + '</span>' +
+          '<span class="mi" style="font-size:18px;color:var(--text-faint);flex-shrink:0;transition:transform .2s;transform:rotate(' + (open ? 180 : 0) + 'deg);">expand_more</span>' +
+        '</div>';
+        if (open) {
+          items.forEach(m => {
+            const isImg = !(m.isPDF || m.is_pdf) && ((m.mime && m.mime.startsWith('image/')) || m.doc_type === 'photo_chantier');
+            html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px 8px 34px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+              '<input type="checkbox" ' + (m.client_visible ? 'checked' : '') + ' onchange="s33PortalToggleDoc(' + m.id + ',this.checked,' + p.id + ')" style="width:16px;height:16px;accent-color:var(--gold);flex-shrink:0;">' +
+              '<span class="mi" style="font-size:16px;color:var(--text-dim);flex-shrink:0;">' + (isImg ? 'image' : (m.isPDF || m.is_pdf) ? 'picture_as_pdf' : 'description') + '</span>' +
+              '<span style="flex:1;min-width:0;font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHTML(m.name) + '</span>' +
+            '</label>';
+          });
+        }
       });
       html += '</div>';
     }
-    html += '<p style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.5;">Seuls les éléments cochés sont visibles. L\'avancement et le calendrier du projet sont toujours affichés. Aucune donnée financière n\'est partagée.</p>';
+    html += '<p style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.5;">Cochez un dossier pour tout partager, ou dépliez-le pour choisir document par document. L\'avancement et le calendrier du projet sont toujours affichés. Aucune donnée financière n\'est partagée.</p>';
   }
   body.innerHTML = html;
+  // Cases « dossier » à moitié cochées quand une partie seulement est partagée
+  body.querySelectorAll('input[data-fgroup]').forEach(inp => {
+    inp.indeterminate = !!(window._s33ShareSome || [])[parseInt(inp.dataset.fgroup)];
+  });
+}
+
+// Déplier / replier un dossier dans la fenêtre de partage
+function s33PortalGroupOpen(gi, projectId) {
+  const fn = (window._s33ShareFolders || [])[gi];
+  if (fn == null) return;
+  window._s33ShareOpen = window._s33ShareOpen || {};
+  window._s33ShareOpen[fn] = !window._s33ShareOpen[fn];
+  renderClientPortalShare(projectId);
+}
+
+// Partager / retirer tout un dossier d'un coup (une seule requête)
+async function s33PortalToggleFolder(projectId, gi, visible) {
+  const fn = (window._s33ShareFolders || [])[gi];
+  if (fn == null) return;
+  const LEGACY = { contrat: 'Documents administratifs', doc_admin: 'Documents administratifs', certif_propriete: 'Documents administratifs', calcul_contenance: 'Documents administratifs', plan_cadastral: 'Plans / Coupes / Façades', pv_chantier: 'PV de chantier', photo_chantier: 'Photos de chantier' };
+  const items = (db.media || []).filter(m =>
+    String(m.projectId ?? m.project_id) === String(projectId) &&
+    ((m.folder || LEGACY[m.doc_type] || 'Documents administratifs') === fn));
+  if (!items.length) return;
+  const ids = items.map(m => m.id).join(',');
+  const ok = await sbFetch('media', 'PATCH', { client_visible: visible }, '?id=in.(' + ids + ')');
+  if (ok === false) { toast('Erreur — réessayez'); renderClientPortalShare(projectId); return; }
+  items.forEach(m => { m.client_visible = visible; });
+  renderClientPortalShare(projectId);
+  toast(visible ? 'Dossier « ' + fn + ' » partagé (' + items.length + ')' : 'Dossier « ' + fn + ' » retiré du partage');
 }
 
 async function s33PortalGenerate(projectId, regen) {
@@ -11685,6 +11746,8 @@ async function s33PortalToggleDoc(mediaId, visible, projectId) {
   if (ok === false) { toast('Erreur — réessayez', 'error'); return; }
   const m = (db.media || []).find(x => String(x.id) === String(mediaId));
   if (m) m.client_visible = visible;
+  // Mettre à jour les compteurs / cases des dossiers
+  renderClientPortalShare(projectId);
 }
 
 function s33PortalCopy(share) {

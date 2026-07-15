@@ -11683,7 +11683,7 @@ function renderClientPortalShare(projectId) {
       });
       html += '</div>';
     }
-    html += '<p style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.5;">Cochez un dossier pour tout partager, ou dépliez-le pour choisir document par document. L\'avancement et le calendrier du projet sont toujours affichés. Aucune donnée financière n\'est partagée.</p>';
+    html += '<p style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.5;">Cochez un dossier pour tout partager, ou dépliez-le pour choisir document par document. Le client voit toujours : l\'avancement, le calendrier, ses messages, et le règlement de ses honoraires (montant payé / budget du projet — jamais le détail de vos finances).</p>';
   }
   body.innerHTML = html;
   // Cases « dossier » à moitié cochées quand une partie seulement est partagée
@@ -26988,6 +26988,21 @@ window.addEventListener('appinstalled', () => {
         '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;"><span>Avancement</span><span style="font-weight:800;color:#F97316;">' + prog + '%</span></div>' +
         '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + prog + '%;background:linear-gradient(90deg,#F97316,#FB923C);border-radius:99px;"></div></div>' +
       '</div>' +
+      // Jauge de règlement des honoraires (payé / budget)
+      (function() {
+        const f = data.finance;
+        if (!f || !(f.budget > 0)) return '';
+        const money = n => (Math.round(n) || 0).toLocaleString('fr-MA');
+        const pctPaid = Math.max(0, Math.min(100, Math.round((f.paid / f.budget) * 100)));
+        return '<div style="margin-top:18px;">' +
+          '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;flex-wrap:wrap;gap:4px;">' +
+            '<span>Règlement des honoraires</span>' +
+            '<span style="font-weight:800;color:#16a34a;">' + money(f.paid) + ' / ' + money(f.budget) + ' MAD</span>' +
+          '</div>' +
+          '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + pctPaid + '%;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:99px;"></div></div>' +
+          '<div style="font-size:10.5px;color:#999;margin-top:5px;">' + pctPaid + '% du budget d\'honoraires réglé' + (f.budget > f.paid ? ' · reste ' + money(f.budget - f.paid) + ' MAD' : ' · solde réglé, merci !') + '</div>' +
+        '</div>';
+      })() +
     '</div>';
 
     // Prochaines étapes
@@ -27003,7 +27018,7 @@ window.addEventListener('appinstalled', () => {
             '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:600;">' + esc(e.title || 'Événement') + '</div>' +
               (e.time_start ? '<div style="font-size:11px;color:#999;">' + esc(e.time_start) + '</div>' : '') + '</div>' +
           '</div>';
-        }).join(''));
+        }).join(''), { open: true, count: data.events.length });
     }
 
     // Documents
@@ -27015,7 +27030,7 @@ window.addEventListener('appinstalled', () => {
             '<div style="flex:1;min-width:0;font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(dc.name) + '</div>' +
             '<div style="font-size:12px;color:#F97316;font-weight:600;flex-shrink:0;">Ouvrir →</div>' +
           '</a>';
-        }).join(''));
+        }).join(''), { count: data.docs.length });
     }
 
     // Photos
@@ -27026,7 +27041,7 @@ window.addEventListener('appinstalled', () => {
           return '<a href="' + (ph.src || '#') + '" target="_blank" rel="noopener" style="display:block;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#f0f0f0;">' +
             '<img src="' + (ph.src || '') + '" alt="' + esc(ph.name) + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">' +
           '</a>';
-        }).join('') + '</div>');
+        }).join('') + '</div>', { count: data.photos.length });
     }
 
     if (!(data.events||[]).length && !(data.docs||[]).length && !(data.photos||[]).length) {
@@ -27040,18 +27055,43 @@ window.addEventListener('appinstalled', () => {
         '<textarea id="s33p-msg-input" rows="2" placeholder="Écrivez votre message à votre architecte…" style="flex:1;border:1px solid #e5e5e5;border-radius:12px;padding:10px 12px;font-family:inherit;font-size:14px;resize:none;outline:none;box-sizing:border-box;"></textarea>' +
         '<button id="s33p-msg-send" onclick="s33pSendMsg()" style="background:#F97316;color:#fff;border:none;border-radius:12px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">Envoyer</button>' +
       '</div>' +
-      '<div style="font-size:10.5px;color:#bbb;margin-top:6px;">Votre message est transmis à l\'équipe Studio 33 — la réponse s\'affichera ici.</div>');
+      '<div style="font-size:10.5px;color:#bbb;margin-top:6px;">Votre message est transmis à l\'équipe Studio 33 — la réponse s\'affichera ici.</div>', { open: true, count: (data.messages || []).length });
 
     html += '<div style="text-align:center;margin-top:34px;font-size:11px;color:#bbb;">Studio 33 Architects · Agadir, Maroc<br>Espace en lecture seule — mis à jour en temps réel</div>';
     host.innerHTML = shell(html);
   }
 
-  function section(title, inner) {
-    return '<div style="margin-bottom:20px;">' +
-      '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#F97316;margin-bottom:8px;padding-left:2px;">' + esc(title) + '</div>' +
-      '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:16px 18px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' + inner + '</div>' +
+  // Sections en menus déroulants : indispensable quand il y a beaucoup
+  // de rendus 3D / photos de chantier. L'état ouvert/fermé est mémorisé
+  // sur l'appareil du client.
+  function section(title, inner, opts) {
+    opts = opts || {};
+    const key = 's33p_acc_' + title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    let open = !!opts.open;
+    try { const v = localStorage.getItem(key); if (v !== null) open = v === '1'; } catch(_) {}
+    return '<div style="margin-bottom:12px;">' +
+      '<div onclick="s33pAccToggle(this,\'' + key + '\')" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #eee;border-radius:14px;padding:13px 16px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.05);user-select:none;">' +
+        '<span style="flex:1;font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#F97316;">' + esc(title) + '</span>' +
+        (opts.count != null ? '<span style="font-size:11.5px;color:#999;font-weight:700;flex-shrink:0;">' + opts.count + '</span>' : '') +
+        '<span class="mi s33p-chev" style="font-size:20px;color:#bbb;flex-shrink:0;transition:transform .2s;transform:rotate(' + (open ? 180 : 0) + 'deg);">expand_more</span>' +
+      '</div>' +
+      '<div class="s33p-accbody" style="' + (open ? '' : 'display:none;') + 'background:#fff;border:1px solid #eee;border-radius:14px;padding:14px 16px;margin-top:8px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' + inner + '</div>' +
     '</div>';
   }
+
+  window.s33pAccToggle = function(head, key) {
+    const body = head.parentElement.querySelector('.s33p-accbody');
+    const chev = head.querySelector('.s33p-chev');
+    if (!body) return;
+    const open = body.style.display === 'none';
+    body.style.display = open ? '' : 'none';
+    if (chev) chev.style.transform = 'rotate(' + (open ? 180 : 0) + 'deg)';
+    try { localStorage.setItem(key, open ? '1' : '0'); } catch(_) {}
+    if (open) {
+      const th = document.getElementById('s33p-msg-thread');
+      if (th && body.contains(th)) th.scrollTop = th.scrollHeight;
+    }
+  };
 
   function fmtDate(s) {
     try {

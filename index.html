@@ -12363,7 +12363,13 @@ async function clickNotif(id, page, linkId) {
   const mobileSheet = document.getElementById('mobile-notif-overlay');
   if (mobileSheet && mobileSheet.classList.contains('open')) mobileSheet.classList.remove('open');
   else toggleNotifPanel();
-  if (page) navigate(page);
+  if (page) {
+    // Ouvrir directement le projet visé (ex : notification « Message client »)
+    if (page === 'project-detail' && linkId && (db.projects || []).find(p => String(p.id) === String(linkId))) {
+      window._currentProjectDetailId = parseInt(linkId);
+    }
+    navigate(page);
+  }
 }
 
 async function markAllNotifsRead() {
@@ -26964,6 +26970,15 @@ window.addEventListener('appinstalled', () => {
       html += '<div style="text-align:center;padding:30px;color:#aaa;font-size:13px;">Aucun élément partagé pour le moment. Votre architecte mettra cet espace à jour prochainement.</div>';
     }
 
+    // Messages client <-> cabinet (historique complet conservé)
+    html += section('Messages',
+      '<div id="s33p-msg-thread" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px;">' + msgsHTML(data.messages || []) + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:12px;align-items:flex-end;">' +
+        '<textarea id="s33p-msg-input" rows="2" placeholder="Écrivez votre message à votre architecte…" style="flex:1;border:1px solid #e5e5e5;border-radius:12px;padding:10px 12px;font-family:inherit;font-size:14px;resize:none;outline:none;box-sizing:border-box;"></textarea>' +
+        '<button id="s33p-msg-send" onclick="s33pSendMsg()" style="background:#F97316;color:#fff;border:none;border-radius:12px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">Envoyer</button>' +
+      '</div>' +
+      '<div style="font-size:10.5px;color:#bbb;margin-top:6px;">Votre message est transmis à l\'équipe Studio 33 — la réponse s\'affichera ici.</div>');
+
     html += '<div style="text-align:center;margin-top:34px;font-size:11px;color:#bbb;">Studio 33 Architects · Agadir, Maroc<br>Espace en lecture seule — mis à jour en temps réel</div>';
     host.innerHTML = shell(html);
   }
@@ -26981,6 +26996,71 @@ window.addEventListener('appinstalled', () => {
       return { day: d.getDate(), mon: d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '') };
     } catch(_) { return { day: '?', mon: '' }; }
   }
+
+  // ── Messagerie client ────────────────────────────────────────────
+  function msgsHTML(msgs) {
+    if (!msgs.length) {
+      return '<div style="text-align:center;color:#bbb;font-size:13px;padding:14px 0;">Une question sur votre projet ? Écrivez-nous ici.</div>';
+    }
+    return msgs.map(function(m) {
+      const mine = m.sender === 'client';
+      const when = (function() { try { const d = new Date(m.created_at); return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } })();
+      return '<div style="max-width:82%;align-self:' + (mine ? 'flex-end' : 'flex-start') + ';">' +
+        '<div style="padding:9px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;' +
+          (mine ? 'background:#F97316;color:#fff;' : 'background:#f4f4f4;color:#1a1a1a;') + '">' + esc(m.body) + '</div>' +
+        '<div style="font-size:10px;color:#bbb;margin:3px 6px;' + (mine ? 'text-align:right;' : '') + '">' +
+          (mine ? 'Vous' : 'Studio 33' + (m.author_name ? ' · ' + esc(m.author_name) : '')) + ' · ' + when + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function scrollThread() {
+    const th = document.getElementById('s33p-msg-thread');
+    if (th) th.scrollTop = th.scrollHeight;
+  }
+
+  window.s33pSendMsg = async function() {
+    const inp = document.getElementById('s33p-msg-input');
+    const btn = document.getElementById('s33p-msg-send');
+    if (!inp || !inp.value.trim()) return;
+    const body = inp.value.trim();
+    if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+    try {
+      const r = await fetch(FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: body }) });
+      const j = await r.json().catch(function() { return null; });
+      if (r.ok && j && j.ok) {
+        inp.value = '';
+        const th = document.getElementById('s33p-msg-thread');
+        if (th) {
+          if (th.textContent.indexOf('Écrivez-nous ici') > -1) th.innerHTML = '';
+          th.insertAdjacentHTML('beforeend', msgsHTML([j.message]));
+          scrollThread();
+        }
+      } else {
+        alert(j && j.error === 'rate_limited'
+          ? 'Trop de messages envoyés aujourd\'hui — réessayez demain.'
+          : 'Message non envoyé — vérifiez votre connexion et réessayez.');
+      }
+    } catch(_) {
+      alert('Message non envoyé — vérifiez votre connexion et réessayez.');
+    }
+    if (btn) { btn.disabled = false; btn.textContent = 'Envoyer'; }
+  };
+
+  // Rafraîchir le fil toutes les 60 s (sans toucher au message en cours de frappe)
+  setInterval(function() {
+    if (!document.getElementById('s33p-msg-thread')) return;
+    fetch(FN_URL).then(function(r) { return r.json(); }).then(function(j) {
+      if (!j || j.error) return;
+      const th = document.getElementById('s33p-msg-thread');
+      if (!th) return;
+      const atBottom = th.scrollHeight - th.scrollTop - th.clientHeight < 80;
+      th.innerHTML = msgsHTML(j.messages || []);
+      if (atBottom) scrollThread();
+    }).catch(function() {});
+  }, 60000);
+
+  setTimeout(scrollThread, 600);
 })();
 </script>
 
@@ -28097,6 +28177,123 @@ window.addEventListener('appinstalled', () => {
 })();
 </script>
 
+<!-- ═══ MESSAGES CLIENT (fil par projet, réponse depuis la fiche) ═══ -->
+<script>
+(function() {
+  'use strict';
+
+  let _cmPid = null;
+  let _cmMsgs = [];
+  let _cmSending = false;
+
+  const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
+  const fmtDT = iso => { try { const d = new Date(iso); return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } };
+
+  async function load(pid) {
+    const rows = await sbGet('client_messages', '?project_id=eq.' + pid + '&order=created_at&limit=300');
+    _cmMsgs = Array.isArray(rows) ? rows : [];
+  }
+
+  function unreadCount() {
+    return _cmMsgs.filter(m => m.sender === 'client' && !m.read_by_studio).length;
+  }
+
+  function updateAccBadge() {
+    const cnt = document.querySelector('#pj-acc-clientmsgs .pj-acc-count');
+    if (!cnt) return;
+    const u = unreadCount();
+    cnt.innerHTML = _cmMsgs.length
+      ? '· ' + _cmMsgs.length + ' message' + (_cmMsgs.length > 1 ? 's' : '') +
+        (u ? ' <span style="color:#F97316;font-weight:800;">· ' + u + ' non lu' + (u > 1 ? 's' : '') + '</span>' : '')
+      : '';
+  }
+
+  function render() {
+    const box = document.getElementById('s33-clientmsgs-box');
+    if (!box) return;
+    const pid = _cmPid;
+    box.innerHTML =
+      '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:30px 0 14px;">' +
+        '<div class="section-title" style="margin:0;">Messages client</div>' +
+      '</div>' +
+      '<div class="ch-card">' +
+        '<div id="cm-thread" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px;">' +
+        (_cmMsgs.length ? _cmMsgs.map(m => {
+          const studio = m.sender === 'studio';
+          return '<div style="max-width:82%;align-self:' + (studio ? 'flex-end' : 'flex-start') + ';">' +
+            '<div style="padding:9px 13px;border-radius:14px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;' +
+              (studio ? 'background:var(--gold);color:#fff;' : 'background:var(--surface2);color:var(--text);border:1px solid var(--border);') + '">' + esc(m.body) + '</div>' +
+            '<div style="font-size:10px;color:var(--text-faint);margin:3px 6px;' + (studio ? 'text-align:right;' : '') + '">' +
+              esc(m.author_name || (studio ? 'Studio 33' : 'Client')) + ' · ' + fmtDT(m.created_at) + '</div>' +
+          '</div>';
+        }).join('') :
+        '<div style="text-align:center;color:var(--text-faint);font-size:12.5px;padding:16px 0;">Aucun message. Le client peut vous écrire depuis son espace client — toute la conversation restera archivée ici.</div>') +
+        '</div>' +
+        '<div style="display:flex;gap:8px;margin-top:12px;align-items:flex-end;">' +
+          '<textarea id="cm-input" rows="2" placeholder="Répondre au client…" style="flex:1;resize:none;box-sizing:border-box;"></textarea>' +
+          '<button class="btn btn-gold" style="flex-shrink:0;" onclick="s33CmSend(' + pid + ')"><span class="mi mi-sm">send</span> Envoyer</button>' +
+        '</div>' +
+        '<div style="font-size:10.5px;color:var(--text-faint);margin-top:6px;">Le client verra la réponse dans son espace client, signée de votre nom.</div>' +
+      '</div>';
+    const th = document.getElementById('cm-thread');
+    if (th) th.scrollTop = th.scrollHeight;
+    updateAccBadge();
+  }
+
+  async function markRead(pid) {
+    if (!unreadCount()) return;
+    await sbFetch('client_messages', 'PATCH', { read_by_studio: true },
+      '?project_id=eq.' + pid + '&sender=eq.client&read_by_studio=is.false');
+    _cmMsgs.forEach(m => { if (m.sender === 'client') m.read_by_studio = true; });
+    updateAccBadge();
+  }
+
+  window.s33CmSend = async function(pid) {
+    const inp = document.getElementById('cm-input');
+    if (!inp || !inp.value.trim() || _cmSending) return;
+    _cmSending = true;
+    const body = inp.value.trim();
+    try {
+      const ins = await sbInsertOrThrow('client_messages', {
+        project_id: pid, sender: 'studio',
+        author_name: (window.currentUser || {}).name || 'Studio 33',
+        body, read_by_studio: true, read_by_client: false
+      });
+      if (ins && ins[0]) _cmMsgs.push(ins[0]);
+      inp.value = '';
+      render();
+    } catch(e) {
+      toast('Message non envoyé — réessayez');
+    }
+    _cmSending = false;
+  };
+
+  // Marquer lu quand on ouvre la section
+  document.addEventListener('click', e => {
+    const head = e.target.closest && e.target.closest('#pj-acc-clientmsgs .proj-tasks-header');
+    if (head && _cmPid != null) setTimeout(() => markRead(_cmPid), 300);
+  });
+
+  const _origRPD = window.renderProjectDetailPage;
+  window.renderProjectDetailPage = function() {
+    if (typeof _origRPD === 'function') { try { _origRPD.apply(this, arguments); } catch(e) { console.error(e); } }
+    const host = document.getElementById('project-detail-content');
+    const pid = window._currentProjectDetailId;
+    if (!host || pid == null || !db.projects.find(x => x.id === pid)) return;
+    if (!document.getElementById('s33-clientmsgs-box')) {
+      host.insertAdjacentHTML('beforeend', '<div id="s33-clientmsgs-box"></div>');
+    }
+    _cmPid = pid;
+    document.getElementById('s33-clientmsgs-box').innerHTML =
+      '<div class="section-title" style="margin:30px 0 14px;">Messages client</div>' +
+      '<div style="font-size:12px;color:var(--text-faint);">Chargement…</div>';
+    load(pid).then(render).catch(e => console.error('client messages', e));
+  };
+
+  console.log('✓ Messages client loaded');
+})();
+</script>
+
 <!-- ═══ FICHE PROJET : SECTIONS EN MENUS DÉROULANTS ═══ -->
 <script>
 (function() {
@@ -28147,7 +28344,7 @@ window.addEventListener('appinstalled', () => {
           '<span class="mi chev">expand_more</span>' +
           '<span class="mi" style="color:var(--gold);font-size:18px;">' + icon + '</span>' +
           '<span style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:17px;font-weight:600;letter-spacing:.5px;">' + label + '</span>' +
-          (count ? '<span class="pj-acc-count">· ' + count + '</span>' : '') +
+          '<span class="pj-acc-count">' + (count ? '· ' + count : '') + '</span>' +
         '</span>' +
       '</div>' +
       '<div class="pj-acc-body" style="' + (open ? '' : 'display:none;') + '"></div>';
@@ -28191,6 +28388,7 @@ window.addEventListener('appinstalled', () => {
     wrap(document.getElementById('s33-honoraires-box'), 'honoraires', 'Honoraires — échéancier', 'payments', '', true);
     const nRep = (db.dailyReports || []).filter(r => String(r.project_id) === String(pid)).length;
     wrap(document.getElementById('s33-proj-reports-box'), 'rapports', 'Rapports de l\'équipe', 'assignment', nRep ? nRep + '+' : '', true);
+    wrap(document.getElementById('s33-clientmsgs-box'), 'clientmsgs', 'Messages client', 'mail', '', true);
   };
 
   console.log('✓ Accordéons fiche projet loaded');

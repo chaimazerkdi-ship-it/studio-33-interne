@@ -5392,32 +5392,36 @@
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
-        <label>Montant HT (MAD)</label>
+        <label>Montant TTC (MAD)</label>
         <input type="number" id="i-amount" placeholder="0" oninput="calcTVA()">
       </div>
       <div class="form-row" style="margin-bottom:0">
-        <label>TVA (20%) — Auto</label>
+        <label>dont TVA (20%) — Auto</label>
         <input type="text" id="i-tva" readonly style="opacity:0.6;">
       </div>
     </div>
     <div class="form-row">
-      <label>Total TTC (MAD)</label>
+      <label>Montant HT (MAD) — Auto</label>
       <input type="text" id="i-ttc" readonly style="color:var(--gold);font-weight:500;">
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
         <label>Date de facturation</label>
-        <input type="date" id="i-date">
+        <input type="date" id="i-date" onchange="s33SyncDueDate()">
       </div>
       <div class="form-row" style="margin-bottom:0">
-        <label>Mode de paiement prévu</label>
-        <select id="i-payment-method">
-          <option value="">— Non spécifié —</option>
-          <option value="Virement">Virement bancaire</option>
-          <option value="Chèque">Chèque</option>
-          <option value="Espèces">Espèces</option>
-        </select>
+        <label>Échéance de paiement</label>
+        <input type="date" id="i-due">
       </div>
+    </div>
+    <div class="form-row">
+      <label>Mode de paiement prévu</label>
+      <select id="i-payment-method">
+        <option value="">— Non spécifié —</option>
+        <option value="Virement">Virement bancaire</option>
+        <option value="Chèque">Chèque</option>
+        <option value="Espèces">Espèces</option>
+      </select>
     </div>
     <div class="form-actions">
       <button class="btn btn-outline" onclick="closeModal('invoice-modal')">Annuler</button>
@@ -7638,6 +7642,8 @@ function openModal(id) {
     document.getElementById('i-object').value = '';
     document.getElementById('i-amount').value = '';
     document.getElementById('i-date').value = new Date().toISOString().split('T')[0];
+    const idue = document.getElementById('i-due');
+    if (idue) { idue.value = ''; s33SyncDueDate(); }
     document.getElementById('i-tva').value = '';
     document.getElementById('i-ttc').value = '';
     const ipm = document.getElementById('i-payment-method'); if(ipm) ipm.value = '';
@@ -9771,24 +9777,36 @@ async function pvGeneratePDF() {
 
 // ===== INVOICES =====
 function calcTVA() {
-  const ht = parseFloat(document.getElementById('i-amount').value) || 0;
-  const tva = ht * 0.20;
-  const ttc = ht + tva;
+  // Le montant saisi est TTC ; la TVA (20 %) et le HT sont calculés à rebours
+  const ttc = parseFloat(document.getElementById('i-amount').value) || 0;
+  const ht = ttc / 1.2;
+  const tva = ttc - ht;
   document.getElementById('i-tva').value = formatNum(tva) + ' MAD';
-  document.getElementById('i-ttc').value = formatNum(ttc) + ' MAD';
+  document.getElementById('i-ttc').value = formatNum(ht) + ' MAD';
+}
+
+// Échéance de paiement par défaut : date de facturation + 15 jours
+function s33SyncDueDate(force) {
+  const dateEl = document.getElementById('i-date');
+  const dueEl = document.getElementById('i-due');
+  if (!dateEl || !dueEl || !dateEl.value) return;
+  if (dueEl.value && !force) return;
+  const d = new Date(dateEl.value + 'T00:00');
+  d.setDate(d.getDate() + 15);
+  dueEl.value = d.toISOString().slice(0, 10);
 }
 
 function renderInvoices() {
   const pending = db.invoices.filter(i => i.status === 'En attente');
   const paid = db.invoices.filter(i => i.status === 'Payée');
-  const pendingTotal = pending.reduce((s, i) => s + i.amount * 1.2, 0);
+  const pendingTotal = pending.reduce((s, i) => s + i.amount, 0);
 
   const statsEl = document.getElementById('invoice-stats');
   if (statsEl) {
     statsEl.innerHTML = `
       <div class="stat-card">
         <div class="stat-label">Total facturé (TTC)</div>
-        <div class="stat-value gold" style="font-size:26px;">${formatNum(db.invoices.reduce((s,i)=>s+i.amount*1.2,0))}</div>
+        <div class="stat-value gold" style="font-size:26px;">${formatNum(db.invoices.reduce((s,i)=>s+i.amount,0))}</div>
         <div class="stat-sub">MAD</div>
       </div>
       <div class="stat-card">
@@ -9831,23 +9849,30 @@ function renderInvoices() {
     const client = db.clients.find(c => c.id == key);
     const clientName = client ? client.name : 'Sans client';
     const invList = groups[key];
-    const totalTTC = invList.reduce((s, i) => s + i.amount * 1.2, 0);
+    const totalTTC = invList.reduce((s, i) => s + i.amount, 0);
     const pendingCount = invList.filter(i => i.status === 'En attente').length;
     const paidCount = invList.filter(i => i.status === 'Payée').length;
     const groupId = 'inv-group-' + key;
 
     const rows = invList.map(inv => {
       const project = db.projects.find(p => p.id === inv.projectId);
-      const tva = inv.amount * 0.20;
-      const ttc = inv.amount + tva;
-      return `<tr>
+      // Le montant saisi est TTC : HT et TVA sont calculés à rebours
+      const ttc = inv.amount;
+      const ht = ttc / 1.2;
+      const tva = ttc - ht;
+      const todayISO = new Date().toISOString().slice(0, 10);
+      const isLate = inv.status === 'En attente' && inv.due_date && inv.due_date < todayISO;
+      const lateDays = isLate ? Math.round((new Date(todayISO) - new Date(inv.due_date)) / 86400000) : 0;
+      return `<tr${isLate ? ' style="background:rgba(220,50,50,.04);"' : ''}>
         <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-dim);">${inv.num}</td>
         <td style="font-size:12px;">${project ? project.name : '—'}</td>
-        <td style="font-size:13px;font-weight:500;">${formatNum(inv.amount)} MAD</td>
+        <td style="font-size:12px;color:var(--text-dim);">${formatNum(ht)} MAD</td>
         <td style="font-size:11px;color:var(--text-faint);">${formatNum(tva)} MAD</td>
         <td style="font-size:13px;color:var(--gold);font-weight:600;">${formatNum(ttc)} MAD</td>
         <td>
           <span class="badge ${inv.status === 'Payée' ? 'badge-green' : 'badge-red'}" style="cursor:pointer;font-size:10px;" onclick="toggleInvoiceStatus(${inv.id})">${inv.status}</span>
+          ${isLate ? `<div style="font-size:10px;color:#c0392b;font-weight:800;margin-top:4px;"><span class="mi" style="font-size:11px;vertical-align:-2px;">warning</span> En retard de ${lateDays} j</div>`
+            : (inv.status === 'En attente' && inv.due_date ? `<div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Échéance le ${new Date(inv.due_date + 'T00:00').toLocaleDateString('fr-MA',{day:'numeric',month:'short'})}</div>` : '')}
           ${inv.paid_date ? `<div style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap;">
           <span style="font-size:10px;color:var(--text-dim);">${new Date(inv.paid_date).toLocaleDateString('fr-MA',{day:'numeric',month:'short',year:'numeric'})}</span>
           ${inv.payment_method ? `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:99px;background:${inv.payment_method==='Virement'?'#e8f4fd':inv.payment_method==='Chèque'?'#fdf6e8':'#edfbf0'};color:${inv.payment_method==='Virement'?'#1a6fa5':inv.payment_method==='Chèque'?'#a07d0a':'#1a7a3c'};">${inv.payment_method}</span>` : ''}
@@ -9855,6 +9880,7 @@ function renderInvoices() {
         </td>
         <td>
           <div style="display:flex;gap:6px;">
+            ${isLate ? `<button class="btn btn-ghost" onclick="s33RelancerFacture(${inv.id})" style="font-size:10px;padding:4px 10px;color:#1da851;border:1px solid rgba(37,211,102,.4);background:rgba(37,211,102,.08);" title="Relancer le client par WhatsApp"><span class="mi mi-sm">send</span> Relancer</button>` : ''}
             <button class="btn btn-ghost" onclick="editInvoice(${inv.id})" style="font-size:10px;padding:4px 10px;"><span class="mi mi-sm">edit</span></button>
             <button class="btn btn-ghost" onclick="printInvoice(${inv.id})" style="font-size:10px;padding:4px 10px;">PDF</button>
             <button class="btn btn-danger" onclick="deleteInvoice(${inv.id})" style="font-size:10px;padding:4px 10px;"><span class="mi mi-sm">delete</span></button>
@@ -9929,6 +9955,8 @@ function editInvoice(id) {
   document.getElementById('i-object').value = inv.object || '';
   document.getElementById('i-amount').value = inv.amount || '';
   document.getElementById('i-date').value = inv.date || '';
+  const idue = document.getElementById('i-due');
+  if (idue) idue.value = inv.due_date || '';
   const ipm = document.getElementById('i-payment-method');
   if (ipm) ipm.value = inv.payment_method || localStorage.getItem('s33_paymethod_' + id) || '';
   calcTVA();
@@ -9942,8 +9970,9 @@ async function saveInvoice() {
     client_id: parseInt(document.getElementById('i-client').value),
     project_id: parseInt(document.getElementById('i-project').value),
     object: document.getElementById('i-object').value.trim(),
-    amount: parseFloat(document.getElementById('i-amount').value) || 0,
+    amount: parseFloat(document.getElementById('i-amount').value) || 0, // TTC
     date: document.getElementById('i-date').value,
+    due_date: document.getElementById('i-due')?.value || null,
     payment_method: document.getElementById('i-payment-method')?.value || null,
   };
   if (!obj.object || !obj.amount) return;
@@ -10641,13 +10670,38 @@ let devisPhases = [
 function initDevis() {
   const sel = document.getElementById('dv-client');
   if (!sel) return;
-  sel.innerHTML = db.clients.map(c => `<option value="${escHTML(c.name)}">${escHTML(c.name)}</option>`).join('');
+  // Devis pour un NOUVEAU contact : il devient automatiquement un prospect
+  const cur = sel.value;
+  sel.innerHTML = '<option value="__new__">+ Nouveau client / prospect…</option>' +
+    db.clients.map(c => `<option value="${escHTML(c.name)}">${escHTML(c.name)}</option>`).join('');
+  if (cur && cur !== '__new__') sel.value = cur;
+  else if (db.clients.length) sel.value = db.clients[0].name;
+  // Champ de saisie du nouveau nom (affiché quand « + Nouveau » est choisi)
+  if (!document.getElementById('dv-client-new')) {
+    sel.insertAdjacentHTML('afterend',
+      '<input type="text" id="dv-client-new" placeholder="Nom du nouveau client / prospect" style="display:none;margin-top:6px;width:100%;box-sizing:border-box;">');
+    sel.addEventListener('change', function() {
+      const inp = document.getElementById('dv-client-new');
+      if (inp) {
+        inp.style.display = sel.value === '__new__' ? 'block' : 'none';
+        if (sel.value === '__new__') inp.focus();
+      }
+    });
+  }
   if (!document.getElementById('dv-date').value) {
     document.getElementById('dv-date').value = new Date().toISOString().split('T')[0];
   }
   renderPhasesEditor();
   updateDevis();
   renderDevisList();
+}
+
+// Nom du client du devis (liste existante ou saisie libre « nouveau »)
+function s33DvClientName() {
+  const sel = document.getElementById('dv-client');
+  if (!sel) return '';
+  if (sel.value === '__new__') return (document.getElementById('dv-client-new')?.value || '').trim();
+  return sel.value || '';
 }
 
 function renderPhasesEditor() {
@@ -10680,7 +10734,7 @@ function removeDevisPhase(i) {
 
 function updateDevis() {
   const ref = document.getElementById('dv-ref')?.value || '';
-  const clientName = document.getElementById('dv-client')?.value || '';
+  const clientName = (typeof s33DvClientName === 'function' ? s33DvClientName() : (document.getElementById('dv-client')?.value || ''));
   const dateVal = document.getElementById('dv-date')?.value || '';
   const projet = document.getElementById('dv-projet')?.value || '';
   const ht = parseFloat(document.getElementById('dv-ht')?.value) || 0;
@@ -10802,7 +10856,10 @@ function updateDevis() {
 
 async function saveDevis() {
   const ref = document.getElementById('dv-ref').value.trim();
-  const clientName = document.getElementById('dv-client').value;
+  const clientName = s33DvClientName();
+  if (document.getElementById('dv-client').value === '__new__' && !clientName) {
+    toast('Saisissez le nom du nouveau client / prospect'); return;
+  }
   const dateVal = document.getElementById('dv-date').value;
   const projet = document.getElementById('dv-projet').value.trim();
   const ht = parseFloat(document.getElementById('dv-ht').value) || 0;
@@ -10829,6 +10886,25 @@ async function saveDevis() {
     const res = await sbInsert('devis', sbObj);
     if (res && res[0]) currentDevisId = res[0].id;
     toast('Devis sauvegardé — ' + num);
+
+    // Chaîne de l'argent : un devis pour un inconnu crée le prospect
+    try {
+      const nmLc = (clientName || '').trim().toLowerCase();
+      if (nmLc &&
+          !db.clients.some(c => (c.name || '').trim().toLowerCase() === nmLc) &&
+          !(db.prospects || []).some(p => (p.name || '').trim().toLowerCase() === nmLc)) {
+        const insPr = await sbInsert('prospects', {
+          name: clientName.trim(), stage: 'Proposition envoyée', source: 'Devis ' + num,
+          estimated_budget: ttc, notes: 'Créé automatiquement depuis le devis ' + num,
+          project_type: projet.slice(0, 80)
+        });
+        if (insPr && insPr[0]) {
+          if (!db.prospects) db.prospects = [];
+          db.prospects.push(insPr[0]);
+          toast('Prospect « ' + clientName.trim() + ' » créé dans le pipeline');
+        }
+      }
+    } catch(_) {}
   }
 
   await loadDB();
@@ -10870,7 +10946,7 @@ function renderDevisList() {
       </td>
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="btn btn-ghost" onclick="loadDevis(${d.id})" style="font-size:10px;">Ouvrir</button>
-        ${d.status === 'Accepté' ? `<button class="btn btn-outline" onclick="convertDevisToInvoice(${d.id})" style="font-size:10px;color:var(--green);border-color:rgba(110,201,138,0.3);">→ Facture</button>` : ''}
+        ${d.status !== 'Accepté' && d.status !== 'Refusé' ? `<button class="btn btn-outline" onclick="convertDevisToInvoice(${d.id})" style="font-size:10px;color:var(--green);border-color:rgba(110,201,138,0.3);"><span class="mi" style="font-size:12px;">verified</span> Valider</button>` : ''}
         <button class="btn btn-danger" onclick="deleteDevis(${d.id})">×</button>
       </td>
     </tr>`;
@@ -10885,6 +10961,12 @@ function loadDevis(id) {
 
   document.getElementById('dv-ref').value = d.ref;
   document.getElementById('dv-client').value = d.clientName;
+  // Client absent de la liste (prospect) → mode saisie libre
+  if (document.getElementById('dv-client').value !== d.clientName) {
+    document.getElementById('dv-client').value = '__new__';
+    const dcn = document.getElementById('dv-client-new');
+    if (dcn) { dcn.value = d.clientName || ''; dcn.style.display = 'block'; }
+  }
   document.getElementById('dv-date').value = d.dateVal;
   document.getElementById('dv-projet').value = d.projet;
   document.getElementById('dv-ht').value = d.ht;
@@ -10901,6 +10983,12 @@ function loadDevis(id) {
 }
 
 async function changeDevisStatus(id, status) {
+  // Passer un devis en « Accepté » déclenche la validation complète
+  // (client + projet + échéancier + première facture)
+  if (status === 'Accepté') {
+    const d = db.devis.find(x => x.id === id);
+    if (d && d.status !== 'Accepté') { renderDevisList(); convertDevisToInvoice(id); return; }
+  }
   await sbUpdate('devis', id, {status});
   const d = db.devis.find(x => x.id === id);
   if (d) d.status = status;
@@ -10914,30 +11002,192 @@ async function deleteDevis(id) {
   await s33SoftDelete('devis', dv, () => renderDevisList());
 }
 
+// ── CHAÎNE DE L'ARGENT ────────────────────────────────────────────
+// Devis validé → client (créé si besoin) → projet (budget = TTC devis)
+// → échéancier d'honoraires (barème trésorerie) → 1re facture (acompte
+// signature, échéance +15 j). Les étapes suivantes se facturent en un
+// clic depuis l'échéancier de la fiche projet.
+const S33_BAREME = [
+  { label: 'Signature du contrat',                          pct: 30 },
+  { label: 'Dépôt de la demande d\'autorisation',           pct: 20 },
+  { label: 'Obtention de l\'autorisation (avis conforme)',  pct: 15 },
+  { label: 'Dossier d\'exécution & consultation entreprises', pct: 15 },
+  { label: 'Suivi de chantier — situation intermédiaire',   pct: 15 },
+  { label: 'Réception & conformité',                        pct: 5 }
+];
+const S33_DELAI_PAIEMENT_J = 15;
+
+function s33DevisTTC(d) {
+  const t = parseFloat(d.ttc);
+  if (t > 0) return t;
+  const ht = parseFloat(d.ht) || 0;
+  return ht * (1 + (parseFloat(d.tvaRate ?? d.tva_rate) || 20) / 100);
+}
+
+// Relance d'une facture impayée par WhatsApp (message pré-rempli)
+function s33RelancerFacture(invoiceId) {
+  const inv = db.invoices.find(i => i.id === invoiceId);
+  if (!inv) return;
+  const cli = db.clients.find(c => c.id === inv.clientId);
+  const digits = cli && cli.phone ? String(cli.phone).replace(/\D/g, '') : '';
+  if (!digits) { toast('Ajoutez le numéro de téléphone dans la fiche client'); return; }
+  const intl = digits.startsWith('0') ? '212' + digits.slice(1) : digits;
+  const dueTxt = inv.due_date ? new Date(inv.due_date + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const txt = encodeURIComponent(
+    'Bonjour' + (cli ? ' ' + cli.name : '') + ',\n\n' +
+    'Sauf erreur de notre part, la facture ' + (inv.num || '') + ' (' + formatNum(inv.amount) + ' MAD TTC — ' + (inv.object || '') + ')' +
+    (dueTxt ? ', arrivée à échéance le ' + dueTxt + ',' : '') + ' reste en attente de règlement.\n\n' +
+    'Merci de procéder au paiement ou de nous contacter.\n\nStudio 33 Architects');
+  window.open('https://wa.me/' + intl + '?text=' + txt, '_blank');
+}
+
+function s33DueDateFrom(dateStr, days) {
+  const d = dateStr ? new Date(dateStr + 'T00:00') : new Date();
+  d.setDate(d.getDate() + (days || S33_DELAI_PAIEMENT_J));
+  return d.toISOString().slice(0, 10);
+}
+
+// Répartition TTC selon le barème — la dernière ligne absorbe l'arrondi
+function s33BaremeMontants(ttc) {
+  const rows = S33_BAREME.map(b => ({ label: b.label, pct: b.pct, montant: Math.round(ttc * b.pct / 100) }));
+  const sum = rows.reduce((s, r) => s + r.montant, 0);
+  rows[rows.length - 1].montant += Math.round(ttc) - sum;
+  return rows;
+}
+
 async function convertDevisToInvoice(id) {
   const d = db.devis.find(x => x.id === id);
   if (!d) return;
-  const client = db.clients.find(c => c.name === d.clientName);
-  const project = db.projects.find(p => p.clientId === client?.id);
+  const ttc = s33DevisTTC(d);
+  const money = n => formatNum(Math.round(n));
+  const nameLc = (d.clientName || '').trim().toLowerCase();
+  const matchClient = db.clients.find(c => (c.name || '').trim().toLowerCase() === nameLc);
 
-  const num = 'FAC-' + String(db.invoiceCounter).padStart(3, '0');
-  const newId = db.invoices.length > 0 ? Math.max(...db.invoices.map(i => i.id)) + 1 : 1;
-  await sbInsert('invoices', {
-    num,
-    client_id: client?.id || null,
-    project_id: project?.id || null,
-    object: d.projet,
-    amount: d.ht,
-    date: d.dateVal || new Date().toISOString().split('T')[0],
-    status: 'En attente'
-  });
-  db.invoiceCounter++;
-  await saveDB();
-  await sbUpdate('devis', id, {status: 'Accepté'});
-  await loadDB();
-  renderDevisList();
-  renderInvoices();
-  toast('Facture créée depuis le devis — ' + num);
+  const clientOpts =
+    (matchClient ? '' : '<option value="__new__" selected>+ Créer le client « ' + escHTML(d.clientName || 'Client') + ' »</option>') +
+    db.clients.map(c => '<option value="' + c.id + '"' + (matchClient && matchClient.id === c.id ? ' selected' : '') + '>' + escHTML(c.name) + '</option>').join('');
+
+  const old = document.getElementById('s33-vd-modal'); if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.id = 's33-vd-modal';
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.innerHTML =
+    '<div class="modal" style="max-width:560px;" onclick="event.stopPropagation()">' +
+      '<button class="modal-close" onclick="document.getElementById(\'s33-vd-modal\').remove()">×</button>' +
+      '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">verified</span> Valider le devis ' + escHTML(d.num || d.ref || '') + '</div>' +
+      '<p style="font-size:12.5px;color:var(--text-dim);margin:-6px 0 16px;line-height:1.6;">La validation crée le client (si nouveau), le projet avec son budget, l\'échéancier d\'honoraires, et la <strong>première facture</strong> (acompte de signature, échéance à ' + S33_DELAI_PAIEMENT_J + ' jours).</p>' +
+      '<div class="form-row"><label>Client</label><select id="vd-client">' + clientOpts + '</select></div>' +
+      '<div class="form-row"><label>Projet</label><select id="vd-project"></select></div>' +
+      '<div class="form-row"><label>Montant total du contrat (TTC)</label>' +
+        '<input type="number" id="vd-ttc" value="' + Math.round(ttc) + '" style="font-weight:700;color:var(--gold);"></div>' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin:14px 0 6px;">Échéancier qui sera créé</div>' +
+      '<div id="vd-echeancier" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;font-size:12px;"></div>' +
+      '<div class="form-actions" style="margin-top:18px;">' +
+        '<button class="btn btn-outline" onclick="document.getElementById(\'s33-vd-modal\').remove()">Annuler</button>' +
+        '<button class="btn btn-gold" id="vd-go" onclick="s33ConfirmerValidationDevis(' + d.id + ')"><span class="mi mi-sm">verified</span> Valider et tout créer</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(ov);
+
+  window._s33VdRefresh = function() {
+    const cVal = document.getElementById('vd-client').value;
+    const projSel = document.getElementById('vd-project');
+    const cid = cVal === '__new__' ? null : parseInt(cVal);
+    const projs = cid ? db.projects.filter(p => p.clientId === cid && !p.archived) : [];
+    projSel.innerHTML = '<option value="__new__">+ Créer le projet « ' + escHTML(d.projet || d.clientName || 'Projet') + ' »</option>' +
+      projs.map(p => '<option value="' + p.id + '">' + escHTML(p.name) + '</option>').join('');
+    const t = parseFloat(document.getElementById('vd-ttc').value) || 0;
+    document.getElementById('vd-echeancier').innerHTML = s33BaremeMontants(t).map((r, i) =>
+      '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 12px;border-bottom:1px solid var(--border);' + (i === 0 ? 'background:var(--surface2);font-weight:700;' : '') + '">' +
+        '<span>' + (i + 1) + '. ' + escHTML(r.label) + ' <span style="color:var(--text-faint);">(' + r.pct + '%)</span>' + (i === 0 ? ' <span style="color:var(--gold);font-size:10px;font-weight:800;">FACTURÉE MAINTENANT</span>' : '') + '</span>' +
+        '<span style="font-weight:600;white-space:nowrap;">' + money(r.montant) + ' MAD</span>' +
+      '</div>').join('');
+  };
+  document.getElementById('vd-client').addEventListener('change', window._s33VdRefresh);
+  document.getElementById('vd-ttc').addEventListener('input', window._s33VdRefresh);
+  window._s33VdRefresh();
+}
+
+async function s33ConfirmerValidationDevis(devisId) {
+  const d = db.devis.find(x => x.id === devisId);
+  if (!d) return;
+  const btn = document.getElementById('vd-go');
+  if (btn) { btn.disabled = true; btn.textContent = 'Création en cours…'; }
+  try {
+    const ttc = parseFloat(document.getElementById('vd-ttc').value) || 0;
+    if (!(ttc > 0)) { toast('Montant TTC invalide'); if (btn) { btn.disabled = false; } return; }
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 1. Client (créé si nouveau — repris du prospect si trouvé)
+    let clientId = document.getElementById('vd-client').value;
+    if (clientId === '__new__') {
+      const prospect = (db.prospects || []).find(p => (p.name || '').trim().toLowerCase() === (d.clientName || '').trim().toLowerCase());
+      const ins = await sbInsertOrThrow('clients', {
+        name: d.clientName || 'Client',
+        phone: prospect?.phone || '', email: prospect?.email || '', type: 'Standard',
+        notes: 'Créé automatiquement à la validation du devis ' + (d.num || d.ref || '')
+      });
+      clientId = ins[0].id;
+      db.clients.push({ ...ins[0], links: [], communications: [] });
+      if (prospect && prospect.id) {
+        sbUpdate('prospects', prospect.id, { stage: 'Gagné', converted_to_client_id: clientId, converted_at: new Date().toISOString() });
+        prospect.stage = 'Gagné'; prospect.converted_to_client_id = clientId;
+      }
+    } else clientId = parseInt(clientId);
+
+    // 2. Projet (créé si nouveau) — budget = TTC du contrat
+    let projectId = document.getElementById('vd-project').value;
+    if (projectId === '__new__') {
+      const insP = await sbInsertOrThrow('projects', {
+        name: d.projet || ('Projet ' + (d.clientName || '')), client_id: clientId,
+        phase: 'ESQ', type: 'Villa', budget: ttc, tasks: [], notes: 'Contrat : devis ' + (d.num || d.ref || '') + ' validé le ' + today
+      });
+      projectId = insP[0].id;
+      db.projects.push({ ...insP[0], clientId: clientId, tasks: [] });
+    } else {
+      projectId = parseInt(projectId);
+      await sbUpdate('projects', projectId, { budget: ttc });
+      const pLoc = db.projects.find(p => p.id === projectId);
+      if (pLoc) pLoc.budget = ttc;
+    }
+
+    // 3. Échéancier d'honoraires (barème trésorerie)
+    const rows = s33BaremeMontants(ttc);
+    const echIds = [];
+    for (let i = 0; i < rows.length; i++) {
+      const insE = await sbInsertOrThrow('honoraires_echeances', {
+        project_id: projectId, phase: 'E' + (i + 1), label: rows[i].label, montant: rows[i].montant, position: i
+      });
+      echIds.push(insE[0].id);
+    }
+
+    // 4. Première facture : acompte de signature, échéance +15 j
+    const num = 'FAC-' + String(db.invoiceCounter).padStart(3, '0');
+    const insI = await sbInsertOrThrow('invoices', {
+      num, client_id: clientId, project_id: projectId,
+      object: 'Honoraires — ' + rows[0].label + ' (' + rows[0].pct + '%)',
+      amount: rows[0].montant, date: today,
+      due_date: s33DueDateFrom(today), status: 'En attente'
+    });
+    db.invoiceCounter++;
+    await saveDB();
+    await sbUpdate('honoraires_echeances', echIds[0], { invoice_id: insI[0].id, due_date: s33DueDateFrom(today) });
+
+    // 5. Devis accepté
+    await sbUpdate('devis', devisId, { status: 'Accepté' });
+
+    const m = document.getElementById('s33-vd-modal'); if (m) m.remove();
+    await loadDB();
+    renderDevisList(); renderInvoices();
+    toast('Devis validé : client, projet, échéancier (' + rows.length + ' étapes) et facture ' + num + ' créés');
+    window._currentProjectDetailId = projectId;
+    navigate('project-detail');
+  } catch(e) {
+    console.error('validation devis', e);
+    toast('Erreur pendant la validation — vérifiez et réessayez');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span class="mi mi-sm">verified</span> Valider et tout créer'; }
+  }
 }
 
 function resetDevis() {
@@ -12015,8 +12265,8 @@ function renderFinance() {
   // Get entrees for this month
   const monthEntrees = (db._entreesIdx?.[str] || []);
   // Also pull paid invoices from this month
-  const paidInvoices = db.invoices.filter(i => i.status === 'Payée' && i.date && i.date.startsWith(str));
-  const invoiceEntrees = paidInvoices.map(i => ({ id: 'inv_'+i.id, label: i.num + ' — ' + (db.clients.find(c=>c.id===i.clientId)?.name||''), amount: i.amount * 1.2, month: str, fromInvoice: true }));
+  const paidInvoices = db.invoices.filter(i => i.status === 'Payée' && (i.paid_date || i.date) && String(i.paid_date || i.date).startsWith(str));
+  const invoiceEntrees = paidInvoices.map(i => ({ id: 'inv_'+i.id, label: i.num + ' — ' + (db.clients.find(c=>c.id===i.clientId)?.name||''), amount: i.amount, month: str, fromInvoice: true }));
   const allEntrees = [...monthEntrees, ...invoiceEntrees];
   const totalEntrees = allEntrees.reduce((s, e) => s + e.amount, 0);
   const solde = totalEntrees - totalCharges;
@@ -12041,7 +12291,7 @@ function renderFinance() {
     </div>
     <div class="stat-card">
       <div class="stat-label">Factures en attente</div>
-      <div class="stat-value" style="font-size:28px;">${formatNum(db.invoices.filter(i=>i.status==='En attente').reduce((s,i)=>s+i.amount*1.2,0))}</div>
+      <div class="stat-value" style="font-size:28px;">${formatNum(db.invoices.filter(i=>i.status==='En attente').reduce((s,i)=>s+i.amount,0))}</div>
       <div class="stat-sub">MAD à encaisser</div>
     </div>
   `;
@@ -12134,7 +12384,7 @@ function renderAnnualTable(year) {
     const oneTimeCharges = (db._chargesIdx?.[mStr] || []).reduce((s,c) => s+c.amount, 0);
     const totalCharges = fixedChargesTotal + oneTimeCharges;
     const manualEntrees = (db._entreesIdx?.[mStr] || []).reduce((s,e) => s+e.amount, 0);
-    const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && i.date && i.date.startsWith(mStr)).reduce((s,i) => s+i.amount*1.2, 0);
+    const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && (i.paid_date || i.date) && String(i.paid_date || i.date).startsWith(mStr)).reduce((s,i) => s+i.amount, 0);
     const totalEntrees = manualEntrees + invoiceEntrees;
     const solde = totalEntrees - totalCharges;
     const isFuture = new Date(mStr+'-01') > new Date();
@@ -12275,7 +12525,7 @@ function renderFinanceAnnuelle() {
     const totalCharges = fixedCharges + oneTimeCharges;
 
     const manualEntrees = (db._entreesIdx?.[mStr] || []).reduce((s, e) => s + e.amount, 0);
-    const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && i.date && i.date.startsWith(mStr)).reduce((s, i) => s + i.amount * 1.2, 0);
+    const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && (i.paid_date || i.date) && String(i.paid_date || i.date).startsWith(mStr)).reduce((s, i) => s + i.amount, 0);
     const totalEntrees = manualEntrees + invoiceEntrees;
 
     months12.push({ mStr, abbr, totalEntrees, totalCharges });
@@ -12302,7 +12552,7 @@ function renderFinanceAnnuelle() {
     const oneTimeCharges = (db._chargesIdx?.[mStr] || []).reduce((s, c) => s + c.amount, 0);
     const totalCharges = fixedCharges + oneTimeCharges;
     const manualEntrees = (db._entreesIdx?.[mStr] || []).reduce((s, e) => s + e.amount, 0);
-    const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && i.date && i.date.startsWith(mStr)).reduce((s, i) => s + i.amount * 1.2, 0);
+    const invoiceEntrees = db.invoices.filter(i => i.status === 'Payée' && (i.paid_date || i.date) && String(i.paid_date || i.date).startsWith(mStr)).reduce((s, i) => s + i.amount, 0);
     const totalEntrees = manualEntrees + invoiceEntrees;
     const solde = totalEntrees - totalCharges;
     const isFuture = new Date(mStr + '-01') > now;
@@ -12323,7 +12573,7 @@ function renderFinanceAnnuelle() {
 
   // Top 5 clients by invoiced amount
   const clientTotals = db.clients.map(c => {
-    const total = db.invoices.filter(i => i.clientId === c.id && (i.status === 'Payée' || i.status === 'En attente')).reduce((s, i) => s + i.amount * 1.2, 0);
+    const total = db.invoices.filter(i => i.clientId === c.id && (i.status === 'Payée' || i.status === 'En attente')).reduce((s, i) => s + i.amount, 0);
     return { name: c.name, total };
   }).sort((a, b) => b.total - a.total).slice(0, 5);
 
@@ -22525,6 +22775,24 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
       });
     });
 
+    // 1bis. Factures impayées dont l'échéance est dépassée (admin)
+    if (isAdmin) {
+      (db.invoices || []).forEach(function(inv) {
+        if (inv.status !== 'En attente' || !inv.due_date || inv.due_date >= today) return;
+        const cli = (db.clients || []).find(function(c) { return c.id === inv.clientId; });
+        const late = Math.round((new Date(today) - new Date(inv.due_date)) / 86400000);
+        items.push({
+          kind: 'invoice_overdue', severity: 'danger',
+          icon: 'receipt_long', color: '#c0392b',
+          title: 'Facture en retard',
+          desc: (inv.num || '') + ' — ' + (cli ? cli.name : '?') + ' — ' + formatNum(inv.amount) + ' MAD',
+          extra: 'Échéance dépassée de ' + late + ' j — relancez le client',
+          action: "navigate('invoices')",
+          key: 'invdue_' + inv.id
+        });
+      });
+    }
+
     // 2. Daily report missing (member only)
     if (!isAdmin) {
       const todayReport = (db.dailyReports || []).find(function(r){ return String(r.user_id) === userId && r.date === today; });
@@ -26982,6 +27250,7 @@ window.addEventListener('appinstalled', () => {
       checkConnection: 'Vérifiez votre connexion internet et réessayez.',
       phase: 'Phase : ', progress: 'Avancement', fees: 'Règlement des honoraires',
       feesPct: 'du budget d\'honoraires réglé', remaining: 'reste', settled: 'solde réglé, merci !', mad: 'MAD',
+      feesDetail: 'Voir le détail des paiements', invPaid: 'Payée le', invDue: 'À régler avant le', invLate: 'Échéance dépassée depuis le',
       nextSteps: 'Prochaines étapes', docs: 'Documents partagés', photos: 'Photos du chantier', messages: 'Messages',
       open: 'Ouvrir →', event: 'Événement', approve: 'Valider', approvedOn: 'Validé le',
       confirmApprove: 'Confirmer votre accord sur ce document ?\n\nVotre validation sera enregistrée avec votre nom, la date et l\'heure.',
@@ -27006,6 +27275,7 @@ window.addEventListener('appinstalled', () => {
       checkConnection: 'تحقّقوا من اتصالكم بالإنترنت وحاولوا مجددًا.',
       phase: 'المرحلة : ', progress: 'تقدّم الأشغال', fees: 'أداء الأتعاب',
       feesPct: 'من ميزانية الأتعاب تم أداؤها', remaining: 'المتبقي', settled: 'تم أداء كامل المبلغ، شكرًا لكم!', mad: 'درهم',
+      feesDetail: 'عرض تفاصيل الأداءات', invPaid: 'تم الأداء في', invDue: 'يُرجى الأداء قبل', invLate: 'تجاوز أجل الأداء منذ',
       nextSteps: 'المواعيد القادمة', docs: 'الوثائق المشتركة', photos: 'صور الورش', messages: 'الرسائل',
       open: 'فتح', event: 'موعد', approve: 'مصادقة', approvedOn: 'تمت المصادقة في',
       confirmApprove: 'هل تؤكدون موافقتكم على هذه الوثيقة؟\n\nستُسجَّل المصادقة باسمكم مع التاريخ والوقت.',
@@ -27103,6 +27373,29 @@ window.addEventListener('appinstalled', () => {
           '</div>' +
           '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + pctPaid + '%;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:99px;"></div></div>' +
           '<div style="font-size:10.5px;color:#999;margin-top:5px;">' + pctPaid + '% ' + t.feesPct + (f.budget > f.paid ? ' · ' + t.remaining + ' ' + money(f.budget - f.paid) + ' ' + t.mad : ' · ' + t.settled) + '</div>' +
+          // Détail des factures : payées + en attente avec dates limites
+          (Array.isArray(f.invoices) && f.invoices.length ?
+            '<button onclick="s33pToggleFactures(this)" style="margin-top:12px;background:#fff;border:1px solid #eee;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;color:#F97316;cursor:pointer;font-family:inherit;">' + t.feesDetail + '</button>' +
+            '<div id="s33p-factures" style="display:none;margin-top:10px;">' +
+              f.invoices.map(function(inv) {
+                const todayISO = new Date().toISOString().slice(0, 10);
+                const paidInv = inv.status === 'Payée';
+                const late = !paidInv && inv.due_date && inv.due_date < todayISO;
+                const fd = function(s) { try { return new Date(s + 'T00:00').toLocaleDateString(t.locale, { day: 'numeric', month: 'short', year: 'numeric' }); } catch(_) { return s || ''; } };
+                return '<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid #f2f2f2;flex-wrap:wrap;">' +
+                  '<span class="mi" style="font-size:16px;color:' + (paidInv ? '#16a34a' : late ? '#dc2626' : '#F97316') + ';flex-shrink:0;">' + (paidInv ? 'check_circle' : late ? 'error' : 'schedule') + '</span>' +
+                  '<div style="flex:1;min-width:130px;">' +
+                    '<div style="font-size:12.5px;font-weight:600;">' + esc(inv.object || inv.num || '') + '</div>' +
+                    '<div style="font-size:10.5px;color:' + (late ? '#dc2626' : '#999') + ';' + (late ? 'font-weight:700;' : '') + '">' +
+                      (paidInv
+                        ? t.invPaid + ' ' + fd(inv.paid_date || inv.date)
+                        : (inv.due_date ? (late ? t.invLate : t.invDue) + ' ' + fd(inv.due_date) : '')) +
+                    '</div>' +
+                  '</div>' +
+                  '<span style="font-size:13px;font-weight:800;color:' + (paidInv ? '#16a34a' : '#1a1a1a') + ';white-space:nowrap;">' + money(inv.amount) + ' ' + t.mad + '</span>' +
+                '</div>';
+              }).join('') +
+            '</div>' : '') +
         '</div>';
       })() +
     '</div>';
@@ -27208,6 +27501,11 @@ window.addEventListener('appinstalled', () => {
       '<div class="s33p-accbody" style="' + (open ? '' : 'display:none;') + 'background:#fff;border:1px solid #eee;border-radius:14px;padding:14px 16px;margin-top:8px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' + inner + '</div>' +
     '</div>';
   }
+
+  window.s33pToggleFactures = function(btn) {
+    const box = document.getElementById('s33p-factures');
+    if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+  };
 
   window.s33pAccToggle = function(head, key) {
     const body = head.parentElement.querySelector('.s33p-accbody');
@@ -27940,13 +28238,15 @@ window.addEventListener('appinstalled', () => {
 (function() {
   'use strict';
 
-  // Répartition type des honoraires (modifiable ligne par ligne ensuite)
+  // Barème trésorerie Studio 33 (le même que la validation de devis) :
+  // encaisser tôt, dernière étape légère.
   const SEED = [
-    { phase: 'ESQ',      label: 'Esquisse',                          pct: 10 },
-    { phase: 'APS',      label: 'Avant-projet sommaire',             pct: 20 },
-    { phase: 'APD',      label: 'Avant-projet définitif + autorisation', pct: 25 },
-    { phase: 'DCE',      label: 'Dossier de consultation entreprises',   pct: 10 },
-    { phase: 'Chantier', label: 'Suivi de chantier',                 pct: 35 }
+    { phase: 'E1', label: 'Signature du contrat',                           pct: 30 },
+    { phase: 'E2', label: 'Dépôt de la demande d\'autorisation',            pct: 20 },
+    { phase: 'E3', label: 'Obtention de l\'autorisation (avis conforme)',   pct: 15 },
+    { phase: 'E4', label: 'Dossier d\'exécution & consultation entreprises', pct: 15 },
+    { phase: 'E5', label: 'Suivi de chantier — situation intermédiaire',    pct: 15 },
+    { phase: 'E6', label: 'Réception & conformité',                         pct: 5 }
   ];
   let _hPid = null;
   let _hRows = [];
@@ -28034,7 +28334,10 @@ window.addEventListener('appinstalled', () => {
             projInvoices(_hPid).map(i => '<option value="' + i.id + '"' + (r.invoice_id === i.id ? ' selected' : '') + '>' + esc(i.num) + ' · ' + money(i.amount) + '</option>').join('') +
           '</select></td>' +
         '<td style="padding:7px 10px;border-bottom:1px solid var(--border);"><span class="ch-badge" style="background:' + st.bg + ';color:' + st.color + ';border:none;">' + st.label + '</span></td>' +
-        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;">' +
+        '<td style="padding:7px 10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;">' +
+          (!r.invoice_id && (parseFloat(r.montant) || 0) > 0
+            ? '<button class="ch-btn" style="background:var(--gold);color:#fff;padding:4px 12px;margin-right:5px;" onclick="s33HonFacturer(' + r.id + ')" title="Créer la facture de cette échéance (échéance de paiement +15 j)"><span class="mi" style="font-size:12px;">receipt_long</span> Facturer</button>'
+            : '') +
           '<button class="ch-btn" style="background:#fff0f0;color:#c0392b;padding:4px 9px;" onclick="s33HonDelete(' + r.id + ')">×</button></td>' +
       '</tr>';
     });
@@ -28086,6 +28389,32 @@ window.addEventListener('appinstalled', () => {
     await sbDelete('honoraires_echeances', id);
     _hRows = _hRows.filter(x => x.id !== id);
     renderSection();
+  };
+
+  // Facturer une échéance en un clic (facture TTC pré-remplie, échéance +15 j)
+  window.s33HonFacturer = async function(id) {
+    const r = _hRows.find(x => x.id === id);
+    if (!r || r.invoice_id) return;
+    const p = db.projects.find(x => x.id === _hPid);
+    if (!p) return;
+    const montant = parseFloat(r.montant) || 0;
+    if (!confirm('Créer la facture « Honoraires — ' + (r.label || r.phase) + ' » de ' + money(montant) + ' MAD TTC ?\n\nÉchéance de paiement : ' + (typeof S33_DELAI_PAIEMENT_J !== 'undefined' ? S33_DELAI_PAIEMENT_J : 15) + ' jours.')) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const due = (typeof s33DueDateFrom === 'function') ? s33DueDateFrom(today) : today;
+    try {
+      const num = 'FAC-' + String(db.invoiceCounter).padStart(3, '0');
+      const ins = await sbInsertOrThrow('invoices', {
+        num, client_id: p.clientId ?? p.client_id, project_id: p.id,
+        object: 'Honoraires — ' + (r.label || r.phase),
+        amount: montant, date: today, due_date: due, status: 'En attente'
+      });
+      db.invoiceCounter++; await saveDB();
+      db.invoices.push({ ...ins[0], clientId: ins[0].client_id, projectId: ins[0].project_id });
+      await sbUpdate('honoraires_echeances', id, { invoice_id: ins[0].id, due_date: due });
+      r.invoice_id = ins[0].id; r.due_date = due;
+      renderSection();
+      toast('Facture ' + num + ' créée — échéance le ' + due);
+    } catch(e) { console.error(e); toast('Facture non créée — réessayez'); }
   };
 
   // ── Intégration à la fiche projet (après le suivi de chantier) ───

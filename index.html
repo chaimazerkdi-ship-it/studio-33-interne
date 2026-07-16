@@ -15401,8 +15401,9 @@ let _genState = {
 };
 
 const GEN_TYPES = {
-  cps:           { label: 'CPS',                src: 'generators/cps.html',   icon: 'description', newLabel: 'Nouveau CPS' },
-  questionnaire: { label: 'Questionnaire client', src: 'generators/brief.html', icon: 'quiz',        newLabel: 'Nouveau brief' }
+  cps:           { label: 'CPS',                src: 'generators/cps.html',      icon: 'description', newLabel: 'Nouveau CPS' },
+  questionnaire: { label: 'Questionnaire client', src: 'brief.html',             icon: 'quiz',        newLabel: 'Nouveau brief' },
+  planning:      { label: 'Planning chantier',  src: 'generators/planning.html', icon: 'event_note',  newLabel: 'Nouveau planning' }
 };
 function _genTypeInfo(t) { return GEN_TYPES[t] || GEN_TYPES.cps; }
 
@@ -15451,9 +15452,9 @@ function renderGenerateurs() {
   }
 
   const tabs = [
-    { key: 'cps',           label: 'CPS',                 icon: 'description', enabled: true  },
-    { key: 'questionnaire', label: 'Questionnaire client', icon: 'quiz',       enabled: true  },
-    { key: 'planning',      label: 'Planning',            icon: 'event_note',  enabled: false }
+    { key: 'cps',           label: 'CPS',                 icon: 'description', enabled: true },
+    { key: 'questionnaire', label: 'Questionnaire client', icon: 'quiz',       enabled: true },
+    { key: 'planning',      label: 'Planning chantier',   icon: 'event_note',  enabled: true }
   ];
   const tabsHTML = '<div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:24px;">' +
     tabs.map(function(t) {

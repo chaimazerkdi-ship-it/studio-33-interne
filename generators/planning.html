@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planning chantier — Studio 33</title>
+<style>
+  :root { --gold:#F97316; --ink:#1a1a1a; --dim:#666; --faint:#999; --line:#e5e5e5; --bg:#faf8f5; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Inter,system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); font-size:14px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:18px 16px 80px; }
+  h1 { font-size:19px; margin:0 0 2px; }
+  .sub { font-size:12px; color:var(--faint); margin-bottom:18px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:11px; font-weight:700; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+  input, select { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-family:inherit; font-size:13px; background:#fff; color:var(--ink); outline:none; }
+  input:focus, select:focus { border-color:var(--gold); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+  .row-grid { display:grid; grid-template-columns:28px 1fr 84px 84px 92px; gap:6px; align-items:center; margin-bottom:6px; }
+  .row-grid input[type=number] { text-align:center; }
+  .btn { border:none; border-radius:99px; padding:9px 18px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .btn-gold { background:var(--gold); color:#fff; }
+  .btn-out { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  .btn-sm { padding:5px 10px; font-size:11px; border-radius:8px; }
+  .btn-del { background:#fff0f0; color:#c0392b; border:1px solid #f5c6cb; width:100%; }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; }
+  .seg button { border:1.5px solid var(--line); background:#fff; color:var(--dim); border-radius:99px; padding:8px 16px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .seg button.on { border-color:var(--gold); background:#FFF1E6; color:#E4640B; }
+  .toolbar { position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--line); padding:10px 16px; display:flex; gap:10px; justify-content:center; z-index:50; }
+  .grp { font-size:11px; font-weight:800; color:var(--gold); letter-spacing:.08em; text-transform:uppercase; margin:14px 0 6px; }
+  .hint { font-size:11px; color:var(--faint); }
+
+  /* ── Aperçu / impression ── */
+  #gantt-output { background:#fff; border:1px solid var(--line); border-radius:12px; padding:0; overflow-x:auto; }
+  .gpage { padding:26px 28px; min-width:900px; }
+  .ghead { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid var(--gold); padding-bottom:10px; margin-bottom:14px; }
+  .gfirm { font-size:18px; font-weight:800; letter-spacing:.04em; }
+  .gsub { font-size:9.5px; color:#777; letter-spacing:.14em; text-transform:uppercase; margin-top:2px; }
+  .gmeta { text-align:right; font-size:11px; color:#555; }
+  .gmeta b { color:var(--gold); font-size:13px; }
+  .ginfo { display:flex; gap:22px; flex-wrap:wrap; font-size:11px; margin-bottom:14px; color:#444; }
+  .ginfo b { color:#111; }
+  table.gantt { border-collapse:collapse; width:100%; font-size:10px; }
+  table.gantt th, table.gantt td { border:1px solid #e8e4de; padding:0; height:20px; }
+  table.gantt th { background:#faf6f0; font-weight:700; color:#555; }
+  table.gantt td.task { padding:2px 8px; font-size:10.5px; white-space:nowrap; max-width:230px; overflow:hidden; text-overflow:ellipsis; text-align:left; }
+  table.gantt th.task-h { width:230px; text-align:left; padding:3px 8px; }
+  table.gantt td.wk { width:22px; min-width:16px; }
+  table.gantt td.bar { background:linear-gradient(180deg,#F97316,#FB923C); border-color:#e8862f; }
+  table.gantt td.bar-so { background:linear-gradient(180deg,#0e9f6e,#34d399); border-color:#0c8a60; }
+  table.gantt tr.grp-row td { background:#f3ede4; font-weight:800; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#8a6d3b; padding:3px 8px; text-align:left; }
+  .gfoot { display:flex; gap:34px; margin-top:24px; }
+  .gsig { flex:1; text-align:center; border-top:1px solid #999; padding-top:5px; font-size:10px; color:#555; }
+  .gnote { margin-top:16px; font-size:9px; color:#aaa; text-align:center; border-top:1px solid #eee; padding-top:8px; }
+  .glegend { display:flex; gap:16px; font-size:10px; color:#555; margin:10px 0 0; }
+  .glegend span i { display:inline-block; width:22px; height:9px; border-radius:2px; vertical-align:-1px; margin-right:5px; }
+
+  @media print {
+    @page { size:A4 landscape; margin:9mm; }
+    body { background:#fff; }
+    body > *:not(#gantt-output) { display:none !important; }
+    #gantt-output { border:none; border-radius:0; overflow:visible; }
+    .gpage { min-width:0; padding:0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Planning de chantier — Villa</h1>
+  <div class="sub">Gros œuvre · Second œuvre · Planning complet — barres par semaine, prêt à imprimer en A4 paysage.</div>
+
+  <div class="card">
+    <div class="grid">
+      <div><label>Projet</label><input id="f_projet" placeholder="Villa R+1 — Hay Mohammadi"></div>
+      <div><label>Maître d'ouvrage</label><input id="f_moa" placeholder="Nom du client"></div>
+      <div><label>Lieu</label><input id="f_lieu" placeholder="Agadir"></div>
+      <div><label>Démarrage des travaux</label><input id="f_debut" type="date"></div>
+      <div><label>Entreprise (optionnel)</label><input id="f_entreprise" placeholder="Entreprise de travaux"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label style="margin-bottom:8px;">Type de planning</label>
+    <div class="seg" id="seg-type">
+      <button data-t="go" onclick="setType('go')">Gros œuvre</button>
+      <button data-t="so" onclick="setType('so')">Second œuvre</button>
+      <button data-t="full" onclick="setType('full')">Complet (GO + SO)</button>
+    </div>
+    <div class="hint" style="margin-top:8px;">Choisir un type charge le modèle type villa — ensuite chaque ligne est modifiable (semaine de départ, durée), et vous pouvez ajouter ou supprimer des lots.</div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <label style="margin:0;flex:1;">Lots / tâches</label>
+      <button class="btn btn-out btn-sm" onclick="chainRows()" title="Chaque lot démarre à la fin du précédent">Enchaîner les lots</button>
+      <button class="btn btn-out btn-sm" onclick="addRow()">+ Ajouter un lot</button>
+    </div>
+    <div class="row-grid" style="margin-bottom:2px;">
+      <span></span>
+      <span class="hint">Désignation</span>
+      <span class="hint" style="text-align:center;">Départ (sem.)</span>
+      <span class="hint" style="text-align:center;">Durée (sem.)</span>
+      <span></span>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:10px;margin:16px 0 10px;">
+    <div style="font-size:13px;font-weight:800;">Aperçu</div>
+    <div class="hint" id="recap"></div>
+  </div>
+  <div id="gantt-output"></div>
+</div>
+
+<div class="toolbar">
+  <button class="btn btn-out" onclick="window.print()">Imprimer / PDF</button>
+  <button class="btn btn-gold" id="btn-save" onclick="saveDoc()" style="display:none;">Enregistrer dans le projet</button>
+</div>
+
+<script>
+'use strict';
+var IS_EMBED = false;
+try { IS_EMBED = window.parent && window.parent !== window; } catch(_) {}
+
+/* ── Modèles type villa (Maroc) ─────────────────────────────────── */
+var TPL_GO = [
+  ['Installation de chantier & implantation', 1, 1],
+  ['Terrassements généraux & fouilles', 2, 2],
+  ['Gros béton, semelles & longrines', 3, 3],
+  ['Assainissement enterré & hérissonnage', 5, 2],
+  ['Dallage sur terre-plein', 6, 1],
+  ['Élévations RDC (poteaux, voiles, maçonnerie)', 7, 4],
+  ['Plancher haut RDC', 10, 2],
+  ['Élévations étage', 12, 4],
+  ['Plancher haut étage / terrasse', 15, 2],
+  ['Acrotères, édicule & formes de pente', 17, 2],
+  ['Étanchéité des terrasses', 19, 2],
+  ['Enduits extérieurs (façades)', 20, 3],
+  ['Regards, branchements & VRD', 22, 2]
+];
+var TPL_SO = [
+  ['Cloisons & doublages intérieurs', 1, 3],
+  ['Électricité — passage des gaines', 2, 2],
+  ['Plomberie — alimentations & évacuations', 2, 2],
+  ['Pré-installation climatisation / VMC', 3, 1],
+  ['Enduits intérieurs', 4, 3],
+  ['Chapes', 6, 2],
+  ['Menuiserie aluminium (fenêtres)', 7, 2],
+  ['Revêtements sols & murs (carrelage, marbre)', 8, 4],
+  ['Faux plafonds / staff', 9, 2],
+  ['Menuiserie bois (portes, placards, cuisine)', 11, 3],
+  ['Peinture — impression & sous-couche', 12, 2],
+  ['Appareillage électrique & luminaires', 14, 1],
+  ['Sanitaires & robinetterie', 14, 1],
+  ['Ferronnerie & garde-corps', 15, 2],
+  ['Peinture — finitions', 16, 2],
+  ['Nettoyage général & pré-réception', 18, 1]
+];
+
+var TYPE_LABELS = { go: 'Planning gros œuvre', so: 'Planning second œuvre', full: 'Planning général des travaux (GO + SO)' };
+var state = { type: 'go', rows: [] };
+
+function loadTemplate(t) {
+  if (t === 'go') {
+    state.rows = TPL_GO.map(function(r) { return { g: 'GO', n: r[0], s: r[1], d: r[2] }; });
+  } else if (t === 'so') {
+    state.rows = TPL_SO.map(function(r) { return { g: 'SO', n: r[0], s: r[1], d: r[2] }; });
+  } else {
+    var goEnd = TPL_GO.reduce(function(m, r) { return Math.max(m, r[1] + r[2] - 1); }, 0);
+    var off = goEnd - 3; // le second œuvre démarre avant la toute fin du GO
+    state.rows = TPL_GO.map(function(r) { return { g: 'GO', n: r[0], s: r[1], d: r[2] }; })
+      .concat(TPL_SO.map(function(r) { return { g: 'SO', n: r[0], s: r[1] + off, d: r[2] }; }));
+  }
+}
+
+function setType(t, keepRows) {
+  state.type = t;
+  document.querySelectorAll('#seg-type button').forEach(function(b) { b.classList.toggle('on', b.dataset.t === t); });
+  if (!keepRows) { loadTemplate(t); renderRows(); }
+  renderGantt();
+}
+
+/* ── Lignes éditables ───────────────────────────────────────────── */
+function renderRows() {
+  var box = document.getElementById('rows');
+  box.innerHTML = state.rows.map(function(r, i) {
+    return '<div class="row-grid">' +
+      '<span style="font-size:10px;font-weight:800;color:' + (r.g === 'SO' ? '#0e9f6e' : '#F97316') + ';">' + r.g + '</span>' +
+      '<input value="' + esc(r.n) + '" onchange="upd(' + i + ',\'n\',this.value)">' +
+      '<input type="number" min="1" max="200" value="' + r.s + '" onchange="upd(' + i + ',\'s\',this.value)">' +
+      '<input type="number" min="1" max="100" value="' + r.d + '" onchange="upd(' + i + ',\'d\',this.value)">' +
+      '<div style="display:flex;gap:4px;">' +
+        '<button class="btn btn-out btn-sm" onclick="move(' + i + ',-1)" title="Monter">↑</button>' +
+        '<button class="btn btn-out btn-sm" onclick="move(' + i + ',1)" title="Descendre">↓</button>' +
+        '<button class="btn btn-del btn-sm" onclick="delRow(' + i + ')" style="width:auto;">×</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+function upd(i, k, v) {
+  if (k === 'n') state.rows[i].n = v;
+  else state.rows[i][k] = Math.max(1, parseInt(v) || 1);
+  renderGantt();
+}
+function move(i, dir) {
+  var j = i + dir;
+  if (j < 0 || j >= state.rows.length) return;
+  var t = state.rows[i]; state.rows[i] = state.rows[j]; state.rows[j] = t;
+  renderRows(); renderGantt();
+}
+function delRow(i) { state.rows.splice(i, 1); renderRows(); renderGantt(); }
+function addRow() {
+  var last = state.rows[state.rows.length - 1];
+  state.rows.push({ g: state.type === 'so' ? 'SO' : 'GO', n: 'Nouveau lot', s: last ? last.s + last.d : 1, d: 2 });
+  renderRows(); renderGantt();
+}
+function chainRows() {
+  var w = 1;
+  state.rows.forEach(function(r) { r.s = w; w += r.d; });
+  renderRows(); renderGantt();
+}
+
+/* ── Aperçu Gantt ───────────────────────────────────────────────── */
+function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML.replace(/"/g, '&quot;'); }
+function v(id) { return (document.getElementById(id) || {}).value || ''; }
+function fmtD(d) { return d.toLocaleDateString('fr-MA', { day: 'numeric', month: 'short', year: 'numeric' }); }
+
+function renderGantt() {
+  var out = document.getElementById('gantt-output');
+  if (!state.rows.length) { out.innerHTML = '<div class="gpage" style="text-align:center;color:#aaa;">Ajoutez des lots pour générer le planning.</div>'; return; }
+  var maxW = state.rows.reduce(function(m, r) { return Math.max(m, r.s + r.d - 1); }, 1);
+  var start = v('f_debut') ? new Date(v('f_debut') + 'T00:00') : new Date();
+  var end = new Date(start.getTime() + maxW * 7 * 86400000);
+
+  // En-tête mois : regrouper les semaines par mois
+  var months = [];
+  for (var w = 1; w <= maxW; w++) {
+    var dw = new Date(start.getTime() + (w - 1) * 7 * 86400000);
+    var lbl = dw.toLocaleDateString('fr-MA', { month: 'short', year: '2-digit' });
+    if (months.length && months[months.length - 1].l === lbl) months[months.length - 1].n++;
+    else months.push({ l: lbl, n: 1 });
+  }
+
+  var hasGroups = state.type === 'full';
+  var html = '<div class="gpage">' +
+    '<div class="ghead">' +
+      '<div><div class="gfirm">STUDIO 33 ARCHITECTS</div><div class="gsub">' + esc(TYPE_LABELS[state.type]) + '</div></div>' +
+      '<div class="gmeta"><b>' + esc(v('f_projet') || 'Projet') + '</b><br>' + esc(v('f_lieu')) + '</div>' +
+    '</div>' +
+    '<div class="ginfo">' +
+      (v('f_moa') ? '<span>Maître d\'ouvrage : <b>' + esc(v('f_moa')) + '</b></span>' : '') +
+      (v('f_entreprise') ? '<span>Entreprise : <b>' + esc(v('f_entreprise')) + '</b></span>' : '') +
+      '<span>Démarrage : <b>' + fmtD(start) + '</b></span>' +
+      '<span>Fin estimée : <b>' + fmtD(end) + '</b></span>' +
+      '<span>Durée : <b>' + maxW + ' semaines</b></span>' +
+    '</div>' +
+    '<table class="gantt"><tr><th class="task-h" rowspan="2">Désignation des lots</th>' +
+    months.map(function(m) { return '<th colspan="' + m.n + '">' + esc(m.l) + '</th>'; }).join('') + '</tr><tr>';
+  for (var w2 = 1; w2 <= maxW; w2++) html += '<th style="font-size:8px;">' + w2 + '</th>';
+  html += '</tr>';
+
+  var lastG = '';
+  state.rows.forEach(function(r) {
+    if (hasGroups && r.g !== lastG) {
+      lastG = r.g;
+      html += '<tr class="grp-row"><td colspan="' + (maxW + 1) + '">' + (r.g === 'GO' ? 'Gros œuvre' : 'Second œuvre') + '</td></tr>';
+    }
+    html += '<tr><td class="task">' + esc(r.n) + '</td>';
+    for (var w3 = 1; w3 <= maxW; w3++) {
+      var on = w3 >= r.s && w3 < r.s + r.d;
+      html += '<td class="wk' + (on ? (r.g === 'SO' ? ' bar bar-so' : ' bar') : '') + '"></td>';
+    }
+    html += '</tr>';
+  });
+  html += '</table>';
+  if (hasGroups) {
+    html += '<div class="glegend"><span><i style="background:#F97316;"></i>Gros œuvre</span><span><i style="background:#0e9f6e;"></i>Second œuvre</span></div>';
+  }
+  html += '<div class="gfoot"><div class="gsig">L\'Architecte</div><div class="gsig">L\'Entreprise</div><div class="gsig">Le Maître d\'ouvrage</div></div>' +
+    '<div class="gnote">Studio 33 Architects — Agadir, Maroc · Planning prévisionnel établi le ' + fmtD(new Date()) + ' — durées en semaines calendaires, à ajuster selon les conditions de chantier.</div>' +
+  '</div>';
+  out.innerHTML = html;
+  document.getElementById('recap').textContent = state.rows.length + ' lots · ' + maxW + ' semaines · fin estimée ' + fmtD(end);
+}
+
+['f_projet', 'f_moa', 'f_lieu', 'f_debut', 'f_entreprise'].forEach(function(id) {
+  document.getElementById(id).addEventListener('input', renderGantt);
+});
+
+/* ── Intégration app Studio 33 (preload / save) ─────────────────── */
+function collect() {
+  return {
+    f_projet: v('f_projet'), f_moa: v('f_moa'), f_lieu: v('f_lieu'),
+    f_debut: v('f_debut'), f_entreprise: v('f_entreprise'),
+    plan_type: state.type, rows: state.rows
+  };
+}
+function saveDoc() {
+  if (!IS_EMBED) { alert("L'enregistrement n'est disponible que depuis l'application Studio 33."); return; }
+  renderGantt();
+  var maxW = state.rows.reduce(function(m, r) { return Math.max(m, r.s + r.d - 1); }, 1);
+  window.parent.postMessage({
+    type: 'plan:save',
+    data: {
+      title: (TYPE_LABELS[state.type] || 'Planning') + (v('f_projet') ? ' — ' + v('f_projet') : ''),
+      form_data: collect(),
+      html_content: document.getElementById('gantt-output').innerHTML,
+      metadata: { plan_type: state.type, semaines: maxW, debut: v('f_debut') }
+    }
+  }, '*');
+}
+
+window.addEventListener('message', function(e) {
+  if (!e.data || typeof e.data !== 'object') return;
+  if (e.data.type === 'plan:preload' || e.data.type === 'gen:preload') {
+    var d = e.data.data || {};
+    if (Array.isArray(d.rows) && d.rows.length) {
+      // Restauration d'un document existant
+      state.type = d.plan_type || 'go';
+      state.rows = d.rows.map(function(r) { return { g: r.g || 'GO', n: r.n || '', s: parseInt(r.s) || 1, d: parseInt(r.d) || 1 }; });
+      ['f_projet', 'f_moa', 'f_lieu', 'f_debut', 'f_entreprise'].forEach(function(id) {
+        if (d[id] != null) document.getElementById(id).value = d[id];
+      });
+      setType(state.type, true);
+      renderRows();
+    } else {
+      // Pré-remplissage depuis le projet (clés CPS)
+      if (d.proj_nom) document.getElementById('f_projet').value = d.proj_nom;
+      if (d.proj_moa) document.getElementById('f_moa').value = d.proj_moa;
+      if (d.proj_lieu) document.getElementById('f_lieu').value = d.proj_lieu;
+      if (d.proj_date) document.getElementById('f_debut').value = d.proj_date;
+    }
+    renderGantt();
+  }
+});
+
+/* ── Démarrage ──────────────────────────────────────────────────── */
+document.getElementById('f_debut').value = new Date().toISOString().slice(0, 10);
+if (IS_EMBED) {
+  document.getElementById('btn-save').style.display = 'inline-block';
+  try { window.parent.postMessage({ type: 'plan:ready' }, '*'); } catch(_) {}
+}
+setType('go');
+</script>
+</body>
+</html>

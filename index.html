@@ -145,6 +145,30 @@
     animation: spin .7s linear infinite;
     flex-shrink: 0;
   }
+  /* Actions rapides du tableau de bord */
+  .dash-sc-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 10px;
+  }
+  .dash-sc {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+    padding: 14px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); cursor: pointer; text-align: left;
+    font-family: inherit; transition: transform .12s, box-shadow .12s, border-color .12s;
+  }
+  .dash-sc:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--gold); }
+  .dash-sc:active { transform: translateY(0); }
+  .dash-sc .sc-ic {
+    width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0;
+  }
+  .dash-sc .sc-ic .mi { font-size: 19px; }
+  .dash-sc .sc-label { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.3; }
+  @media (max-width: 640px) {
+    .dash-sc-grid { grid-template-columns: repeat(2, 1fr); }
+    .dash-sc { flex-direction: row; align-items: center; padding: 11px 12px; gap: 10px; }
+    .dash-sc .sc-ic { width: 32px; height: 32px; }
+  }
+
   /* Jauge de chargement animée (ouverture de l'app et du portail) */
   @keyframes s33-load-fill { 0% { width: 4%; } 30% { width: 45%; } 60% { width: 72%; } 85% { width: 88%; } 100% { width: 94%; } }
   @keyframes s33-load-sheen { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
@@ -2841,7 +2865,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-17.4 — vidéos de chantier';
+const S33_BUILD = '2026-07-17.5 — actions rapides';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3022,6 +3046,12 @@ const S33_BUILD = '2026-07-17.4 — vidéos de chantier';
           <div class="page-title">Bonjour, <span>Chaima</span></div>
           <div class="page-subtitle" id="current-date"></div>
         </div>
+      </div>
+
+      <!-- Actions rapides -->
+      <div style="margin-bottom:28px;">
+        <div class="section-title" style="margin-bottom:14px;">Actions rapides</div>
+        <div id="dash-shortcuts" class="dash-sc-grid"></div>
       </div>
 
       <div class="grid-4" style="margin-bottom:32px;">
@@ -6701,6 +6731,31 @@ function renderAll() {
 
 // ===== DASHBOARD =====
 function renderDashboard() {
+  // ── Actions rapides ──────────────────────────────────────────
+  const scEl = document.getElementById('dash-shortcuts');
+  if (scEl) {
+    const navVisible = id => { const n = document.getElementById(id); return !n || n.style.display !== 'none'; };
+    const SHORTCUTS = [
+      { icon: 'person_add',     color: '#8b5cf6', label: 'Ajouter un prospect',        action: "openProspectModal()" },
+      { icon: 'request_quote',  color: '#c9a96e', label: 'Générer un devis',           action: "navigate('devis')",           nav: 'nav-devis' },
+      { icon: 'contacts',       color: '#3b82f6', label: 'Ajouter un contact pro',     action: "openContactModal()",          nav: 'nav-contacts' },
+      { icon: 'local_shipping', color: '#f59e0b', label: 'Ajouter un fournisseur',     action: "openSupplierModal()" },
+      { icon: 'assignment',     color: '#10b981', label: 'PV de réunion de chantier',  action: "navigate('pv')" },
+      { icon: 'event',          color: '#ef4444', label: 'Ajouter au calendrier',      action: "navigate('calendar');setTimeout(function(){openCalEventModal();},150)" },
+      { icon: 'edit_note',      color: '#06b6d4', label: 'Écrire mon rapport',         action: "navigate('rapport')" },
+      { icon: 'forum',          color: '#ec4899', label: 'Message à l\'équipe',        action: "navigate('messagerie')" },
+      { icon: 'report_problem', color: '#e74c3c', label: 'Signaler un problème',       action: "openIncidentModal()" }
+    ];
+    scEl.innerHTML = SHORTCUTS
+      .filter(s => !s.nav || navVisible(s.nav))
+      .map(s =>
+        '<button class="dash-sc" onclick="' + s.action.replace(/"/g, '&quot;') + '">' +
+          '<span class="sc-ic" style="background:' + s.color + '1f;color:' + s.color + ';"><span class="mi">' + s.icon + '</span></span>' +
+          '<span class="sc-label">' + s.label + '</span>' +
+        '</button>'
+      ).join('');
+  }
+
   const activeProjects = db.projects.filter(p => !p.archived);
   document.getElementById('stat-projects').textContent = activeProjects.length;
   const urgent = activeProjects.flatMap(p => p.tasks.filter(t => t.priority === 'urgent' && !isTaskDone(t)));

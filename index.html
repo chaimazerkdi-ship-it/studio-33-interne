@@ -145,6 +145,13 @@
     animation: spin .7s linear infinite;
     flex-shrink: 0;
   }
+  /* Calendrier sur téléphone : bouton export icône seule, titre compact */
+  @media (max-width: 640px) {
+    .cal-ics-lbl { display: none; }
+    .cal-period-lbl { font-size: 14px !important; font-weight: 600 !important; width: 100%; order: 10; white-space: normal !important; }
+    .gcal-toolbar-unified { padding: 10px 12px !important; }
+  }
+
   /* Calendrier : week-end grisé + heures hors travail atténuées (vue semaine) */
   .gcal-day-col.gcal-we { background: rgba(120,120,120,.06); }
   .gcal-week-day-head.gcal-we .gcal-week-day-name { color: var(--text-faint); }
@@ -2885,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-17.8 — calendrier simplifié';
+const S33_BUILD = '2026-07-17.9 — calendrier mobile';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6489,7 +6496,7 @@ function renderPage(page) {
   if (page === 'equipe') renderEquipe();
   if (page === 'rapport') renderRapport();
   if (page === 'taches') renderMesTaches();
-  if (page === 'calendar') renderCalendar();
+  if (page === 'calendar') { calView = 'agenda'; renderCalendar(); }
   if (page === 'generateurs') renderGenerateurs();
   if (page === 'project-detail') renderProjectDetailPage();
   if (page === 'panneau') { if (typeof window.initPanneauChantier === 'function') window.initPanneauChantier(); }
@@ -15038,7 +15045,7 @@ async function deleteAdminTask(taskId) {
 // ===== CALENDRIER =====
 let calendarMonth = new Date();
 let _calShowTemplateTasks = localStorage.getItem('s33_cal_show_template') === 'true';
-let calView = localStorage.getItem('s33_cal_view') || 'week';
+let calView = 'agenda'; // vue par défaut à chaque ouverture du calendrier
 let calWeekStart = null;
 let _calTimerInterval = null;
 let calFilter = {
@@ -15082,13 +15089,13 @@ function _calRenderToolbar(periodLabel) {
   const chevronBtn = function(delta, icon) {
     return '<button onclick="navigateCalendar(' + delta + ')" style="background:none;border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><span class="mi">' + icon + '</span></button>';
   };
-  const icsBtn = '<button onclick="exportCalendarICS()" title="Télécharger le calendrier pour l\'ajouter à Google Agenda ou à l\'iPhone" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><span class="mi" style="font-size:14px;">ios_share</span> Agenda du téléphone</button>';
+  const icsBtn = '<button onclick="exportCalendarICS()" title="Télécharger le calendrier pour l\'ajouter à Google Agenda ou à l\'iPhone" style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;"><span class="mi" style="font-size:14px;">ios_share</span><span class="cal-ics-lbl"> Agenda du téléphone</span></button>';
   return '<div class="gcal-toolbar-unified" style="display:flex;align-items:center;gap:8px;padding:12px 16px;margin-bottom:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius) var(--radius) 0 0;flex-wrap:wrap;">' +
     '<button onclick="goCalToday()" style="padding:7px 16px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;">Aujourd\'hui</button>' +
     chevronBtn(-1, 'chevron_left') +
     chevronBtn(1, 'chevron_right') +
-    '<span style="font-size:18px;font-weight:400;color:var(--text);text-transform:capitalize;flex:1;min-width:0;">' + periodLabel + '</span>' +
-    '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">' +
+    '<span class="cal-period-lbl" style="font-size:18px;font-weight:400;color:var(--text);text-transform:capitalize;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + periodLabel + '</span>' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;">' +
     viewBtns +
     icsBtn +
     '</div>' +
@@ -16292,7 +16299,8 @@ function renderCalendar() {
       _buildAgendaHTML();
     } else if (calView === 'week') {
       if (!calWeekStart) calWeekStart = _getWeekMonday(new Date());
-      _buildWeekHTML(false);
+      // Sur téléphone la grille 7 colonnes est illisible → liste des 7 jours
+      if (window.innerWidth <= 640) _buildWeekListHTML(); else _buildWeekHTML(false);
     } else if (calView === 'day') {
       if (!calWeekStart) { calWeekStart = new Date(); calWeekStart.setHours(0,0,0,0); }
       _buildDayHTML();
@@ -16418,6 +16426,60 @@ function _buildCongesHTML() {
       '</tbody></table></div>';
   }
   return { congesHTML: congesHTML, adminHTML: adminHTML };
+}
+
+// Vue « Semaine » sur téléphone : liste des 7 jours, lisible d'un pouce
+function _buildWeekListHTML() {
+  const base = calWeekStart;
+  const todayStr = _toLocalDateStr(new Date());
+  const evData = _collectCalEvents();
+  const weekEnd = new Date(base.getTime() + 6 * 86400000);
+  const mA = base.toLocaleDateString('fr-MA', { month: 'long' }), mB = weekEnd.toLocaleDateString('fr-MA', { month: 'long' });
+  const periodLabel = mA === mB
+    ? base.getDate() + ' – ' + weekEnd.toLocaleDateString('fr-MA', { day: 'numeric', month: 'long' })
+    : base.toLocaleDateString('fr-MA', { day: 'numeric', month: 'short' }) + ' – ' + weekEnd.toLocaleDateString('fr-MA', { day: 'numeric', month: 'short' });
+
+  let daysHTML = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+    const ds = _toLocalDateStr(d);
+    const isToday = ds === todayStr;
+    const isWe = d.getDay() === 0 || d.getDay() === 6;
+    const dayLbl = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    let rows = '';
+    if (evData.feriesByDate[ds]) rows += '<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12.5px;color:#d50000;font-weight:700;"><span class="mi" style="font-size:14px;">flag</span>' + escHTML(evData.feriesByDate[ds]) + '</div>';
+    (evData.congesByDate[ds] || []).forEach(function(n) {
+      rows += '<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12.5px;color:#26a69a;"><span class="mi" style="font-size:14px;">beach_access</span>' + escHTML(n) + ' — congé</div>';
+    });
+    (evData.tasksByDate[ds] || []).slice(0, 4).forEach(function(t) {
+      rows += '<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12.5px;color:var(--text-dim);"><span class="mi" style="font-size:14px;color:#4a90e2;">task_alt</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (t.mine ? 'font-weight:700;color:var(--text);' : '') + '">' + escHTML(t.name) + '</span></div>';
+    });
+    (evData.customByDate[ds] || []).slice().sort(function(a, b) { return (a.time_start || '00:00') < (b.time_start || '00:00') ? -1 : 1; }).forEach(function(ev) {
+      const ti = CAL_EVENT_TYPES[ev.type] || CAL_EVENT_TYPES.autre;
+      rows += '<div onclick="editCalEvent(' + ev.id + ')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;">' +
+        '<span style="min-width:44px;font-size:12px;font-weight:800;color:var(--text);text-align:center;flex-shrink:0;">' + (ev.time_start || '—') + '</span>' +
+        '<span style="width:4px;align-self:stretch;border-radius:99px;background:' + (ti.color || '#888') + ';flex-shrink:0;"></span>' +
+        '<span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHTML(ev.title) + '</span>' +
+      '</div>';
+    });
+    if (!rows) rows = '<div style="padding:7px 14px;font-size:11.5px;color:var(--text-faint);">Rien de prévu</div>';
+
+    daysHTML += '<div style="border-bottom:1px solid var(--border);' + (isWe ? 'background:rgba(120,120,120,.05);' : '') + '">' +
+      '<div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:' + (isToday ? 'rgba(26,115,232,.08)' : 'var(--surface2)') + ';">' +
+        '<span onclick="_goToDay(\'' + ds + '\')" style="font-size:12px;font-weight:800;text-transform:capitalize;color:' + (isToday ? '#1a73e8' : 'var(--text-dim)') + ';cursor:pointer;flex:1;">' + dayLbl + (isToday ? ' · Aujourd\'hui' : '') + '</span>' +
+        '<button onclick="s33CalQuickAdd(event,\'' + ds + '\')" style="background:none;border:1px solid var(--border);border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-dim);flex-shrink:0;"><span class="mi" style="font-size:15px;">add</span></button>' +
+      '</div>' + rows + '</div>';
+  }
+
+  const cg = _buildCongesHTML();
+  document.getElementById('calendar-content').innerHTML =
+    _calRenderToolbar(periodLabel) +
+    '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;background:var(--surface);">' +
+      _calRenderFilterBar() + daysHTML +
+    '</div>' +
+    cg.congesHTML + cg.adminHTML;
+  if (_calTimerInterval) { clearInterval(_calTimerInterval); _calTimerInterval = null; }
 }
 
 // Vue « Jour » : liste chronologique claire (fini la grille de 24 h,

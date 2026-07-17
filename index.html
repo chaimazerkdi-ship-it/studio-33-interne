@@ -2885,7 +2885,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-17.6 — nouveau calendrier';
+const S33_BUILD = '2026-07-17.7 — tableau de bord allégé';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -19293,6 +19293,9 @@ function escHTML(str) {
     if (!page) return;
     const old = document.getElementById('s33-reminders-block');
     if (old) old.remove();
+    // Bloc « Rappels » retiré du tableau de bord (demande utilisateur) :
+    // les alertes critiques continuent d'arriver dans les notifications.
+    return;
 
     const isAdmin = currentUser.role === 'admin';
     const userName = currentUser.name;
@@ -23485,6 +23488,9 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
     // Remove any existing block (Sprint 1's or a previous render of ours)
     const old = document.getElementById('s33-reminders-block');
     if (old) old.remove();
+    // Bloc « Rappels » retiré du tableau de bord (demande utilisateur) :
+    // les alertes critiques continuent d'arriver dans les notifications.
+    return;
 
     const items = collectReminders();
     if (!items.length) return;

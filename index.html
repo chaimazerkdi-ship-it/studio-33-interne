@@ -2885,7 +2885,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-17.7 — tableau de bord allégé';
+const S33_BUILD = '2026-07-17.8 — calendrier simplifié';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -4206,8 +4206,8 @@ const S33_BUILD = '2026-07-17.7 — tableau de bord allégé';
           <div class="page-subtitle" id="calendar-subtitle">Planning & Congés</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button onclick="openCalEventModal()" style="display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">event</span> Ajouter événement</button>
-          <button onclick="openCongeModal()" style="display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">beach_access</span> Demande de congé</button>
+          <button onclick="openCalEventModal()" style="display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">add</span> Ajouter un événement</button>
+          <button onclick="openCongeModal()" style="display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">beach_access</span> Congé</button>
         </div>
       </div>
       <div id="calendar-content"></div>
@@ -16295,7 +16295,7 @@ function renderCalendar() {
       _buildWeekHTML(false);
     } else if (calView === 'day') {
       if (!calWeekStart) { calWeekStart = new Date(); calWeekStart.setHours(0,0,0,0); }
-      _buildWeekHTML(true);
+      _buildDayHTML();
     } else {
       _buildMonthHTML();
     }
@@ -16403,10 +16403,10 @@ function _buildCongesHTML() {
     if (s === 'refused') return '<span style="background:#1a0505;color:#f07070;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">Refusé</span>';
     return '<span style="background:#2a1f00;color:#f5c842;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">En attente</span>';
   };
-  let congesHTML = '<div class="section-title" style="margin-top:32px;margin-bottom:14px;">Mes demandes de congé</div>';
-  if (!myConges.length) {
-    congesHTML += '<div class="card" style="padding:20px;color:var(--text-faint);font-size:13px;text-align:center;">Aucune demande.</div>';
-  } else {
+  // Pas de bloc vide « Aucune demande » : la section n'apparaît que si utile
+  let congesHTML = '';
+  if (myConges.length) {
+    congesHTML = '<div class="section-title" style="margin-top:32px;margin-bottom:14px;">Mes demandes de congé</div>';
     congesHTML += '<div class="card" style="padding:0;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:var(--surface2);"><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Début</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Fin</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Motif</th><th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--text-dim);">Statut</th></tr></thead><tbody>' +
       myConges.map(function(c) { return '<tr style="border-top:1px solid var(--surface2);"><td style="padding:10px 14px;">' + c.start_date + '</td><td style="padding:10px 14px;">' + c.end_date + '</td><td style="padding:10px 14px;color:var(--text-dim);">' + (c.motif || '—') + '</td><td style="padding:10px 14px;">' + statusBadge(c.status) + '</td></tr>'; }).join('') +
       '</tbody></table></div>';
@@ -16418,6 +16418,71 @@ function _buildCongesHTML() {
       '</tbody></table></div>';
   }
   return { congesHTML: congesHTML, adminHTML: adminHTML };
+}
+
+// Vue « Jour » : liste chronologique claire (fini la grille de 24 h,
+// illisible sur téléphone) — férié, congés, tâches puis rendez-vous triés.
+function _buildDayHTML() {
+  const base = calWeekStart;
+  const ds = _toLocalDateStr(base);
+  const todayStr = _toLocalDateStr(new Date());
+  const periodLabel = base.toLocaleDateString('fr-MA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const evData = _collectCalEvents();
+  const isAdmin = currentUser.role === 'admin';
+
+  let rows = '';
+  const rowStyle = 'display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);';
+
+  if (evData.feriesByDate[ds]) {
+    rows += '<div style="' + rowStyle + 'background:rgba(213,0,0,.06);"><span class="mi" style="color:#d50000;font-size:18px;">flag</span><div style="font-size:13.5px;font-weight:700;color:#d50000;">' + escHTML(evData.feriesByDate[ds]) + ' — jour férié</div></div>';
+  }
+  (evData.congesByDate[ds] || []).forEach(function(n) {
+    rows += '<div style="' + rowStyle + '"><span class="mi" style="color:#26a69a;font-size:18px;">beach_access</span><div style="font-size:13.5px;color:var(--text);">' + escHTML(n) + ' — en congé</div></div>';
+  });
+  (evData.tasksByDate[ds] || []).forEach(function(t) {
+    rows += '<div style="' + rowStyle + '"><span class="mi" style="color:#4a90e2;font-size:18px;">task_alt</span><div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:' + (t.mine ? '700' : '500') + ';color:var(--text);">' + escHTML(t.name) + '</div><div style="font-size:11.5px;color:var(--text-faint);">Tâche · ' + escHTML(t.proj) + (t.assignedTo ? ' · ' + escHTML(t.assignedTo) : '') + '</div></div></div>';
+  });
+
+  const dayEvts = (evData.customByDate[ds] || []).slice().sort(function(a, b) {
+    return (a.time_start || '00:00') < (b.time_start || '00:00') ? -1 : 1;
+  });
+  dayEvts.forEach(function(ev) {
+    const ti = CAL_EVENT_TYPES[ev.type] || CAL_EVENT_TYPES.autre;
+    const st = CAL_STATUS[ev.status] || CAL_STATUS.prevu;
+    rows += '<div onclick="editCalEvent(' + ev.id + ')" style="' + rowStyle + 'cursor:pointer;">' +
+      '<div style="min-width:52px;text-align:center;flex-shrink:0;">' +
+        (ev.time_start
+          ? '<div style="font-size:14px;font-weight:800;color:var(--text);">' + ev.time_start + '</div>' + (ev.time_end ? '<div style="font-size:10.5px;color:var(--text-faint);">' + ev.time_end + '</div>' : '')
+          : '<div style="font-size:10.5px;font-weight:700;color:var(--text-faint);">JOURNÉE</div>') +
+      '</div>' +
+      '<div style="width:4px;align-self:stretch;border-radius:99px;background:' + (ti.color || '#888') + ';flex-shrink:0;"></div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHTML(ev.title) + '</div>' +
+        '<div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">' + ti.label + (ev.lieu ? ' · ' + escHTML(ev.lieu) : '') + (ev.status && ev.status !== 'prevu' ? ' · ' + st.label : '') + '</div>' +
+      '</div>' +
+      '<span class="mi" style="font-size:16px;color:var(--text-faint);flex-shrink:0;">chevron_right</span>' +
+    '</div>';
+  });
+
+  if (!rows) {
+    rows = '<div style="text-align:center;padding:46px 20px;color:var(--text-faint);">' +
+      '<span class="mi" style="font-size:42px;display:block;margin-bottom:10px;color:var(--text-dim);">event_available</span>' +
+      '<div style="font-size:14px;font-weight:600;color:var(--text-dim);">Rien de prévu ce jour</div>' +
+    '</div>';
+  }
+
+  const cg = _buildCongesHTML();
+  document.getElementById('calendar-content').innerHTML =
+    _calRenderToolbar(periodLabel) +
+    '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;background:var(--surface);">' +
+      _calRenderFilterBar() +
+      (ds === todayStr ? '<div style="padding:8px 16px;background:rgba(26,115,232,.07);border-bottom:1px solid var(--border);font-size:11.5px;font-weight:800;color:#1a73e8;letter-spacing:.05em;text-transform:uppercase;">Aujourd\'hui</div>' : '') +
+      rows +
+      '<div style="padding:14px 16px;"><button onclick="s33CalQuickAdd(null,\'' + ds + '\')" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;background:var(--gold);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;"><span class="mi">add</span> Ajouter à ce jour</button></div>' +
+    '</div>' +
+    cg.congesHTML + cg.adminHTML;
+
+  if (_calTimerInterval) { clearInterval(_calTimerInterval); _calTimerInterval = null; }
 }
 
 function _buildWeekHTML(singleDay) {
@@ -16504,7 +16569,6 @@ function _buildWeekHTML(singleDay) {
     '<div class="gcal-hours-col">' + hourLabels + '</div>' +
     '<div class="gcal-day-cols" style="' + gridCols + '">' + dayCols + '</div>' +
     '</div></div></div>' +
-    _renderCalLegend() +
     cg.congesHTML + cg.adminHTML;
 
   _updateCalTimeLine(numDays, todayColIdx);
@@ -16599,7 +16663,7 @@ function _buildMonthHTML() {
     '</div></div>' +
     '<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);">' + _calRenderFilterBar() + '</div>' +
     '<div style="height:12px;"></div>' +
-    gridHTML + _renderCalLegend() + customListHTML + cg.congesHTML + cg.adminHTML;
+    gridHTML + cg.congesHTML + cg.adminHTML;
 
   if (_calTimerInterval) { clearInterval(_calTimerInterval); _calTimerInterval = null; }
 }
@@ -16727,7 +16791,6 @@ function _buildAgendaHTML() {
     '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;background:var(--surface);">' + _calRenderFilterBar() + '</div>' +
     '<div style="height:16px;"></div>' +
     listHTML +
-    _renderCalLegend() +
     cg.congesHTML + cg.adminHTML;
 }
 

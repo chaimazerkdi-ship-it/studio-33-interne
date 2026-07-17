@@ -2816,8 +2816,45 @@
       <a href="#" id="auth-forgot-link" onclick="event.preventDefault(); openForgotPassword();" style="font-size:12px;color:var(--text-dim);text-decoration:none;border-bottom:1px dotted var(--text-faint);">Mot de passe oublié ?</a>
     </div>
     <p style="margin-top:20px;font-size:10px;color:var(--text-faint);" id="auth-hint"></p>
+    <p style="margin-top:6px;font-size:9.5px;color:var(--text-faint);text-align:center;" id="s33-build-tag"></p>
   </div>
 </div>
+
+<script>
+// ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
+// Le numéro de version est visible sur l'écran de connexion ; quand une
+// nouvelle version est publiée, une barre « Recharger » apparaît.
+const S33_BUILD = '2026-07-17.1 — chaîne de l\'argent';
+(function() {
+  const tag = document.getElementById('s33-build-tag');
+  if (tag) tag.textContent = 'Version ' + S33_BUILD;
+
+  let _etag = null;
+  let _notified = false;
+  async function checkUpdate() {
+    if (_notified) return;
+    try {
+      const r = await fetch('index.html', { method: 'HEAD', cache: 'no-store' });
+      if (!r.ok) return;
+      const e = r.headers.get('etag') || r.headers.get('last-modified') || '';
+      if (!e) return;
+      if (_etag === null) { _etag = e; return; }
+      if (e !== _etag) {
+        _notified = true;
+        const bar = document.createElement('div');
+        bar.id = 's33-update-bar';
+        bar.setAttribute('style', 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(70px + env(safe-area-inset-bottom));z-index:2147483000;background:#1a1a1a;color:#fff;border-radius:99px;padding:10px 18px;font-size:13px;font-weight:600;display:flex;gap:12px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.35);font-family:Inter,system-ui,sans-serif;');
+        bar.innerHTML = 'Nouvelle version disponible' +
+          '<button onclick="location.reload()" style="background:#F97316;color:#fff;border:none;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Recharger</button>';
+        document.body.appendChild(bar);
+      }
+    } catch(_) {}
+  }
+  setTimeout(checkUpdate, 4000);
+  setInterval(checkUpdate, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', function() { if (!document.hidden) checkUpdate(); });
+})();
+</script>
 
 <!-- TOAST -->
 <div class="toast" id="toast"></div>

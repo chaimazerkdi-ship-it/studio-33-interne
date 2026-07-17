@@ -2841,7 +2841,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-17.3 — écrans de chargement';
+const S33_BUILD = '2026-07-17.4 — vidéos de chantier';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11509,8 +11509,8 @@ function renderMediatheque() {
   }
   if (emptyEl) emptyEl.style.display = 'none';
 
-  // Store for lightbox (regular images only)
-  lightboxItems = items.filter(m => !m.isPDF);
+  // Store for lightbox (regular images only — pas les vidéos)
+  lightboxItems = items.filter(m => !m.isPDF && !(m.mime && m.mime.startsWith('video/')));
 
   // Pagination — remise à zéro quand le filtre change
   const _fk = projectFilter + '|' + mediaTypeFilter;
@@ -11542,11 +11542,14 @@ function renderMediatheque() {
   document.getElementById('media-grid').innerHTML = mediaView !== 'grid' ? '' : panneauCards + shownItems.map((m, i) => {
     const proj = m.projectId ? db.projects.find(p => p.id === m.projectId) : null;
     const typeColor = m.type === '3D / Rendu' ? 'badge-gold' : m.type === 'Plan PDF' ? 'badge-blue' : 'badge-dim';
-    const thumb = m.isPDF
+    const _isVid = !!(m.mime && m.mime.startsWith('video/'));
+    const thumb = _isVid
+      ? `<div class="media-thumb-pdf" style="position:relative;background:#141414;overflow:hidden;">${m.thumb ? `<img src="${m.thumb}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.8;">` : ''}<span class="mi" style="position:relative;font-size:44px;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.7);">play_circle</span></div>`
+      : m.isPDF
       ? `<div class="media-thumb-pdf"><span class="mi">description</span><span>PDF</span></div>`
       : `<img class="media-thumb" src="" data-mid="${m.id}" alt="${m.name}" loading="lazy">`;
 
-    return `<div class="media-card" onclick="${m.isPDF ? `openPDF(${m.id})` : `openLightbox(${m.id})`}">
+    return `<div class="media-card" onclick="${_isVid ? `s33OpenDoc(${m.id})` : m.isPDF ? `openPDF(${m.id})` : `openLightbox(${m.id})`}">
       ${thumb}
       <button class="media-card-del" onclick="event.stopPropagation();deleteMedia(${m.id})">×</button>
       <div class="media-card-body">
@@ -11566,7 +11569,7 @@ function renderMediatheque() {
   document.getElementById('media-list-tbody').innerHTML = mediaView !== 'list' ? '' : shownItems.map(m => {
     const proj = m.projectId ? db.projects.find(p => p.id === m.projectId) : null;
     return `<tr>
-      <td class="primary" style="cursor:pointer;" onclick="${m.isPDF ? `openPDF(${m.id})` : `openLightbox(${m.id})`}">${m.name}</td>
+      <td class="primary" style="cursor:pointer;" onclick="${(m.mime && m.mime.startsWith('video/')) ? `s33OpenDoc(${m.id})` : m.isPDF ? `openPDF(${m.id})` : `openLightbox(${m.id})`}">${m.name}</td>
       <td><span class="badge ${m.type === '3D / Rendu' ? 'badge-gold' : m.type === 'Plan PDF' ? 'badge-blue' : 'badge-dim'}" style="font-size:9px;">${m.type}</span></td>
       <td>${proj ? proj.name : m.isGeneral ? 'Général' : '—'}</td>
       <td style="font-size:11px;">${m.size || '—'}</td>
@@ -11619,6 +11622,36 @@ function lightboxNav(dir) {
  * Remplace l'ouverture dans un onglet vierge : sur mobile, un onglet
  * about:blank n'a pas d'historique, donc aucun moyen de revenir à l'app.
  */
+// Lecteur vidéo plein écran (vidéos de chantier)
+function s33ShowVideoLightbox(src, title) {
+  const old = document.getElementById('s33-video-lb'); if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 's33-video-lb';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML =
+    '<div style="width:100%;max-width:900px;display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;">' +
+      '<div style="color:#fff;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHTML(title || 'Vidéo') + '</div>' +
+      '<button onclick="s33CloseVideoLightbox()" style="background:rgba(255,255,255,.12);border:none;color:#fff;font-size:22px;width:40px;height:40px;border-radius:50%;cursor:pointer;flex-shrink:0;">×</button>' +
+    '</div>' +
+    '<video controls autoplay playsinline src="' + src.replace(/"/g, '&quot;') + '" style="width:100%;max-width:900px;max-height:75vh;border-radius:10px;background:#000;outline:none;"></video>';
+  ov.addEventListener('click', e => { if (e.target === ov) s33CloseVideoLightbox(); });
+  document.body.appendChild(ov);
+  document.body.style.overflow = 'hidden';
+  try { history.pushState({ s33vlb: 1 }, ''); } catch(_) {}
+}
+function s33CloseVideoLightbox() {
+  const ov = document.getElementById('s33-video-lb');
+  if (!ov) return;
+  const v = ov.querySelector('video'); if (v) { try { v.pause(); } catch(_) {} }
+  ov.remove();
+  document.body.style.overflow = '';
+  if (history.state && history.state.s33vlb) { try { history.back(); } catch(_) {} }
+}
+window.addEventListener('popstate', function() {
+  const ov = document.getElementById('s33-video-lb');
+  if (ov) { const v = ov.querySelector('video'); if (v) { try { v.pause(); } catch(_) {} } ov.remove(); document.body.style.overflow = ''; }
+});
+
 function showImageLightbox(src, title) {
   document.getElementById('lightbox-img').src = src;
   document.getElementById('lightbox-title').textContent = title || '';
@@ -12034,10 +12067,11 @@ function renderClientPortalShare(projectId) {
         '</div>';
         if (open) {
           items.forEach(m => {
-            const isImg = !(m.isPDF || m.is_pdf) && ((m.mime && m.mime.startsWith('image/')) || m.doc_type === 'photo_chantier');
+            const isVid = !!(m.mime && m.mime.startsWith('video/'));
+            const isImg = !isVid && !(m.isPDF || m.is_pdf) && ((m.mime && m.mime.startsWith('image/')) || m.doc_type === 'photo_chantier');
             html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 12px 8px 34px;border-bottom:1px solid var(--border);cursor:pointer;">' +
               '<input type="checkbox" ' + (m.client_visible ? 'checked' : '') + ' onchange="s33PortalToggleDoc(' + m.id + ',this.checked,' + p.id + ')" style="width:16px;height:16px;accent-color:var(--gold);flex-shrink:0;">' +
-              '<span class="mi" style="font-size:16px;color:var(--text-dim);flex-shrink:0;">' + (isImg ? 'image' : (m.isPDF || m.is_pdf) ? 'picture_as_pdf' : 'description') + '</span>' +
+              '<span class="mi" style="font-size:16px;color:var(--text-dim);flex-shrink:0;">' + (isVid ? 'movie' : isImg ? 'image' : (m.isPDF || m.is_pdf) ? 'picture_as_pdf' : 'description') + '</span>' +
               '<span style="flex:1;min-width:0;font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escHTML(m.name) + '</span>' +
               (m.client_approved_at ? '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:#16a34a;background:rgba(22,163,74,.1);border-radius:99px;padding:2px 8px;flex-shrink:0;" title="Validé par ' + escHTML(m.client_approved_by || 'le client') + ' le ' + new Date(m.client_approved_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) + ' à ' + new Date(m.client_approved_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + '"><span class="mi" style="font-size:12px;">task_alt</span> Validé</span>' : '') +
             '</label>';
@@ -19407,14 +19441,21 @@ function escHTML(str) {
           : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;">' +
             folderDocs.map(d => {
               // isImg : vrai si mime image OU (pas PDF et pas un doc_type explicitement non-image)
-              const isImg = !d.is_pdf && (
+              const isVid = !!(d.mime && d.mime.startsWith('video/'));
+              const isImg = !isVid && !d.is_pdf && (
                 (d.mime && d.mime.startsWith('image/')) ||
                 (!d.mime && (d.doc_type === 'photo_chantier' || d.doc_type === 'plan_cadastral' || !d.doc_type))
               );
               const icon = d.is_pdf ? 'picture_as_pdf' : 'description';
               return '<div class="s33-doc-card">' +
                 '<div class="s33-doc-preview" onclick="s33OpenDoc(' + d.id + ')" title="Ouvrir" style="height:160px;cursor:pointer;">' +
-                  (isImg
+                  (isVid
+                    ? '<div style="position:relative;width:100%;height:100%;background:#141414;">' +
+                        (d.thumb ? '<img src="' + d.thumb + '" alt="" style="width:100%;height:100%;object-fit:cover;opacity:.8;">' : '') +
+                        '<span class="mi" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:52px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.7);">play_circle</span>' +
+                        '<span style="position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,.65);color:#fff;font-size:9px;font-weight:800;letter-spacing:.08em;border-radius:99px;padding:2px 8px;">VIDÉO</span>' +
+                      '</div>'
+                    : isImg
                     ? '<img src="" data-mid="' + d.id + '" alt="" style="width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s;" onload="this.style.opacity=1">'
                     : '<span class="mi" style="font-size:48px;color:var(--text-dim);">' + icon + '</span>') +
                 '</div>' +
@@ -19487,6 +19528,9 @@ function escHTML(str) {
           if (!w) { toast('Autorisez les pop-ups pour ouvrir le fichier'); }
           setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
         }
+      } else if (d.mime && d.mime.startsWith('video/')) {
+        // Vidéos : lecteur intégré (URL signée du Storage)
+        s33ShowVideoLightbox(data, d.name);
       } else {
         // Images : visionneuse in-app — un onglet vierge n'a pas de bouton retour sur mobile
         showImageLightbox(data, d.name);
@@ -19737,7 +19781,7 @@ function escHTML(str) {
             '<div style="font-size:11px;color:var(--text-faint);margin-top:4px;">PDF, JPG, PNG, WEBP — sélection multiple OK</div>' +
           '</div>' +
         '</div>' +
-        '<input type="file" id="s33-file-input" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.webp" onchange="s33HandleUploadFile(this)">' +
+        '<input type="file" id="s33-file-input" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v" onchange="s33HandleUploadFile(this)">' +
         '<div id="s33-name-row" style="display:none;margin-top:14px;">' +
           '<label style="display:block;font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:6px;">Nom du document</label>' +
           '<input id="s33-upload-name" type="text" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:14px;color:var(--text);box-sizing:border-box;">' +
@@ -19768,6 +19812,34 @@ function escHTML(str) {
   const S33_MAX_IMG_BYTES = 7 * 1024 * 1024;
   // Taille max pour les PDFs (pas compressibles côté client)
   const S33_MAX_PDF_BYTES = 9 * 1024 * 1024;
+  const S33_MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100 Mo par vidéo de chantier
+  const S33_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v'];
+
+  // Vignette d'une vidéo : capture une image ~1 s après le début
+  function s33VideoThumb(file) {
+    return new Promise(resolve => {
+      let done = false;
+      const finish = t => { if (done) return; done = true; try { URL.revokeObjectURL(url); } catch(_) {} resolve(t); };
+      let url;
+      try { url = URL.createObjectURL(file); } catch(_) { return resolve(null); }
+      const v = document.createElement('video');
+      v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+      v.onloadeddata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 2); } catch(_) { finish(null); } };
+      v.onseeked = () => {
+        try {
+          const k = Math.min(1, 420 / Math.max(v.videoWidth || 1, v.videoHeight || 1));
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round((v.videoWidth || 320) * k));
+          c.height = Math.max(1, Math.round((v.videoHeight || 240) * k));
+          c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+          finish(c.toDataURL('image/jpeg', 0.7));
+        } catch(_) { finish(null); }
+      };
+      v.onerror = () => finish(null);
+      setTimeout(() => finish(null), 8000);
+      v.src = url;
+    });
+  }
 
   // Comprime une image via canvas jusqu'à ce qu'elle soit sous la limite
   function s33CompressImage(dataUrl, mime, maxBytes, callback) {
@@ -19805,6 +19877,8 @@ function escHTML(str) {
     if (input.files.length > 1) { s33HandleBatch(input.files); return; }
     const file = input.files[0];
     if (!file) return;
+    // Les vidéos passent par le circuit direct vers le Storage (pas de base64)
+    if (S33_VIDEO_TYPES.includes(file.type)) { s33HandleBatch(input.files); return; }
     const allowed = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp'];
     if (!allowed.some(t => file.type === t)) {
       toast('Format non accepté');
@@ -19863,7 +19937,7 @@ function escHTML(str) {
   // Sequential batch upload — bypasses the single-file name/Save UI
   async function s33HandleBatch(filesList) {
     const list = Array.from(filesList);
-    const allowed = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp'];
+    const allowed = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp'].concat(S33_VIDEO_TYPES);
     const valid = list.filter(f => allowed.includes(f.type));
     const rejected = list.length - valid.length;
     if (!valid.length) { toast('Aucun fichier compatible'); return; }
@@ -19897,6 +19971,68 @@ function escHTML(str) {
         if (file.type === 'application/pdf' && file.size > S33_MAX_PDF_BYTES) {
           console.warn('PDF trop volumineux ignoré :', file.name, file.size);
           fail++; continue;
+        }
+
+        // ── Vidéos : envoi direct au Storage (jamais en base64, trop lourd) ──
+        if (S33_VIDEO_TYPES.includes(file.type)) {
+          if (file.size > S33_MAX_VIDEO_BYTES) {
+            toast('« ' + file.name + ' » dépasse 100 Mo — filmez plus court ou réduisez la qualité');
+            fail++; continue;
+          }
+          setProgress(i, valid.length, file.name, 'vignette…');
+          const vThumb = await s33VideoThumb(file);
+          setProgress(i, valid.length, file.name, 'envoi de la vidéo…');
+          const vExt = '.' + (((file.name.match(/\.([a-zA-Z0-9]+)$/) || [])[1]) || 'mp4').toLowerCase();
+          const vBase = (file.name.replace(/\.[^.]+$/, '') || 'video');
+          const vSafe = vBase.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+          const vFolderSlug = (window._s33UploadFolder || 'misc').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+          const vPath = 'proj/' + window._s33UploadProjId + '/' + vFolderSlug + '/' + Date.now() + '_' + i + '_' + vSafe + vExt;
+          let vOk = false;
+          try {
+            const vRes = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + vPath, {
+              method: 'POST',
+              headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': file.type, 'x-upsert': 'true' },
+              body: file
+            });
+            vOk = vRes.ok;
+          } catch(e) { console.warn('Video upload err', file.name, e); }
+          if (!vOk) { toast('Échec de l\'envoi de « ' + file.name + ' » — vérifiez la connexion'); fail++; continue; }
+
+          const vType =
+            window._s33UploadFolder === 'Photos de chantier'        ? 'photo_chantier'  :
+            window._s33UploadFolder === 'PV de chantier'            ? 'pv_chantier'     :
+            'doc_admin';
+          const vDoc = {
+            name: vBase, doc_type: vType, folder: window._s33UploadFolder,
+            is_project_doc: true, is_pdf: false, mime: file.type,
+            file_path: vPath, data: null, thumb: vThumb || null,
+            project_id: window._s33UploadProjId, size: formatSize(file.size),
+            added_by: (currentUser && currentUser.name) || '',
+            added_at: new Date().toLocaleDateString('fr-MA')
+          };
+          let vIns = null;
+          try {
+            const r = await sbInsertOrThrow('media', vDoc);
+            if (Array.isArray(r) && r[0]) vIns = r[0];
+          } catch(e) {
+            try {
+              const { folder, ...vRest } = vDoc;
+              const r = await sbInsertOrThrow('media', vRest);
+              if (Array.isArray(r) && r[0]) vIns = r[0];
+            } catch(e2) {
+              fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + vPath, {
+                method: 'DELETE',
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+              }).catch(()=>{});
+            }
+          }
+          if (vIns) {
+            vIns.folder = window._s33UploadFolder;
+            db.media = db.media || [];
+            db.media.push(vIns);
+            ok++;
+          } else { fail++; }
+          continue;
         }
         const rawData = await new Promise((res, rej) => {
           const r = new FileReader();
@@ -27359,6 +27495,7 @@ window.addEventListener('appinstalled', () => {
       phase: 'Phase : ', progress: 'Avancement', fees: 'Règlement des honoraires',
       feesPct: 'du budget d\'honoraires réglé', remaining: 'reste', settled: 'solde réglé, merci !', mad: 'MAD',
       feesDetail: 'Voir le détail des paiements', invPaid: 'Payée le', invDue: 'À régler avant le', invLate: 'Échéance dépassée depuis le',
+      video: 'VIDÉO',
       nextSteps: 'Prochaines étapes', docs: 'Documents partagés', photos: 'Photos du chantier', messages: 'Messages',
       open: 'Ouvrir →', event: 'Événement', approve: 'Valider', approvedOn: 'Validé le',
       confirmApprove: 'Confirmer votre accord sur ce document ?\n\nVotre validation sera enregistrée avec votre nom, la date et l\'heure.',
@@ -27384,6 +27521,7 @@ window.addEventListener('appinstalled', () => {
       phase: 'المرحلة : ', progress: 'تقدّم الأشغال', fees: 'أداء الأتعاب',
       feesPct: 'من ميزانية الأتعاب تم أداؤها', remaining: 'المتبقي', settled: 'تم أداء كامل المبلغ، شكرًا لكم!', mad: 'درهم',
       feesDetail: 'عرض تفاصيل الأداءات', invPaid: 'تم الأداء في', invDue: 'يُرجى الأداء قبل', invLate: 'تجاوز أجل الأداء منذ',
+      video: 'فيديو',
       nextSteps: 'المواعيد القادمة', docs: 'الوثائق المشتركة', photos: 'صور الورش', messages: 'الرسائل',
       open: 'فتح', event: 'موعد', approve: 'مصادقة', approvedOn: 'تمت المصادقة في',
       confirmApprove: 'هل تؤكدون موافقتكم على هذه الوثيقة؟\n\nستُسجَّل المصادقة باسمكم مع التاريخ والوقت.',
@@ -27555,6 +27693,13 @@ window.addEventListener('appinstalled', () => {
       html += section('photos', t.photos,
         '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">' +
         data.photos.map(function(ph) {
+          if (ph.isVideo) {
+            return '<div onclick="s33pPlayVideo(this)" data-src="' + esc(ph.src || '') + '" style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#141414;cursor:pointer;grid-column:span 2;">' +
+              (ph.thumb ? '<img src="' + ph.thumb + '" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.8;">' : '') +
+              '<span class="mi" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:46px;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.7);">play_circle</span>' +
+              '<span style="position:absolute;bottom:6px;' + (LANG === 'ar' ? 'left' : 'right') + ':8px;background:rgba(0,0,0,.65);color:#fff;font-size:9px;font-weight:800;letter-spacing:.08em;border-radius:99px;padding:2px 8px;">' + t.video + '</span>' +
+            '</div>';
+          }
           return '<a href="' + (ph.src || '#') + '" target="_blank" rel="noopener" style="display:block;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#f0f0f0;">' +
             '<img src="' + (ph.src || '') + '" alt="' + esc(ph.name) + '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">' +
           '</a>';
@@ -27614,6 +27759,26 @@ window.addEventListener('appinstalled', () => {
       '<div class="s33p-accbody" style="' + (open ? '' : 'display:none;') + 'background:#fff;border:1px solid #eee;border-radius:14px;padding:14px 16px;margin-top:8px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' + inner + '</div>' +
     '</div>';
   }
+
+  // Lecture d'une vidéo de chantier en plein écran
+  window.s33pPlayVideo = function(el) {
+    const src = el.getAttribute('data-src');
+    if (!src) return;
+    const old = document.getElementById('s33p-video-ov'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 's33p-video-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:10000;display:flex;align-items:center;justify-content:center;padding:14px;';
+    ov.innerHTML =
+      '<button onclick="document.getElementById(\'s33p-video-ov\').remove();document.body.style.overflow=\'\';" style="position:absolute;top:14px;right:14px;background:rgba(255,255,255,.14);border:none;color:#fff;font-size:22px;width:42px;height:42px;border-radius:50%;cursor:pointer;">×</button>';
+    const v = document.createElement('video');
+    v.controls = true; v.autoplay = true; v.playsInline = true;
+    v.src = src;
+    v.style.cssText = 'width:100%;max-width:860px;max-height:80vh;border-radius:10px;background:#000;outline:none;';
+    ov.appendChild(v);
+    ov.addEventListener('click', function(e) { if (e.target === ov) { try { v.pause(); } catch(_) {} ov.remove(); document.body.style.overflow = ''; } });
+    document.body.appendChild(ov);
+    document.body.style.overflow = 'hidden';
+  };
 
   window.s33pToggleFactures = function(btn) {
     const box = document.getElementById('s33p-factures');

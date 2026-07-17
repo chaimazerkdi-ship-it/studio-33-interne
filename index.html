@@ -2824,7 +2824,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-17.1 — chaîne de l\'argent';
+const S33_BUILD = '2026-07-17.2 — relances devis';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10984,6 +10984,7 @@ function renderDevisList() {
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="btn btn-ghost" onclick="loadDevis(${d.id})" style="font-size:10px;">Ouvrir</button>
         ${d.status !== 'Accepté' && d.status !== 'Refusé' ? `<button class="btn btn-outline" onclick="convertDevisToInvoice(${d.id})" style="font-size:10px;color:var(--green);border-color:rgba(110,201,138,0.3);"><span class="mi" style="font-size:12px;">verified</span> Valider</button>` : ''}
+        ${d.status === 'Envoyé' ? `<button class="btn btn-ghost" onclick="s33RelancerDevis(${d.id})" style="font-size:10px;padding:4px 10px;color:#1da851;border:1px solid rgba(37,211,102,.4);background:rgba(37,211,102,.08);" title="Relancer le prospect par WhatsApp"><span class="mi mi-sm">send</span> Relancer</button>` : ''}
         <button class="btn btn-danger" onclick="deleteDevis(${d.id})">×</button>
       </td>
     </tr>`;
@@ -11029,7 +11030,45 @@ async function changeDevisStatus(id, status) {
   await sbUpdate('devis', id, {status});
   const d = db.devis.find(x => x.id === id);
   if (d) d.status = status;
+  // Devis refusé → le prospect lié passe en « Perdu » dans le pipeline
+  if (status === 'Refusé' && d) {
+    const nameLc = (d.clientName || '').trim().toLowerCase();
+    const srcTag = 'Devis ' + (d.num || d.ref || '');
+    const pr = (db.prospects || []).find(p =>
+      !['Gagné', 'Perdu'].includes(p.stage) &&
+      ((p.source || '') === srcTag || (p.name || '').trim().toLowerCase() === nameLc));
+    if (pr) {
+      try {
+        await sbUpdate('prospects', pr.id, { stage: 'Perdu' });
+        pr.stage = 'Perdu';
+        toast('Prospect « ' + pr.name + ' » passé en Perdu');
+      } catch(_) {}
+    }
+  }
   renderDevisList();
+}
+
+// Relance d'un devis sans réponse par WhatsApp (message pré-rempli)
+function s33RelancerDevis(devisId) {
+  const d = db.devis.find(x => x.id === devisId);
+  if (!d) return;
+  const nameLc = (d.clientName || '').trim().toLowerCase();
+  const contact = db.clients.find(c => (c.name || '').trim().toLowerCase() === nameLc)
+    || (db.prospects || []).find(p => (p.name || '').trim().toLowerCase() === nameLc);
+  const digits = contact && contact.phone ? String(contact.phone).replace(/\D/g, '') : '';
+  if (!digits) { toast('Ajoutez le numéro de téléphone dans la fiche client ou prospect'); return; }
+  const intl = digits.startsWith('0') ? '212' + digits.slice(1) : digits;
+  const sentStr = d.savedAt || d.saved_at || d.dateVal || d.date_val;
+  const sentTxt = sentStr ? new Date(String(sentStr).slice(0, 10) + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : '';
+  const txt = encodeURIComponent(
+    'Bonjour ' + (d.clientName || '') + ',\n\n' +
+    'Nous espérons que vous allez bien. Nous revenons vers vous au sujet de notre devis ' + (d.num || d.ref || '') +
+    (d.projet ? ' pour « ' + d.projet + ' »' : '') +
+    ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' MAD TTC)' +
+    (sentTxt ? ', transmis le ' + sentTxt : '') + '.\n\n' +
+    'Avez-vous eu le temps de l\'examiner ? Nous restons à votre disposition pour en discuter ou l\'ajuster.\n\n' +
+    'Bien cordialement,\nStudio 33 Architects');
+  window.open('https://wa.me/' + intl + '?text=' + txt, '_blank');
 }
 
 async function deleteDevis(id) {

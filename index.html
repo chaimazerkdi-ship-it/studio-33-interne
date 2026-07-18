@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-18.3 — impressions A4';
+const S33_BUILD = '2026-07-18.4 — devis 100 % + villes';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3174,6 +3174,7 @@ const S33_BUILD = '2026-07-18.3 — impressions A4';
           <div>
             <div style="font-size:10px;font-weight:600;color:var(--text-faint);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Type</div>
             <div id="proj-type-filters" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+            <div id="proj-ville-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"></div>
           </div>
           <div id="proj-urgency-filters" style="display:none;"></div>
         </div>
@@ -4924,6 +4925,11 @@ const S33_BUILD = '2026-07-18.3 — impressions A4';
           <option>Autre</option>
         </select>
       </div>
+    </div>
+    <div class="form-row">
+      <label>Ville</label>
+      <input type="text" id="p-ville" list="s33-villes-list" placeholder="Agadir, Taroudant, Casablanca..." autocomplete="off">
+      <datalist id="s33-villes-list"></datalist>
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
@@ -7021,6 +7027,7 @@ function renderProjectsGantt() {
   container.innerHTML = html;
 }
 let projTypeFilter = 'Tout';
+let projVilleFilter = 'Tout';
 let projUrgencyFilter = 'Tout';
 let projSortOrder = 'recent';
 let showAllProjects = false;
@@ -7123,6 +7130,7 @@ function getFilteredProjects() {
   list = list.filter(p => showArchivedProjects ? p.archived : !p.archived);
   if (projPhaseFilter !== 'Tout') list = list.filter(p => p.phase === projPhaseFilter);
   if (projTypeFilter !== 'Tout') list = list.filter(p => (p.type || 'Autre') === projTypeFilter);
+  if (projVilleFilter !== 'Tout') list = list.filter(p => (p.ville || '').trim() === projVilleFilter);
   // Keyword search
   if (projSearchQuery && projSearchQuery.trim()) {
     const q = projSearchQuery.toLowerCase().trim();
@@ -7132,7 +7140,8 @@ function getFilteredProjects() {
         || (p.phase || '').toLowerCase().includes(q)
         || (p.type || '').toLowerCase().includes(q)
         || (client && client.name.toLowerCase().includes(q))
-        || (p.notes || '').toLowerCase().includes(q);
+        || (p.notes || '').toLowerCase().includes(q)
+        || (p.ville || '').toLowerCase().includes(q);
     });
   }
   // Sort: pinned first, then by selected order
@@ -7166,8 +7175,28 @@ function renderProjectFilters() {
     `<button class="filter-chip ${projTypeFilter===f?'active':''}" onclick="setProjFilter('type','${f}')">${f}</button>`
   ).join('');
 
+  // Filtres par ville (construits depuis les projets existants, avec compteur)
+  const villeEl = document.getElementById('proj-ville-filters');
+  if (villeEl) {
+    const counts = {};
+    db.projects.filter(p => !p.archived).forEach(p => {
+      const v = (p.ville || '').trim();
+      if (v) counts[v] = (counts[v] || 0) + 1;
+    });
+    const villes = Object.keys(counts).sort((a, b) => a.localeCompare(b, 'fr'));
+    if (projVilleFilter !== 'Tout' && !villes.includes(projVilleFilter)) projVilleFilter = 'Tout';
+    villeEl.style.display = villes.length ? 'flex' : 'none';
+    villeEl.innerHTML = villes.length
+      ? `<button class="filter-chip ${projVilleFilter==='Tout'?'active':''}" onclick="setProjFilter('ville','Tout')"><span class="mi" style="font-size:12px;vertical-align:-2px;">location_on</span> Toutes les villes</button>` +
+        villes.map(v =>
+          `<button class="filter-chip ${projVilleFilter===v?'active':''}" onclick="setProjFilter('ville','${v.replace(/'/g, "\\'")}')">${escHTML(v)} (${counts[v]})</button>`
+        ).join('')
+      : '';
+  }
+  s33FillVilleDatalist();
+
   // Update badge count
-  const activeCount = (projPhaseFilter!=='Tout'?1:0) + (projTypeFilter!=='Tout'?1:0);
+  const activeCount = (projPhaseFilter!=='Tout'?1:0) + (projTypeFilter!=='Tout'?1:0) + (projVilleFilter!=='Tout'?1:0);
   const badge = document.getElementById('proj-filter-badge');
   const resetBtn = document.getElementById('proj-filter-reset');
   if (badge) { badge.style.display = activeCount>0?'':'none'; badge.textContent = activeCount; }
@@ -7177,6 +7206,7 @@ function renderProjectFilters() {
 function setProjFilter(type, val) {
   if (type === 'phase') projPhaseFilter = val;
   if (type === 'type') projTypeFilter = val;
+  if (type === 'ville') projVilleFilter = val;
   showAllProjects = false;
   renderProjects();
 }
@@ -7196,7 +7226,15 @@ function toggleProjFilters() {
   if (btn) btn.style.background = _projFiltersOpen ? 'rgba(249,115,22,.08)' : 'var(--surface2)';
 }
 
+function s33FillVilleDatalist() {
+  const dl = document.getElementById('s33-villes-list');
+  if (!dl) return;
+  const villes = [...new Set(db.projects.map(p => (p.ville || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+  dl.innerHTML = villes.map(v => '<option value="' + escHTML(v) + '">').join('');
+}
+
 function resetProjFilters() {
+  projVilleFilter = 'Tout';
   projPhaseFilter = 'Tout';
   projTypeFilter  = 'Tout';
   showAllProjects = false;
@@ -7997,6 +8035,7 @@ async function saveProject() {
     budget: parseFloat(document.getElementById('p-budget').value) || 0,
     contract_date: document.getElementById('p-contract-date').value || null,
     num_rokhass: document.getElementById('p-num-rokhass').value.trim() || null,
+    ville: (document.getElementById('p-ville')?.value || '').trim() || null,
     assigned_to: getSelectedResponsables(),
     notes: document.getElementById('p-notes').value,
     link: document.getElementById('p-link').value,
@@ -8061,6 +8100,8 @@ function editProject(id) {
   document.getElementById('p-budget').value = p.budget || '';
   document.getElementById('p-contract-date').value = p.contract_date || p.contractDate || '';
   document.getElementById('p-num-rokhass').value = p.num_rokhass || '';
+  if (document.getElementById('p-ville')) document.getElementById('p-ville').value = p.ville || '';
+  s33FillVilleDatalist();
   const assignedVal = p.assigned_to || localStorage.getItem('s33_assigned_' + p.id) || '';
   populateResponsableSelect('p-responsable', assignedVal);
   // Pré-cocher les chips sélectionnés
@@ -10865,12 +10906,13 @@ function renderPhasesEditor() {
       <input type="text" value="${p.phase}" oninput="devisPhases[${i}].phase=this.value;updateDevis()" placeholder="A" style="text-align:center;font-weight:600;">
       <input type="text" value="${p.mission}" oninput="devisPhases[${i}].mission=this.value;updateDevis()" placeholder="Mission...">
       <div style="position:relative;">
-        <input type="number" value="${p.taux}" oninput="devisPhases[${i}].taux=parseFloat(this.value)||0;updateDevis()" style="padding-right:20px;">
+        <input type="number" value="${p.taux}" oninput="devisPhases[${i}].taux=parseFloat(this.value)||0;updateDevis();s33DevisTotalRefresh()" style="padding-right:20px;">
         <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text-faint);">%</span>
       </div>
       <button class="phase-del-btn" onclick="removeDevisPhase(${i})">×</button>
     </div>
-  `).join('');
+  `).join('') + '<div id="dv-phases-total" style="display:flex;align-items:center;padding:8px 2px 0;"></div>';
+  s33DevisTotalRefresh();
 }
 
 function addDevisPhase() {
@@ -10881,8 +10923,39 @@ function addDevisPhase() {
 
 function removeDevisPhase(i) {
   devisPhases.splice(i, 1);
+  // Redistribution automatique : les lignes restantes sont remises à 100 %
+  s33DevisRebalance(true);
   renderPhasesEditor();
   updateDevis();
+}
+
+// Remet le total des taux à 100 % en respectant les proportions actuelles
+// (la dernière ligne absorbe l'arrondi pour tomber exactement sur 100)
+function s33DevisRebalance(silent) {
+  const sum = devisPhases.reduce((s2, p2) => s2 + (parseFloat(p2.taux) || 0), 0);
+  if (!devisPhases.length || sum <= 0) return;
+  if (Math.round(sum * 10) === 1000) { if (!silent) toast('Déjà à 100 %'); return; }
+  let acc = 0;
+  devisPhases.forEach((p2, idx) => {
+    if (idx < devisPhases.length - 1) {
+      const t = Math.round(((parseFloat(p2.taux) || 0) * 100 / sum) * 10) / 10;
+      p2.taux = t; acc += t;
+    } else {
+      p2.taux = Math.round((100 - acc) * 10) / 10;
+    }
+  });
+  if (!silent) { renderPhasesEditor(); updateDevis(); toast('Échéancier rééquilibré à 100 %'); }
+}
+
+// Bandeau de total sous l'éditeur de phases (vert à 100 %, rouge sinon)
+function s33DevisTotalRefresh() {
+  const el = document.getElementById('dv-phases-total');
+  if (!el) return;
+  const sum = Math.round(devisPhases.reduce((s2, p2) => s2 + (parseFloat(p2.taux) || 0), 0) * 10) / 10;
+  const ok = Math.round(sum * 10) === 1000;
+  el.innerHTML =
+    '<span style="font-size:12.5px;font-weight:800;color:' + (ok ? '#27ae60' : '#e74c3c') + ';">Total : ' + sum + ' %' + (ok ? '' : ' — doit faire 100 %') + '</span>' +
+    (ok ? '' : '<button onclick="s33DevisRebalance()" style="margin-left:10px;background:var(--gold);color:#fff;border:none;border-radius:99px;padding:5px 14px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;">Rééquilibrer à 100 %</button>');
 }
 
 function updateDevis() {

@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.6 — pourcentages ronds';
+const S33_BUILD = '2026-07-19.7 — pilotage cabinet';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10054,8 +10054,10 @@ function renderInvoices() {
       const ht = ttc / 1.2;
       const tva = ttc - ht;
       const todayISO = new Date().toISOString().slice(0, 10);
-      const isLate = inv.status === 'En attente' && inv.due_date && inv.due_date < todayISO;
-      const lateDays = isLate ? Math.round((new Date(todayISO) - new Date(inv.due_date)) / 86400000) : 0;
+      // Sans échéance saisie : retard 30 j après la date d'émission
+      const effDue = (typeof s33InvDueEff === 'function') ? s33InvDueEff(inv) : inv.due_date;
+      const isLate = inv.status === 'En attente' && effDue && effDue < todayISO;
+      const lateDays = isLate ? Math.round((new Date(todayISO) - new Date(effDue)) / 86400000) : 0;
       return `<tr${isLate ? ' style="background:rgba(220,50,50,.04);"' : ''}>
         <td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-dim);">${inv.num}</td>
         <td style="font-size:12px;">${project ? project.name : '—'}</td>
@@ -11441,7 +11443,8 @@ function s33RelancerFacture(invoiceId) {
   const digits = cli && cli.phone ? String(cli.phone).replace(/\D/g, '') : '';
   if (!digits) { toast('Ajoutez le numéro de téléphone dans la fiche client'); return; }
   const intl = digits.startsWith('0') ? '212' + digits.slice(1) : digits;
-  const dueTxt = inv.due_date ? new Date(inv.due_date + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const _effDue = (typeof s33InvDueEff === 'function') ? s33InvDueEff(inv) : inv.due_date;
+  const dueTxt = _effDue ? new Date(_effDue + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   const txt = encodeURIComponent(
     'Bonjour' + (cli ? ' ' + cli.name : '') + ',\n\n' +
     'Sauf erreur de notre part, la facture ' + (inv.num || '') + ' (' + formatNum(inv.amount) + ' MAD TTC — ' + (inv.object || '') + ')' +
@@ -18322,10 +18325,11 @@ function renderWorkload() {
     { id:9,  name:'Zineb',         role:'Membre',  avatar:'ZI' },
   ];
 
-  // Collect all tasks per member
+  // Collect all tasks per member (projets archivés exclus)
   function getTasksForMember(memberName) {
     const results = [];
     (db.projects || []).forEach(p => {
+      if (p.archived) return;
       (p.tasks || []).forEach(t => {
         const assigned = (t.assignedTo || '').toLowerCase();
         if (assigned === memberName.toLowerCase()) {
@@ -18336,10 +18340,11 @@ function renderWorkload() {
     return results;
   }
 
-  // Unassigned tasks go to Admin
+  // Unassigned tasks go to Admin (projets archivés exclus)
   function getUnassignedTasks() {
     const results = [];
     (db.projects || []).forEach(p => {
+      if (p.archived) return;
       (p.tasks || []).forEach(t => {
         if (!t.assignedTo || t.assignedTo.trim() === '') {
           results.push({ task: t, project: p });
@@ -18354,10 +18359,11 @@ function renderWorkload() {
   members.forEach(m => {
     let items = getTasksForMember(m.name);
     const isAdmin = m.id === 1;
-    const unassigned = isAdmin ? getUnassignedTasks() : [];
+    const unassigned = isAdmin ? getUnassignedTasks().filter(i => !isTaskDone(i.task)) : [];
 
-    const allItems = [...items];
-    const activeTasks = allItems.filter(i => !isTaskDone(i.task));
+    const doneCount = items.filter(i => isTaskDone(i.task)).length;
+    const allItems = items.filter(i => !isTaskDone(i.task));
+    const activeTasks = allItems;
     const urgentCount = activeTasks.filter(i => i.task.priority === 'Haute' || i.task.priority === 'Urgente').length;
     const loadCount = activeTasks.length;
     const loadPct = Math.min(100, loadCount / 10 * 100);
@@ -18390,7 +18396,7 @@ function renderWorkload() {
       });
     });
 
-    // Unassigned section for admin
+    // Unassigned section for admin — repliée par défaut pour ne pas noyer la liste
     if (isAdmin && unassigned.length > 0) {
       const byProjU = {};
       unassigned.forEach(i => {
@@ -18398,7 +18404,7 @@ function renderWorkload() {
         if (!byProjU[pid]) byProjU[pid] = { project: i.project, tasks: [] };
         byProjU[pid].tasks.push(i.task);
       });
-      taskRows += `<div style="font-size:10px;color:var(--text-faint);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.08em;">Non assignées</div>`;
+      let uRows = '';
       Object.values(byProjU).forEach(group => {
         group.tasks.forEach(t => {
           const status = (t.status || 'à faire').toLowerCase();
@@ -18406,7 +18412,7 @@ function renderWorkload() {
           const deadlineBadge = t.deadline
             ? `<span style="font-size:10px;color:var(--text-faint);background:var(--surface3);padding:1px 6px;border-radius:3px;flex-shrink:0;">${t.deadline}</span>`
             : '';
-          taskRows += `<div class="workload-task-row" onclick="openProjectDetail('${group.project.id}')">
+          uRows += `<div class="workload-task-row" onclick="openProjectDetail('${group.project.id}')">
             <span style="width:8px;height:8px;border-radius:50%;background:${sc};flex-shrink:0;display:inline-block;"></span>
             <span style="font-size:12px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.name}</span>
             ${deadlineBadge}
@@ -18414,6 +18420,13 @@ function renderWorkload() {
           </div>`;
         });
       });
+      taskRows += `<details style="margin-top:10px;">
+        <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--text-dim);padding:6px 0;list-style-position:inside;">Tâches non assignées : ${unassigned.length} — appuyer pour voir</summary>
+        ${uRows}
+      </details>`;
+    }
+    if (doneCount > 0) {
+      taskRows += `<div style="font-size:10px;color:var(--text-faint);margin-top:8px;">${doneCount} tâche${doneCount > 1 ? 's' : ''} terminée${doneCount > 1 ? 's' : ''} masquée${doneCount > 1 ? 's' : ''} · projets archivés exclus</div>`;
     }
 
     html += `<div class="workload-card">
@@ -19852,6 +19865,9 @@ function escHTML(str) {
       try { renderProjectAddons(); } catch(e) { console.error('Addon render error:', e); }
     };
   }
+
+  // Exposé pour la vue « Rentabilité par projet » globale (page Finance)
+  window.s33GetProjectProfitability = getProjectProfitability;
 
   // ── DASHBOARD REMINDERS ─────────────────────────────────────
   function renderDashboardReminders() {
@@ -31443,6 +31459,215 @@ window.addEventListener('appinstalled', () => {
   else _init();
 
   console.log('✓ PV de chantier loaded');
+})();
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  MODULE PILOTAGE — factures en retard, trésorerie prévisionnelle,
+//  rentabilité globale par projet (vue direction, page Finance)
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+  'use strict';
+
+  // Échéance effective d'une facture : due_date saisie, sinon date d'émission + 30 j
+  window.s33InvDueEff = function(inv) {
+    if (inv.due_date) return String(inv.due_date).slice(0, 10);
+    const d = String(inv.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+    const dt = new Date(d + 'T00:00');
+    dt.setDate(dt.getDate() + 30);
+    return dt.toISOString().slice(0, 10);
+  };
+
+  function lateInvoices() {
+    const today = new Date().toISOString().slice(0, 10);
+    return (db.invoices || [])
+      .filter(i => i.status === 'En attente')
+      .map(i => {
+        const due = window.s33InvDueEff(i);
+        const days = (due && due < today) ? Math.round((new Date(today) - new Date(due)) / 86400000) : 0;
+        return { inv: i, due: due, days: days };
+      })
+      .filter(x => x.days > 0)
+      .sort((a, b) => b.days - a.days);
+  }
+
+  // ── Bandeau « Factures en retard » en haut de la page Factures ──
+  function renderLateBanner() {
+    const grouped = document.getElementById('invoices-grouped');
+    if (!grouped) return;
+    let box = document.getElementById('s33-late-banner');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 's33-late-banner';
+      grouped.parentNode.insertBefore(box, grouped);
+    }
+    const late = lateInvoices();
+    if (!late.length) { box.innerHTML = ''; return; }
+    const total = late.reduce((s, x) => s + (Number(x.inv.amount) || 0), 0);
+    const rows = late.map(x => {
+      const cli = (db.clients || []).find(c => c.id === x.inv.clientId);
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(220,50,50,.12);flex-wrap:wrap;">' +
+        '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--text-dim);">' + escHTML(x.inv.num || '') + '</span>' +
+        '<span style="font-size:12px;color:var(--text);flex:1;min-width:110px;">' + escHTML(cli ? cli.name : 'Client inconnu') + '</span>' +
+        '<span style="font-size:12px;font-weight:700;color:var(--text);">' + formatNum(x.inv.amount) + ' MAD</span>' +
+        '<span style="font-size:10px;font-weight:800;color:#c0392b;background:rgba(220,50,50,.1);padding:2px 8px;border-radius:99px;">' + x.days + ' j de retard</span>' +
+        '<button onclick="s33RelancerFacture(' + x.inv.id + ')" style="padding:5px 12px;background:rgba(37,211,102,.1);border:1px solid rgba(37,211,102,.4);border-radius:99px;color:#1da851;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;"><span class="mi" style="font-size:12px;vertical-align:-2px;">send</span> Relancer</button>' +
+      '</div>';
+    }).join('');
+    box.innerHTML =
+      '<div class="card" style="margin-bottom:16px;border:1px solid rgba(220,50,50,.35);background:rgba(220,50,50,.03);padding:16px 20px;">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap;">' +
+          '<span class="mi" style="color:#c0392b;">warning</span>' +
+          '<span style="font-size:13px;font-weight:800;color:#c0392b;">' + late.length + ' facture' + (late.length > 1 ? 's' : '') + ' en retard — ' + formatNum(total) + ' MAD à récupérer</span>' +
+        '</div>' +
+        '<div style="font-size:11px;color:var(--text-faint);margin-bottom:6px;">Sans échéance saisie, une facture est comptée en retard 30 jours après sa date d\'émission.</div>' +
+        rows +
+      '</div>';
+  }
+
+  if (typeof window.renderInvoices === 'function') {
+    const _ri = window.renderInvoices;
+    window.renderInvoices = function() {
+      _ri.apply(this, arguments);
+      try { renderLateBanner(); } catch(e) { console.error('bandeau retards', e); }
+    };
+  }
+
+  // ── Trésorerie prévisionnelle + rentabilité globale (page Finance, direction) ──
+  let _echCache = null, _echCacheAt = 0;
+  async function getAllEcheances() {
+    if (_echCache && Date.now() - _echCacheAt < 60000) return _echCache;
+    const rows = await sbGet('honoraires_echeances', '?select=id,project_id,label,montant,invoice_id&order=project_id,position');
+    _echCache = rows || [];
+    _echCacheAt = Date.now();
+    return _echCache;
+  }
+
+  function renderPilotageFinance() {
+    const page = document.getElementById('page-finance');
+    if (!page) return;
+    let box = document.getElementById('s33-pilotage');
+    if (!currentUser || currentUser.role !== 'admin') { if (box) box.innerHTML = ''; return; }
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 's33-pilotage';
+      page.appendChild(box);
+    }
+
+    const pending = (db.invoices || []).filter(i => i.status === 'En attente');
+    const pendingTotal = pending.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+    const late = lateInvoices();
+    const lateTotal = late.reduce((s, x) => s + (Number(x.inv.amount) || 0), 0);
+
+    // Rentabilité par projet — les moins rentables d'abord
+    let rentabHTML = '';
+    if (typeof window.s33GetProjectProfitability === 'function') {
+      const rowsData = (db.projects || [])
+        .filter(p => !p.archived)
+        .map(p => ({ p: p, prof: window.s33GetProjectProfitability(p) }))
+        .filter(x => x.prof.totalMins > 0 || x.prof.honoraires > 0)
+        .sort((a, b) => a.prof.marge - b.prof.marge);
+      if (rowsData.length) {
+        const tdS = 'padding:9px 14px;border-bottom:1px solid var(--surface2);';
+        const trs = rowsData.map(x => {
+          const mc = x.prof.marge >= 0 ? '#27ae60' : '#c0392b';
+          const pct = x.prof.honoraires > 0 ? Math.round(x.prof.marge / x.prof.honoraires * 100) + ' %' : '—';
+          return '<tr onclick="openProjectDetail(' + x.p.id + ')" style="cursor:pointer;">' +
+            '<td style="' + tdS + 'font-size:12px;font-weight:600;color:var(--text);">' + escHTML(x.p.name) + '</td>' +
+            '<td style="' + tdS + 'font-size:12px;color:var(--text-dim);white-space:nowrap;">' + formatTime(x.prof.totalMins) + '</td>' +
+            '<td style="' + tdS + 'font-size:12px;color:var(--text-dim);white-space:nowrap;">' + formatNum(Math.round(x.prof.costMO)) + '</td>' +
+            '<td style="' + tdS + 'font-size:12px;color:var(--text-dim);white-space:nowrap;">' + formatNum(x.prof.honoraires) + '</td>' +
+            '<td style="' + tdS + 'font-size:12px;font-weight:800;color:' + mc + ';white-space:nowrap;">' + (x.prof.marge >= 0 ? '+' : '') + formatNum(Math.round(x.prof.marge)) + '</td>' +
+            '<td style="' + tdS + 'font-size:11px;color:' + mc + ';white-space:nowrap;">' + pct + '</td>' +
+          '</tr>';
+        }).join('');
+        rentabHTML =
+          '<div class="section-title" style="margin-top:28px;">Rentabilité par projet</div>' +
+          '<div style="font-size:11px;color:var(--text-faint);margin-bottom:10px;">Heures des rapports quotidiens et des timers, valorisées aux taux définis. Les projets les moins rentables apparaissent en premier. Touchez une ligne pour ouvrir le projet.</div>' +
+          '<div class="card" style="padding:0;overflow-x:auto;">' +
+            '<table style="width:100%;border-collapse:collapse;min-width:560px;">' +
+              '<thead><tr style="border-bottom:1px solid var(--border);">' +
+                ['Projet', 'Heures', 'Coût MO (MAD)', 'Encaissé (MAD)', 'Marge (MAD)', '%'].map(h =>
+                  '<th style="text-align:left;padding:10px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);">' + h + '</th>').join('') +
+              '</tr></thead>' +
+              '<tbody>' + trs + '</tbody>' +
+            '</table>' +
+          '</div>';
+      }
+    }
+
+    box.innerHTML =
+      '<div class="section-title" style="margin-top:28px;">Trésorerie prévisionnelle</div>' +
+      '<div class="grid-3">' +
+        '<div class="stat-card">' +
+          '<div class="stat-label">Factures émises à encaisser</div>' +
+          '<div class="stat-value" style="font-size:24px;">' + formatNum(pendingTotal) + '</div>' +
+          '<div class="stat-sub">MAD · ' + pending.length + ' facture' + (pending.length !== 1 ? 's' : '') + (late.length ? ' · <span style="color:#c0392b;font-weight:700;">' + formatNum(lateTotal) + ' en retard</span>' : '') + '</div>' +
+        '</div>' +
+        '<div class="stat-card">' +
+          '<div class="stat-label">Reste à facturer (échéanciers)</div>' +
+          '<div class="stat-value" style="font-size:24px;" id="s33-raf-total">…</div>' +
+          '<div class="stat-sub" id="s33-raf-sub">calcul en cours…</div>' +
+        '</div>' +
+        '<div class="stat-card">' +
+          '<div class="stat-label">Total attendu</div>' +
+          '<div class="stat-value gold" style="font-size:24px;" id="s33-attendu-total">…</div>' +
+          '<div class="stat-sub">MAD (encours + reste à facturer)</div>' +
+        '</div>' +
+      '</div>' +
+      '<div id="s33-raf-detail"></div>' +
+      rentabHTML;
+
+    // Remplissage asynchrone du « reste à facturer » depuis les échéanciers d'honoraires
+    getAllEcheances().then(echs => {
+      const activeIds = new Set((db.projects || []).filter(p => !p.archived).map(p => p.id));
+      const open = (echs || []).filter(e => !e.invoice_id && activeIds.has(e.project_id));
+      const byProj = {};
+      open.forEach(e => {
+        if (!byProj[e.project_id]) byProj[e.project_id] = { total: 0, count: 0 };
+        byProj[e.project_id].total += Number(e.montant) || 0;
+        byProj[e.project_id].count++;
+      });
+      const rafTotal = open.reduce((s, e) => s + (Number(e.montant) || 0), 0);
+      const elT = document.getElementById('s33-raf-total');
+      const elS = document.getElementById('s33-raf-sub');
+      const elA = document.getElementById('s33-attendu-total');
+      const elD = document.getElementById('s33-raf-detail');
+      if (elT) elT.textContent = formatNum(rafTotal);
+      if (elS) elS.textContent = 'MAD · ' + Object.keys(byProj).length + ' projet' + (Object.keys(byProj).length !== 1 ? 's' : '');
+      if (elA) elA.textContent = formatNum(rafTotal + pendingTotal);
+      if (elD) {
+        const rows2 = Object.keys(byProj).map(pid => {
+          const p = (db.projects || []).find(pp => pp.id === Number(pid));
+          return '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--surface2);font-size:12px;cursor:pointer;flex-wrap:wrap;" onclick="openProjectDetail(' + Number(pid) + ')">' +
+            '<span style="color:var(--text);font-weight:600;">' + escHTML(p ? p.name : 'Projet n° ' + pid) + '</span>' +
+            '<span style="color:var(--text-dim);">' + byProj[pid].count + ' étape' + (byProj[pid].count > 1 ? 's' : '') + ' · <strong style="color:var(--gold);">' + formatNum(byProj[pid].total) + ' MAD</strong></span>' +
+          '</div>';
+        }).join('');
+        elD.innerHTML = rows2
+          ? '<div class="card" style="padding:12px 16px;margin-top:12px;"><div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Étapes d\'honoraires pas encore facturées</div>' + rows2 + '</div>'
+          : '';
+      }
+    }).catch(e => {
+      const elT = document.getElementById('s33-raf-total');
+      const elS = document.getElementById('s33-raf-sub');
+      if (elT) elT.textContent = '—';
+      if (elS) elS.textContent = 'échéanciers indisponibles';
+      console.warn('échéanciers indisponibles', e);
+    });
+  }
+
+  if (typeof window.renderFinance === 'function') {
+    const _rf = window.renderFinance;
+    window.renderFinance = function() {
+      _rf.apply(this, arguments);
+      try { renderPilotageFinance(); } catch(e) { console.error('pilotage finance', e); }
+    };
+  }
+
+  console.log('✓ Module pilotage chargé');
 })();
 </script>
 

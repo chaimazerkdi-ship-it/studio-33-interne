@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-18.8 — devis une page';
+const S33_BUILD = '2026-07-18.9 — devis une page (bis)';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10335,7 +10335,7 @@ function printInvoice(id) {
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=Cormorant+Garamond:wght@300;600&display=swap" rel="stylesheet">
 <style>
   @page{size:A4;margin:0;}
-  body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-weight:300;color:#111;max-width:794px;margin:0 auto;padding:18mm 20mm;font-size:13px;display:flex;flex-direction:column;min-height:252mm;box-sizing:border-box;}
+  body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-weight:300;color:#111;max-width:794px;margin:0 auto;padding:18mm 20mm;font-size:13px;box-sizing:border-box;}
   .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:48px;padding-bottom:24px;border-bottom:2px solid #111;}
   .firm{font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:300;color:#111;}
   .firm small{display:block;font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:10px;letter-spacing:.25em;text-transform:uppercase;color:#888;margin-top:4px;}
@@ -10351,7 +10351,7 @@ function printInvoice(id) {
   .total-box{text-align:right;min-width:220px;}
   .total-line{display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#555;}
   .total-ttc{display:flex;justify-content:space-between;padding:12px 0;font-size:16px;font-weight:500;border-top:2px solid #111;margin-top:8px;}
-  .footer{margin-top:auto;padding-top:20px;border-top:1px solid #eee;font-size:10px;color:#aaa;text-align:center;letter-spacing:.1em;}
+  .footer{margin-top:18mm;padding-top:20px;border-top:1px solid #eee;font-size:10px;color:#aaa;text-align:center;letter-spacing:.1em;page-break-inside:avoid;}
 </style>
 </head>
 <body>
@@ -11522,13 +11522,14 @@ function printDevis() {
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#1a1a1a;font-size:11px;max-width:794px;margin:0 auto;}
   @page{size:A4;margin:0;}
-  /* Vrai A4 : marges haut/bas + bloc du bas poussé en pied de page */
-  .dv-page{display:flex;flex-direction:column;min-height:252mm;box-sizing:border-box;padding:6mm 0 4mm;}
-  .dv-page .dv-body{flex:1 0 auto;}
-  .dv-page .dv-bottom-bar{margin-top:auto;}
-  table, .dv-footer, .sig-block{page-break-inside:avoid;}
+  /* Une seule page garantie : pas de hauteur forcée, le contenu coule
+     naturellement ; espace confortable avant signatures et contacts */
+  .dv-page{display:block;box-sizing:border-box;padding:3mm 0 2mm;}
+  .dv-page .dv-footer{margin-top:5mm;}
+  .dv-page .dv-bottom-bar{margin-top:4mm;}
+  table, .dv-footer, .sig-block, .dv-bottom-bar{page-break-inside:avoid;}
   .dv-body{padding:0 50px;}
-  .dv-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-top:30px;}
+  .dv-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-top:10px;}
   .dv-logo-right{flex-shrink:0;}
   .dv-logo-right .lh-img{width:160px;display:block;}
   .dv-meta{font-size:11px;line-height:2;}

@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.1 — vrai PDF devis';
+const S33_BUILD = '2026-07-19.2 — PDF compatible iPhone';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11578,15 +11578,16 @@ async function s33DevisPdf() {
       const fmtT = t => (Math.round(t * 10) % 10 === 0 ? String(Math.round(t)) : t.toFixed(1));
       return [cell, row.mission, fmtT(row.taux) + '%', fmtT(cumul) + '%', money(ttc * row.taux / 100) + ' MAD'];
     });
+    let headBottomY = null, footTopY = null, tableTopY = null;
     doc.autoTable({
       startY: y, margin: { left: M, right: M },
       head: [['PHASE', 'CONTENU / MISSION', 'TAUX', 'CUMUL', 'MONTANT TTC']],
       body: body,
-      foot: [['TOTAL', '', Math.round(devisPhases.reduce((a, r) => a + r.taux, 0)) + '%', '', money(ttc) + ' MAD']],
+      foot: [[{ content: 'TOTAL', colSpan: 2 }, Math.round(devisPhases.reduce((a, r) => a + r.taux, 0)) + '%', '', money(ttc) + ' MAD']],
       theme: 'plain',
-      styles: { fontSize: 8.6, cellPadding: { top: 2.4, bottom: 2.4, left: 2.5, right: 2.5 }, textColor: INK },
-      headStyles: { fillColor: BEIGE, fontStyle: 'bold', fontSize: 7.8, textColor: INK, lineWidth: { bottom: 0.35 }, lineColor: GOLDL },
-      footStyles: { fillColor: [251, 248, 242], fontStyle: 'bold', textColor: INK, lineWidth: { top: 0.35 }, lineColor: GOLDL },
+      styles: { fontSize: 8.6, cellPadding: { top: 2.4, bottom: 2.4, left: 2.5, right: 2.5 }, textColor: INK, lineWidth: 0 },
+      headStyles: { fillColor: BEIGE, fontStyle: 'bold', fontSize: 7.8, textColor: INK },
+      footStyles: { fillColor: [251, 248, 242], fontStyle: 'bold', textColor: INK },
       alternateRowStyles: { fillColor: [250, 250, 248] },
       columnStyles: {
         0: { cellWidth: 16, halign: 'center', fontStyle: 'bold', textColor: GOLD },
@@ -11595,8 +11596,21 @@ async function s33DevisPdf() {
         3: { cellWidth: 18, halign: 'center' },
         4: { cellWidth: 34, halign: 'right', fontStyle: 'bold' }
       },
-      didParseCell: d => { if (d.section === 'foot' && d.column.index === 4) d.cell.styles.textColor = GOLD; }
+      didParseCell: d => {
+        if (d.section !== 'foot') return;
+        // TOTAL fusionné : [TOTAL(x2), taux, vide, montant]
+        if (d.column.index === 0) d.cell.styles.halign = 'left';
+        if (d.cell.raw && String(d.cell.raw).indexOf('MAD') >= 0) { d.cell.styles.textColor = GOLD; d.cell.styles.halign = 'right'; }
+      },
+      didDrawCell: d => {
+        if (d.section === 'head') { headBottomY = d.cell.y + d.cell.height; if (tableTopY === null) tableTopY = d.cell.y; }
+        if (d.section === 'foot' && footTopY === null) footTopY = d.cell.y;
+      }
     });
+    // Filets dorés tracés simplement (compatibles avec tous les lecteurs PDF)
+    doc.setDrawColor.apply(doc, GOLDL); doc.setLineWidth(0.35);
+    if (headBottomY) doc.line(M, headBottomY, W - M, headBottomY);
+    if (footTopY) doc.line(M, footTopY, W - M, footTopY);
     y = doc.lastAutoTable.finalY + 7;
 
     // Conditions
@@ -11649,13 +11663,19 @@ async function s33DevisPdf() {
     // Téléchargement direct (feuille de partage iOS si disponible)
     const fname = 'Devis_' + (ref || 'S33').replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf';
     const blob = doc.output('blob');
-    try {
-      const file = new File([blob], fname, { type: 'application/pdf' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: fname });
-        return;
-      }
-    } catch(e) { if (e && e.name === 'AbortError') return; }
+    // Feuille de partage uniquement sur téléphone/tablette ; sur ordinateur
+    // (Windows, Mac) on télécharge directement le fichier
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+    if (isMobile) {
+      try {
+        const file = new File([blob], fname, { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: fname });
+          return;
+        }
+      } catch(e) { if (e && e.name === 'AbortError') return; }
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = fname;

@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-18.9 — devis une page (bis)';
+const S33_BUILD = '2026-07-19.1 — vrai PDF devis';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3885,7 +3885,7 @@ const S33_BUILD = '2026-07-18.9 — devis une page (bis)';
         <div style="display:flex;gap:10px;">
           <button class="btn btn-outline" onclick="resetDevis()">+ Nouveau</button>
           <button class="btn btn-outline" onclick="saveDevis()"><span class="mi">save</span> Sauvegarder</button>
-          <button class="btn btn-gold" onclick="printDevis()"><span class="mi">picture_as_pdf</span> PDF</button>
+          <button class="btn btn-gold" onclick="s33DevisPdf()"><span class="mi">picture_as_pdf</span> PDF</button>
         </div>
       </div>
 
@@ -11497,6 +11497,175 @@ function s33PrintHTML(html) {
     setTimeout(function() { try { f.remove(); } catch(_) {} }, 60000);
   };
   requestAnimationFrame(function() { requestAnimationFrame(fire); });
+}
+
+// ── Vrai PDF du devis (téléchargement direct, sans menu d'impression) ──
+// Mise en page maîtrisée : signatures et contacts ancrés en bas de page,
+// une seule page garantie pour un échéancier standard.
+async function s33DevisPdf() {
+  const ref = document.getElementById('dv-ref')?.value || '';
+  const clientName = (typeof s33DvClientName === 'function' ? s33DvClientName() : (document.getElementById('dv-client')?.value || ''));
+  const projet = document.getElementById('dv-projet')?.value || '';
+  const ht = parseFloat(document.getElementById('dv-ht')?.value) || 0;
+  const tvaRate = parseFloat(document.getElementById('dv-tva')?.value) || 20;
+  const ttc = ht * (1 + tvaRate / 100);
+  const dateStr = (document.getElementById('dv-date')?.value
+    ? new Date(document.getElementById('dv-date').value + 'T00:00') : new Date()).toLocaleDateString('fr-FR');
+  if (!clientName && !ht) { toast('Remplissez d\'abord le devis'); return; }
+
+  toast('Préparation du PDF…');
+  try {
+    if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, M = 18;
+    const INK = [26, 26, 26], DIM = [102, 102, 102], FAINT = [150, 150, 150], GOLD = [154, 123, 58], GOLDL = [201, 169, 110], BEIGE = [246, 242, 234];
+    const money = n => Math.round(n).toLocaleString('fr-FR').replace(/[\u202f\u00a0]/g, ' ');
+    let y = 18;
+
+    // En-tête : références à gauche, logo à droite
+    doc.setFontSize(9); 
+    [['Référence', ref], ['Client', clientName], ['Date', dateStr]].forEach((r, i) => {
+      doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
+      doc.text(r[0], M, y + i * 5.4);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(r[1] || ''), M + 26, y + i * 5.4);
+    });
+    // Logo depuis l'aperçu (déjà en base64 dans la page)
+    try {
+      const img = document.querySelector('#devis-doc .lh-img');
+      if (img && img.naturalWidth) {
+        const c = document.createElement('canvas');
+        const k = Math.min(1, 640 / img.naturalWidth);
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        const cx2 = c.getContext('2d');
+        cx2.fillStyle = '#ffffff'; cx2.fillRect(0, 0, c.width, c.height);
+        cx2.drawImage(img, 0, 0, c.width, c.height);
+        const lw = 46, lh = lw * c.height / c.width;
+        doc.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', W - M - lw, y - 4, lw, lh);
+      }
+    } catch(_) {}
+    y += 22;
+
+    // Barre de titre
+    doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.5);
+    doc.line(M, y, W - M, y); y += 6;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor.apply(doc, INK);
+    doc.text("NOTE D'HONORAIRES & ÉCHÉANCIER DE PAIEMENT", M, y); y += 5;
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
+    doc.text('/ ' + projet, M, y); y += 3.5;
+    doc.setDrawColor(221); doc.setLineWidth(0.2);
+    doc.line(M, y, W - M, y); y += 9;
+
+    // Montant en vedette
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, DIM);
+    doc.text('Nos honoraires pour la mission sont fixés à la somme forfaitaire HT de :', W / 2, y, { align: 'center' }); y += 8;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(19); doc.setTextColor.apply(doc, INK);
+    doc.text(money(ht) + ' MAD HT', W / 2, y, { align: 'center' }); y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
+    doc.text('Montant total TTC : ' + money(ttc) + ' MAD TTC', W / 2, y, { align: 'center' }); y += 9;
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, INK);
+    doc.text(('Les honoraires seront fixés au montant forfaitaire de ' + money(ttc) + ' MAD TTC réparti comme suit :').toUpperCase(), M, y); y += 3;
+
+    // Échéancier
+    let cumul = 0, prevPhase = null;
+    const body = devisPhases.map(row => {
+      cumul += row.taux;
+      const cell = row.phase !== prevPhase ? row.phase : '';
+      prevPhase = row.phase;
+      const fmtT = t => (Math.round(t * 10) % 10 === 0 ? String(Math.round(t)) : t.toFixed(1));
+      return [cell, row.mission, fmtT(row.taux) + '%', fmtT(cumul) + '%', money(ttc * row.taux / 100) + ' MAD'];
+    });
+    doc.autoTable({
+      startY: y, margin: { left: M, right: M },
+      head: [['PHASE', 'CONTENU / MISSION', 'TAUX', 'CUMUL', 'MONTANT TTC']],
+      body: body,
+      foot: [['TOTAL', '', Math.round(devisPhases.reduce((a, r) => a + r.taux, 0)) + '%', '', money(ttc) + ' MAD']],
+      theme: 'plain',
+      styles: { fontSize: 8.6, cellPadding: { top: 2.4, bottom: 2.4, left: 2.5, right: 2.5 }, textColor: INK },
+      headStyles: { fillColor: BEIGE, fontStyle: 'bold', fontSize: 7.8, textColor: INK, lineWidth: { bottom: 0.35 }, lineColor: GOLDL },
+      footStyles: { fillColor: [251, 248, 242], fontStyle: 'bold', textColor: INK, lineWidth: { top: 0.35 }, lineColor: GOLDL },
+      alternateRowStyles: { fillColor: [250, 250, 248] },
+      columnStyles: {
+        0: { cellWidth: 16, halign: 'center', fontStyle: 'bold', textColor: GOLD },
+        1: { cellWidth: 'auto', fontStyle: 'bold' },
+        2: { cellWidth: 18, halign: 'center' },
+        3: { cellWidth: 18, halign: 'center' },
+        4: { cellWidth: 34, halign: 'right', fontStyle: 'bold' }
+      },
+      didParseCell: d => { if (d.section === 'foot' && d.column.index === 4) d.cell.styles.textColor = GOLD; }
+    });
+    y = doc.lastAutoTable.finalY + 7;
+
+    // Conditions
+    const bullet = (txt) => {
+      const lines = doc.splitTextToSize(txt, W - 2 * M - 5);
+      doc.circle(M + 1.2, y - 1.2, 0.55, 'F');
+      doc.text(lines, M + 4, y);
+      y += lines.length * 3.9 + 1.5;
+    };
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor.apply(doc, INK);
+    doc.text('Conditions de paiements', M, y); y += 4.6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.4); doc.setFillColor.apply(doc, DIM); doc.setTextColor(85);
+    bullet("Les paiements des honoraires seront effectués conformément au tableau d'échéancier ci-dessus, représentant la répartition des honoraires de la mission complète du projet. Chaque versement interviendra à la fin de chaque étape validée par le maître d'ouvrage, sur présentation d'une facture correspondante émise par Studio 33 Architects.");
+    y += 1.5;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor.apply(doc, INK);
+    doc.text('Moyen de paiements', M, y); y += 4.6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.4); doc.setTextColor(85);
+    bullet('Espèces');
+    bullet('Virement bancaire : sur le compte Studio 33 Architects — IBAN : 022010000008003079157925');
+
+    // Signatures : ancrées vers le bas de page (nouvelle page si nécessaire)
+    let ySig = Math.max(y + 6, 232);
+    if (ySig > 250) { doc.addPage(); ySig = 232; }
+    const sig = (x, title, name, label) => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, INK);
+      doc.text(title, x + 31, ySig, { align: 'center' });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+      doc.text(name, x + 31, ySig + 4.2, { align: 'center' });
+      doc.setDrawColor(200); doc.setFillColor(249, 249, 246); doc.setLineWidth(0.2);
+      doc.roundedRect(x, ySig + 7, 62, 20, 1.5, 1.5, 'FD');
+      doc.setFontSize(7.2); doc.setTextColor.apply(doc, FAINT);
+      doc.text(label, x + 31, ySig + 17.5, { align: 'center' });
+    };
+    sig(M, "Maître d'œuvre :", 'STUDIO 33 ARCHITECTS', 'Cachet & Signature');
+    sig(W - M - 62, "Maître d'ouvrage :", (clientName || '').toUpperCase(), 'Signature');
+
+    // Bande de contacts : bas de page fixe
+    const yB = 276;
+    doc.setDrawColor.apply(doc, GOLDL); doc.setLineWidth(0.25);
+    doc.line(M, yB, W / 2 - 4, yB); doc.line(W / 2 + 4, yB, W - M, yB);
+    doc.setFillColor.apply(doc, GOLD);
+    doc.circle(W / 2, yB, 0.8, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(119);
+    doc.text('05 28 84 33 30 | @studio33architects', M, yB + 6);
+    doc.text('01 Imm paternelle, Rue de Madrid, Agadir', M, yB + 10);
+    doc.text('Studio33architecture@gmail.com', W - M, yB + 6, { align: 'right' });
+    doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, GOLD);
+    doc.text('WWW.STUDIO33ARCHITECTS.COM', W - M, yB + 10, { align: 'right' });
+
+    // Téléchargement direct (feuille de partage iOS si disponible)
+    const fname = 'Devis_' + (ref || 'S33').replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf';
+    const blob = doc.output('blob');
+    try {
+      const file = new File([blob], fname, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: fname });
+        return;
+      }
+    } catch(e) { if (e && e.name === 'AbortError') return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    toast('PDF téléchargé : ' + fname);
+  } catch(e) {
+    console.error('s33DevisPdf', e);
+    toast('Erreur PDF — vérifiez la connexion et réessayez');
+  }
 }
 
 function printDevis() {

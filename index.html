@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-18.4 — devis 100 % + villes';
+const S33_BUILD = '2026-07-18.5 — impression iPhone';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10393,10 +10393,7 @@ function printInvoice(id) {
 <div class="footer">Studio 33 Architects — Agadir, Maroc · RC / IF / ICE xxxxxx · Tél : +212 xxx xxx xxx</div>
 </body></html>`;
 
-  const w = window.open('', '_blank');
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => w.print(), 800);
+  s33PrintHTML(html);
 }
 
 // ===== BIBLIOTHÈQUE DOCUMENTAIRE =====
@@ -11478,6 +11475,27 @@ function resetDevis() {
   toast('Nouveau devis initialisé');
 }
 
+// Impression via un cadre invisible : sur iPhone (app installée), une
+// nouvelle fenêtre n'a pas de bouton retour — ici le menu d'impression
+// s'ouvre par-dessus l'app et se ferme normalement.
+function s33PrintHTML(html) {
+  const old = document.getElementById('s33-print-frame'); if (old) old.remove();
+  const f = document.createElement('iframe');
+  f.id = 's33-print-frame';
+  f.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;visibility:hidden;';
+  document.body.appendChild(f);
+  const d = f.contentDocument || f.contentWindow.document;
+  d.open(); d.write(html); d.close();
+  setTimeout(function() {
+    try { f.contentWindow.focus(); f.contentWindow.print(); }
+    catch(e) {
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); setTimeout(function() { w.print(); }, 600); }
+    }
+    setTimeout(function() { try { f.remove(); } catch(_) {} }, 60000);
+  }, 900);
+}
+
 function printDevis() {
   // Convert letterhead img to base64 for print
   const lhImg = document.querySelector('#devis-doc .lh-img');
@@ -11494,16 +11512,15 @@ function printDevis() {
   let content = document.getElementById('devis-doc').innerHTML;
   if (lhSrc) content = content.replace(/src="[^"]*"/, `src="${lhSrc}"`);
 
-  const w = window.open('', '_blank');
-  w.document.write(`<!DOCTYPE html>
+  s33PrintHTML(`<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;700&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#1a1a1a;font-size:11px;max-width:794px;margin:0 auto;}
   @page{size:A4;margin:0;}
-  /* Vrai A4 : le bloc du bas est poussé en pied de page */
-  .dv-page{display:flex;flex-direction:column;min-height:296mm;}
+  /* Vrai A4 : marges haut/bas + bloc du bas poussé en pied de page */
+  .dv-page{display:flex;flex-direction:column;min-height:296mm;box-sizing:border-box;padding:8mm 0 7mm;}
   .dv-page .dv-body{flex:1 0 auto;}
   .dv-page .dv-bottom-bar{margin-top:auto;}
   table, .dv-footer, .sig-block{page-break-inside:avoid;}
@@ -11546,8 +11563,6 @@ function printDevis() {
   .gold{color:#9a7b3a;font-weight:500;letter-spacing:1.5px;}
 </style>
 </head><body><div class="dv-page">${content}</div></body></html>`);
-  w.document.close();
-  setTimeout(() => w.print(), 800);
 }
 
 // ===== MEDIATHEQUE =====

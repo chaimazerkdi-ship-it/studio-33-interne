@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.10 — devis vert, filtres factures, échéancier portail';
+const S33_BUILD = '2026-07-19.11 — honoraires facturés';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6567,7 +6567,8 @@ function renderProjectDetailPage() {
       const totalInvoiced = projInvoices.reduce((s, inv) => s + (inv.amount || 0), 0);
       const hasBudget = isAdmin && p.budget && p.budget > 0;
       const burnPct = hasBudget ? Math.round(totalInvoiced / p.budget * 100) : 0;
-      const burnColor = burnPct > 100 ? 'var(--red)' : burnPct > 85 ? 'var(--yellow)' : 'var(--green)';
+      // 100 % = tout est facturé : c'est une bonne nouvelle (vert). Rouge seulement en dépassement.
+      const burnColor = burnPct > 100 ? 'var(--red)' : burnPct === 100 ? 'var(--green)' : burnPct > 85 ? 'var(--yellow)' : 'var(--green)';
       const burnBarW = Math.min(burnPct, 100);
       const cols = isAdmin ? (hasBudget ? 'grid-4' : 'grid-3') : 'grid-2';
       return `<div class="${cols}" style="margin-bottom:24px;">
@@ -6586,7 +6587,7 @@ function renderProjectDetailPage() {
       </div>
       ${hasBudget ? `
       <div class="stat-card" style="position:relative;overflow:hidden;">
-        <div class="stat-label">Budget brûlé</div>
+        <div class="stat-label">Honoraires facturés</div>
         <div style="font-size:26px;font-weight:800;color:${burnColor};margin-top:4px;">${burnPct}%</div>
         <div style="height:6px;background:var(--surface3);border-radius:99px;margin-top:8px;overflow:hidden;">
           <div style="height:100%;width:${burnBarW}%;background:${burnColor};border-radius:99px;transition:width .4s;"></div>
@@ -6595,7 +6596,11 @@ function renderProjectDetailPage() {
           <span>${formatNum(totalInvoiced)} facturé</span>
           <span>/ ${formatNum(p.budget)} MAD</span>
         </div>
-        ${burnPct > 85 ? `<div style="position:absolute;top:10px;right:10px;"><span class="mi" style="font-size:16px;color:${burnColor};">${burnPct > 100 ? 'error' : 'warning'}</span></div>` : ''}
+        ${burnPct === 100 ? `<div style="font-size:11px;color:var(--green);font-weight:700;margin-top:4px;">Tout est facturé ✓</div>`
+          : burnPct > 100 ? `<div style="font-size:11px;color:var(--red);font-weight:700;margin-top:4px;">Dépassement — pensez à un avenant et mettez le budget à jour</div>` : ''}
+        ${burnPct > 100 ? `<div style="position:absolute;top:10px;right:10px;"><span class="mi" style="font-size:16px;color:var(--red);">error</span></div>`
+          : burnPct === 100 ? `<div style="position:absolute;top:10px;right:10px;"><span class="mi" style="font-size:16px;color:var(--green);">check_circle</span></div>`
+          : burnPct > 85 ? `<div style="position:absolute;top:10px;right:10px;"><span class="mi" style="font-size:16px;color:${burnColor};">warning</span></div>` : ''}
       </div>
       ` : isAdmin ? `
       <div class="stat-card" style="cursor:pointer;border:1px dashed var(--border);" onclick="editProject(${p.id})">

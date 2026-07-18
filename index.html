@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.2 — PDF compatible iPhone';
+const S33_BUILD = '2026-07-19.3 — vrai PDF facture';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10075,7 +10075,7 @@ function renderInvoices() {
           <div style="display:flex;gap:6px;">
             ${isLate ? `<button class="btn btn-ghost" onclick="s33RelancerFacture(${inv.id})" style="font-size:10px;padding:4px 10px;color:#1da851;border:1px solid rgba(37,211,102,.4);background:rgba(37,211,102,.08);" title="Relancer le client par WhatsApp"><span class="mi mi-sm">send</span> Relancer</button>` : ''}
             <button class="btn btn-ghost" onclick="editInvoice(${inv.id})" style="font-size:10px;padding:4px 10px;"><span class="mi mi-sm">edit</span></button>
-            <button class="btn btn-ghost" onclick="printInvoice(${inv.id})" style="font-size:10px;padding:4px 10px;">PDF</button>
+            <button class="btn btn-ghost" onclick="s33InvoicePdf(${inv.id})" style="font-size:10px;padding:4px 10px;">PDF</button>
             <button class="btn btn-danger" onclick="deleteInvoice(${inv.id})" style="font-size:10px;padding:4px 10px;"><span class="mi mi-sm">delete</span></button>
           </div>
         </td>
@@ -10321,6 +10321,156 @@ async function deleteInvoice(id) {
   if (!confirm('Supprimer cette facture ?')) return;
   const inv = db.invoices.find(x => x.id === id) || { id };
   await s33SoftDelete('invoices', inv, () => renderInvoices());
+}
+
+// ── Téléchargement d'un PDF : partage sur mobile, fichier direct sur PC ──
+async function s33DownloadPdf(doc, fname) {
+  const blob = doc.output('blob');
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+  if (isMobile) {
+    try {
+      const file = new File([blob], fname, { type: 'application/pdf' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: fname });
+        return;
+      }
+    } catch(e) { if (e && e.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  toast('PDF téléchargé : ' + fname);
+}
+
+// ── Vrai PDF de facture (même style que le devis ; montants TTC) ──
+async function s33InvoicePdf(id) {
+  const inv = db.invoices.find(x => x.id === id);
+  if (!inv) return;
+  const client = db.clients.find(c => c.id === inv.clientId);
+  const project = db.projects.find(pr => pr.id === inv.projectId);
+  // Convention de l'app : le montant saisi est TTC
+  const ttc = parseFloat(inv.amount) || 0;
+  const ht = ttc / 1.2;
+  const tva = ttc - ht;
+  toast('Préparation du PDF…');
+  try {
+    if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, M = 18;
+    const INK = [26, 26, 26], DIM = [102, 102, 102], GOLD = [154, 123, 58], GOLDL = [201, 169, 110], BEIGE = [246, 242, 234];
+    const money = n => Math.round(n).toLocaleString('fr-FR').replace(/[  ]/g, ' ');
+    const fmtD2 = d => { try { return new Date(String(d).slice(0, 10) + 'T00:00').toLocaleDateString('fr-FR'); } catch(_) { return d || ''; } };
+    let y = 18;
+
+    // En-tête : n° de facture à gauche, logo à droite
+    doc.setFontSize(9);
+    [['Facture', inv.num || ''], ['Date', fmtD2(inv.date)], ['Projet', project ? project.name : '—']].forEach((r, i) => {
+      doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
+      doc.text(r[0], M, y + i * 5.4);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(r[1] || ''), M + 26, y + i * 5.4);
+    });
+    try {
+      if (_logoB64) {
+        const img = new Image();
+        await new Promise(res => { img.onload = res; img.onerror = res; img.src = _logoB64; });
+        if (img.naturalWidth) {
+          const c = document.createElement('canvas');
+          const k = Math.min(1, 640 / img.naturalWidth);
+          c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+          const cx2 = c.getContext('2d');
+          cx2.fillStyle = '#ffffff'; cx2.fillRect(0, 0, c.width, c.height);
+          cx2.drawImage(img, 0, 0, c.width, c.height);
+          const lw = 46, lh = lw * c.height / c.width;
+          doc.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', W - M - lw, y - 4, lw, lh);
+        }
+      }
+    } catch(_) {}
+    y += 22;
+
+    doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.5);
+    doc.line(M, y, W - M, y); y += 6;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor.apply(doc, INK);
+    doc.text('FACTURE ' + (inv.num || ''), M, y);
+    // Statut à droite
+    const paid = inv.status === 'Payée';
+    doc.setFontSize(9); doc.setTextColor.apply(doc, paid ? [22, 122, 58] : [176, 108, 0]);
+    doc.text(paid ? 'PAYÉE' + (inv.paid_date ? ' LE ' + fmtD2(inv.paid_date) : '') : 'EN ATTENTE DE RÈGLEMENT', W - M, y, { align: 'right' });
+    y += 3.5;
+    doc.setDrawColor(221); doc.setLineWidth(0.2);
+    doc.line(M, y, W - M, y); y += 10;
+
+    // Émetteur / Client
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.6); doc.setTextColor(150);
+    doc.text('ÉMETTEUR', M, y); doc.text('CLIENT', W / 2 + 6, y); y += 5;
+    doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
+    doc.text('Studio 33 Architects', M, y);
+    doc.text(client ? client.name : '—', W / 2 + 6, y); y += 4.6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, DIM);
+    doc.text('01 Imm paternelle, Rue de Madrid, Agadir', M, y);
+    if (client && client.phone) doc.text(String(client.phone), W / 2 + 6, y);
+    y += 4.2;
+    doc.text('05 28 84 33 30 · Studio33architecture@gmail.com', M, y);
+    if (client && client.email) doc.text(String(client.email), W / 2 + 6, y);
+    y += 10;
+
+    // Tableau de la prestation
+    let headBottomY = null;
+    doc.autoTable({
+      startY: y, margin: { left: M, right: M },
+      head: [['DESCRIPTION', 'PROJET', 'MONTANT HT']],
+      body: [[inv.object || 'Honoraires', project ? project.name : '—', money(ht) + ' MAD']],
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: { top: 3, bottom: 3, left: 2.5, right: 2.5 }, textColor: INK, lineWidth: 0 },
+      headStyles: { fillColor: BEIGE, fontStyle: 'bold', fontSize: 7.8, textColor: INK },
+      columnStyles: { 0: { cellWidth: 'auto', fontStyle: 'bold' }, 1: { cellWidth: 52 }, 2: { cellWidth: 34, halign: 'right' } },
+      didDrawCell: d => { if (d.section === 'head') headBottomY = d.cell.y + d.cell.height; }
+    });
+    doc.setDrawColor.apply(doc, GOLDL); doc.setLineWidth(0.35);
+    if (headBottomY) doc.line(M, headBottomY, W - M, headBottomY);
+    doc.line(M, doc.lastAutoTable.finalY, W - M, doc.lastAutoTable.finalY);
+    y = doc.lastAutoTable.finalY + 9;
+
+    // Totaux à droite
+    const xr = W - M, xl = W - M - 70;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
+    doc.text('Sous-total HT', xl, y); doc.text(money(ht) + ' MAD', xr, y, { align: 'right' }); y += 5.4;
+    doc.text('TVA (20 %)', xl, y); doc.text(money(tva) + ' MAD', xr, y, { align: 'right' }); y += 4;
+    doc.setDrawColor.apply(doc, GOLDL); doc.setLineWidth(0.35);
+    doc.line(xl, y, xr, y); y += 5.4;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor.apply(doc, INK);
+    doc.text('Total TTC', xl, y);
+    doc.setTextColor.apply(doc, GOLD);
+    doc.text(money(ttc) + ' MAD', xr, y, { align: 'right' }); y += 9;
+
+    // Échéance / règlement
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor(85);
+    if (!paid && inv.due_date) { doc.text('À régler avant le ' + fmtD2(inv.due_date) + '.', M, y); y += 4.4; }
+    doc.text('Règlement : espèces ou virement bancaire — IBAN : 022010000008003079157925', M, y);
+
+    // Bande de contacts en bas de page
+    const yB = 276;
+    doc.setDrawColor.apply(doc, GOLDL); doc.setLineWidth(0.25);
+    doc.line(M, yB, W / 2 - 4, yB); doc.line(W / 2 + 4, yB, W - M, yB);
+    doc.setFillColor.apply(doc, GOLD);
+    doc.circle(W / 2, yB, 0.8, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(119);
+    doc.text('05 28 84 33 30 | @studio33architects', M, yB + 6);
+    doc.text('01 Imm paternelle, Rue de Madrid, Agadir', M, yB + 10);
+    doc.text('Studio33architecture@gmail.com', W - M, yB + 6, { align: 'right' });
+    doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, GOLD);
+    doc.text('WWW.STUDIO33ARCHITECTS.COM', W - M, yB + 10, { align: 'right' });
+
+    await s33DownloadPdf(doc, 'Facture_' + (inv.num || id).toString().replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf');
+  } catch(e) {
+    console.error('s33InvoicePdf', e);
+    toast('Erreur PDF — vérifiez la connexion et réessayez');
+  }
 }
 
 function printInvoice(id) {

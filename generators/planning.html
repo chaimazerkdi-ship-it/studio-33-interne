@@ -58,7 +58,9 @@
   @media print {
     @page { size:A4 landscape; margin:9mm; }
     body { background:#fff; }
-    body > *:not(#gantt-output) { display:none !important; }
+    .toolbar { display:none !important; }
+    .wrap > *:not(#gantt-output) { display:none !important; }
+    .wrap { padding:0; max-width:none; margin:0; }
     #gantt-output { border:none; border-radius:0; overflow:visible; }
     .gpage { min-width:0; padding:0; }
   }

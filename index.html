@@ -1212,13 +1212,13 @@
   #devis-doc .dv-table-title { font-size: 11.5px; font-weight: 700; letter-spacing: .5px; margin-bottom: 12px; color: #1a1a1a; text-transform: uppercase; }
 
   #devis-doc table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 28px; }
-  #devis-doc table thead tr { background: #1a1a1a; color: #fff; }
-  #devis-doc table thead th { padding: 10px 12px; text-align: center; font-weight: 500; font-size: 10.5px; letter-spacing: .3px; }
+  #devis-doc table thead tr { background: #f6f2ea; color: #1a1a1a; border-top: 2px solid #1a1a1a; border-bottom: 1.5px solid #1a1a1a; }
+  #devis-doc table thead th { padding: 10px 12px; text-align: center; font-weight: 700; font-size: 10.5px; letter-spacing: .6px; text-transform: uppercase; }
   #devis-doc table thead th:first-child { text-align: left; }
   #devis-doc table tbody td { padding: 9px 12px; border-bottom: 1px solid #eee; text-align: center; vertical-align: middle; }
   #devis-doc table tbody td:first-child { text-align: left; font-weight: 600; font-size: 12.5px; }
   #devis-doc table tbody tr:nth-child(odd) { background: #fafaf8; }
-  #devis-doc .phase-tag { display: inline-block; background: #1a1a1a; color: #fff; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 2px; }
+  #devis-doc .phase-tag { display: inline-block; background: #fff; color: #9a7b3a; border: 1px solid #c9a96e; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 2px; }
   #devis-doc .amount-cell { font-weight: 600; font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 13px; }
 
   #devis-doc .dv-conditions { margin-bottom: 24px; }
@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-18.2 — PV affichage soigné';
+const S33_BUILD = '2026-07-18.3 — impressions A4';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10293,7 +10293,8 @@ function printInvoice(id) {
 <html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=Cormorant+Garamond:wght@300;600&display=swap" rel="stylesheet">
 <style>
-  body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-weight:300;color:#111;max-width:700px;margin:40px auto;padding:40px;font-size:13px;}
+  @page{size:A4;margin:0;}
+  body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-weight:300;color:#111;max-width:794px;margin:0 auto;padding:18mm 20mm;font-size:13px;display:flex;flex-direction:column;min-height:296mm;box-sizing:border-box;}
   .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:48px;padding-bottom:24px;border-bottom:2px solid #111;}
   .firm{font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:300;color:#111;}
   .firm small{display:block;font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:10px;letter-spacing:.25em;text-transform:uppercase;color:#888;margin-top:4px;}
@@ -10309,7 +10310,7 @@ function printInvoice(id) {
   .total-box{text-align:right;min-width:220px;}
   .total-line{display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:#555;}
   .total-ttc{display:flex;justify-content:space-between;padding:12px 0;font-size:16px;font-weight:500;border-top:2px solid #111;margin-top:8px;}
-  .footer{margin-top:64px;padding-top:20px;border-top:1px solid #eee;font-size:10px;color:#aaa;text-align:center;letter-spacing:.1em;}
+  .footer{margin-top:auto;padding-top:20px;border-top:1px solid #eee;font-size:10px;color:#aaa;text-align:center;letter-spacing:.1em;}
 </style>
 </head>
 <body>
@@ -10961,11 +10962,11 @@ function updateDevis() {
       </thead>
       <tbody>${rows}</tbody>
       <tfoot>
-        <tr style="background:#1a1a1a;color:#fff;">
-          <td colspan="2" style="text-align:left;font-weight:700;color:#fff;padding:10px 12px;font-size:11.5px;letter-spacing:.5px;">TOTAL</td>
-          <td style="text-align:center;font-weight:700;color:#fff;padding:10px 12px;">${totalTaux}%</td>
+        <tr style="background:#f6f2ea;border-top:2px solid #1a1a1a;border-bottom:2px solid #1a1a1a;">
+          <td colspan="2" style="text-align:left;font-weight:800;color:#1a1a1a;padding:10px 12px;font-size:11.5px;letter-spacing:.5px;">TOTAL</td>
+          <td style="text-align:center;font-weight:800;color:#1a1a1a;padding:10px 12px;">${totalTaux}%</td>
           <td></td>
-          <td class="amount-cell" style="text-align:center;font-weight:700;color:#c9a96e;padding:10px 12px;">${fmtN(ttc)} MAD</td>
+          <td class="amount-cell" style="text-align:center;font-weight:800;color:#9a7b3a;padding:10px 12px;">${fmtN(ttc)} MAD</td>
         </tr>
       </tfoot>
     </table>
@@ -11428,6 +11429,11 @@ function printDevis() {
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#1a1a1a;font-size:11px;max-width:794px;margin:0 auto;}
   @page{size:A4;margin:0;}
+  /* Vrai A4 : le bloc du bas est poussé en pied de page */
+  .dv-page{display:flex;flex-direction:column;min-height:296mm;}
+  .dv-page .dv-body{flex:1 0 auto;}
+  .dv-page .dv-bottom-bar{margin-top:auto;}
+  table, .dv-footer, .sig-block{page-break-inside:avoid;}
   .dv-body{padding:0 50px;}
   .dv-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-top:30px;}
   .dv-logo-right{flex-shrink:0;}
@@ -11443,13 +11449,13 @@ function printDevis() {
   .intro{font-size:10.5px;color:#555;margin-bottom:6px;}
   .dv-table-title{font-size:10px;font-weight:700;letter-spacing:.5px;margin-bottom:8px;color:#1a1a1a;text-transform:uppercase;}
   table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:16px;}
-  table thead tr{background:#1a1a1a;color:#fff;}
-  table thead th{padding:7px 8px;text-align:center;font-weight:500;font-size:9.5px;}
+  table thead tr{background:#f6f2ea;color:#1a1a1a;border-top:2px solid #1a1a1a;border-bottom:1.5px solid #1a1a1a;}
+  table thead th{padding:7px 8px;text-align:center;font-weight:700;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;}
   table thead th:first-child{text-align:left;}
   table tbody td{padding:7px 8px;border-bottom:1px solid #eee;text-align:center;vertical-align:middle;}
   table tbody td:first-child{text-align:left;font-weight:600;font-size:10.5px;}
   table tbody tr:nth-child(odd){background:#fafaf8;}
-  .phase-tag{display:inline-block;background:#1a1a1a;color:#fff;font-size:8px;font-weight:600;padding:1px 5px;border-radius:2px;}
+  .phase-tag{display:inline-block;background:#fff;color:#9a7b3a;border:1px solid #c9a96e;font-size:8px;font-weight:700;padding:1px 5px;border-radius:2px;}
   .amount-cell{font-weight:600;font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:11px;}
   .dv-conditions{margin-bottom:14px;}
   .dv-conditions .sec{font-size:10px;font-weight:700;letter-spacing:.3px;margin:8px 0 3px;}
@@ -11466,7 +11472,7 @@ function printDevis() {
   .dv-bottom-info{display:flex;justify-content:space-between;font-size:9px;color:#777;line-height:1.7;}
   .gold{color:#9a7b3a;font-weight:500;letter-spacing:1.5px;}
 </style>
-</head><body>${content}</body></html>`);
+</head><body><div class="dv-page">${content}</div></body></html>`);
   w.document.close();
   setTimeout(() => w.print(), 800);
 }
@@ -16271,7 +16277,10 @@ async function duplicateGenDoc(id) {
 function downloadGenDocHTML(id) {
   const doc = (db.generatedDocs || []).find(function(d) { return String(d.id) === String(id); });
   if (!doc) return;
-  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escHTML(doc.title) + '</title></head><body>' + doc.html_content + '</body></html>';
+  const GANTT_CSS = doc.doc_type === 'planning'
+    ? '<style>body{font-family:Inter,system-ui,sans-serif;color:#1a1a1a;margin:20px;}.gpage{padding:10px;}.ghead{display:flex;justify-content:space-between;border-bottom:3px solid #F97316;padding-bottom:10px;margin-bottom:14px;}.gfirm{font-size:18px;font-weight:800;}.gsub{font-size:9.5px;color:#777;letter-spacing:.14em;text-transform:uppercase;}.gmeta{text-align:right;font-size:11px;color:#555;}.gmeta b{color:#F97316;font-size:13px;}.ginfo{display:flex;gap:22px;flex-wrap:wrap;font-size:11px;margin-bottom:14px;color:#444;}table.gantt{border-collapse:collapse;width:100%;font-size:10px;}table.gantt th,table.gantt td{border:1px solid #e8e4de;padding:0;height:20px;}table.gantt th{background:#faf6f0;font-weight:700;color:#555;}table.gantt td.task{padding:2px 8px;font-size:10.5px;white-space:nowrap;text-align:left;}table.gantt th.task-h{width:230px;text-align:left;padding:3px 8px;}table.gantt td.wk{width:22px;}table.gantt td.bar{background:#F97316;}table.gantt td.bar-so{background:#0e9f6e;}table.gantt tr.grp-row td{background:#f3ede4;font-weight:800;font-size:9.5px;text-transform:uppercase;color:#8a6d3b;padding:3px 8px;text-align:left;}.gfoot{display:flex;gap:34px;margin-top:24px;}.gsig{flex:1;text-align:center;border-top:1px solid #999;padding-top:5px;font-size:10px;color:#555;}.gnote{margin-top:16px;font-size:9px;color:#aaa;text-align:center;}.glegend{display:flex;gap:16px;font-size:10px;color:#555;margin-top:10px;}.glegend span i{display:inline-block;width:22px;height:9px;border-radius:2px;vertical-align:-1px;margin-right:5px;}@media print{@page{size:A4 landscape;margin:9mm;}}</style>'
+    : '';
+  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escHTML(doc.title) + '</title>' + GANTT_CSS + '</head><body>' + doc.html_content + '</body></html>';
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

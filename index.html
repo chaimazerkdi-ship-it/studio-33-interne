@@ -1212,7 +1212,7 @@
   #devis-doc .dv-table-title { font-size: 11.5px; font-weight: 700; letter-spacing: .5px; margin-bottom: 12px; color: #1a1a1a; text-transform: uppercase; }
 
   #devis-doc table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 28px; }
-  #devis-doc table thead tr { background: #f6f2ea; color: #1a1a1a; border-top: 2px solid #1a1a1a; border-bottom: 1.5px solid #1a1a1a; }
+  #devis-doc table thead tr { background: #f6f2ea; color: #1a1a1a; border-bottom: 1px solid #c9a96e; }
   #devis-doc table thead th { padding: 10px 12px; text-align: center; font-weight: 700; font-size: 10.5px; letter-spacing: .6px; text-transform: uppercase; }
   #devis-doc table thead th:first-child { text-align: left; }
   #devis-doc table tbody td { padding: 9px 12px; border-bottom: 1px solid #eee; text-align: center; vertical-align: middle; }
@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-18.7 — impression immédiate';
+const S33_BUILD = '2026-07-18.8 — devis une page';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10335,7 +10335,7 @@ function printInvoice(id) {
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=Cormorant+Garamond:wght@300;600&display=swap" rel="stylesheet">
 <style>
   @page{size:A4;margin:0;}
-  body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-weight:300;color:#111;max-width:794px;margin:0 auto;padding:18mm 20mm;font-size:13px;display:flex;flex-direction:column;min-height:296mm;box-sizing:border-box;}
+  body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-weight:300;color:#111;max-width:794px;margin:0 auto;padding:18mm 20mm;font-size:13px;display:flex;flex-direction:column;min-height:252mm;box-sizing:border-box;}
   .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:48px;padding-bottom:24px;border-bottom:2px solid #111;}
   .firm{font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:300;color:#111;}
   .firm small{display:block;font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:10px;letter-spacing:.25em;text-transform:uppercase;color:#888;margin-top:4px;}
@@ -11032,7 +11032,7 @@ function updateDevis() {
       </thead>
       <tbody>${rows}</tbody>
       <tfoot>
-        <tr style="background:#f6f2ea;border-top:2px solid #1a1a1a;border-bottom:2px solid #1a1a1a;">
+        <tr style="background:#fbf8f2;border-top:1.5px solid #c9a96e;">
           <td colspan="2" style="text-align:left;font-weight:800;color:#1a1a1a;padding:10px 12px;font-size:11.5px;letter-spacing:.5px;">TOTAL</td>
           <td style="text-align:center;font-weight:800;color:#1a1a1a;padding:10px 12px;">${totalTaux}%</td>
           <td></td>
@@ -11523,7 +11523,7 @@ function printDevis() {
   body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#1a1a1a;font-size:11px;max-width:794px;margin:0 auto;}
   @page{size:A4;margin:0;}
   /* Vrai A4 : marges haut/bas + bloc du bas poussé en pied de page */
-  .dv-page{display:flex;flex-direction:column;min-height:296mm;box-sizing:border-box;padding:8mm 0 7mm;}
+  .dv-page{display:flex;flex-direction:column;min-height:252mm;box-sizing:border-box;padding:6mm 0 4mm;}
   .dv-page .dv-body{flex:1 0 auto;}
   .dv-page .dv-bottom-bar{margin-top:auto;}
   table, .dv-footer, .sig-block{page-break-inside:avoid;}
@@ -11542,7 +11542,7 @@ function printDevis() {
   .intro{font-size:10.5px;color:#555;margin-bottom:6px;}
   .dv-table-title{font-size:10px;font-weight:700;letter-spacing:.5px;margin-bottom:8px;color:#1a1a1a;text-transform:uppercase;}
   table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:16px;}
-  table thead tr{background:#f6f2ea;color:#1a1a1a;border-top:2px solid #1a1a1a;border-bottom:1.5px solid #1a1a1a;}
+  table thead tr{background:#f6f2ea;color:#1a1a1a;border-bottom:1px solid #c9a96e;}
   table thead th{padding:7px 8px;text-align:center;font-weight:700;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;}
   table thead th:first-child{text-align:left;}
   table tbody td{padding:7px 8px;border-bottom:1px solid #eee;text-align:center;vertical-align:middle;}

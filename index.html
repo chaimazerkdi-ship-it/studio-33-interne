@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.11 — honoraires facturés';
+const S33_BUILD = '2026-07-19.12 — échéancier dans facturation';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -31737,14 +31737,96 @@ window.addEventListener('appinstalled', () => {
     window.renderInvoices = function() {
       _ri.apply(this, arguments);
       try { renderLateBanner(); } catch(e) { console.error('bandeau retards', e); }
+      try { renderEcheancesAVenir(); } catch(e) { console.error('échéances à venir', e); }
     };
   }
+
+  // ── Étapes d'échéancier pas encore facturées, affichées sous chaque client ──
+  // C'est la directrice qui décide quand transformer une étape en facture.
+  async function renderEcheancesAVenir() {
+    const grouped = document.getElementById('invoices-grouped');
+    if (!grouped) return;
+    const _f = window._invFilter || '';
+    if (_f === 'payee' || _f === 'retard') return;
+    let echs;
+    try { echs = await getAllEcheances(); } catch(e) { return; }
+    if (!document.getElementById('invoices-grouped')) return;
+    const open = (echs || []).filter(e => !e.invoice_id);
+    if (!open.length) return;
+    const byClient = {};
+    open.forEach(e => {
+      const p = (db.projects || []).find(pp => pp.id === e.project_id);
+      if (!p || p.archived) return;
+      const cid = p.clientId != null ? p.clientId : p.client_id;
+      if (cid == null) return;
+      if (!byClient[cid]) byClient[cid] = [];
+      byClient[cid].push({ e: e, p: p });
+    });
+    Object.keys(byClient).forEach(cid => {
+      const body = document.getElementById('inv-group-' + cid);
+      if (!body) return;
+      let boxA = body.querySelector('.s33-avenir');
+      if (!boxA) {
+        boxA = document.createElement('div');
+        boxA.className = 's33-avenir';
+        body.appendChild(boxA);
+      }
+      const totalAV = byClient[cid].reduce((s, x) => s + (parseFloat(x.e.montant) || 0), 0);
+      const rows = byClient[cid].map(x =>
+        '<div style="display:flex;align-items:center;gap:10px;padding:8px 16px;border-top:1px dashed var(--border);flex-wrap:wrap;">' +
+          '<span class="mi" style="font-size:15px;color:var(--text-faint);">radio_button_unchecked</span>' +
+          '<div style="flex:1;min-width:150px;">' +
+            '<div style="font-size:12px;font-weight:600;color:var(--text);">' + escHTML(x.e.label || '') + '</div>' +
+            '<div style="font-size:10.5px;color:var(--text-faint);">' + escHTML(x.p.name || '') + '</div>' +
+          '</div>' +
+          '<span style="font-size:12.5px;font-weight:700;color:var(--text-dim);white-space:nowrap;">' + formatNum(Math.round(parseFloat(x.e.montant) || 0)) + ' MAD</span>' +
+          '<span style="font-size:10px;font-weight:800;color:var(--text-dim);background:var(--surface3);padding:2px 9px;border-radius:99px;">À venir</span>' +
+          '<button onclick="s33FactureEcheance(' + x.e.id + ')" style="padding:5px 13px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;">Créer la facture</button>' +
+        '</div>'
+      ).join('');
+      boxA.innerHTML =
+        '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 16px 6px;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint);border-top:1px solid var(--border);background:var(--surface2);">' +
+          '<span>Étapes prévues — pas encore facturées</span><span>' + formatNum(Math.round(totalAV)) + ' MAD</span>' +
+        '</div>' + rows;
+    });
+  }
+
+  // Créer la facture d'une étape d'échéancier depuis la page Facturation
+  window.s33FactureEcheance = async function(echId) {
+    const echs = _echCache || [];
+    const r = echs.find(x => x.id === echId);
+    if (!r || r.invoice_id) return;
+    const p = (db.projects || []).find(x => x.id === r.project_id);
+    if (!p) return;
+    const montant = parseFloat(r.montant) || 0;
+    if (!confirm('Créer la facture « Honoraires — ' + (r.label || '') + ' » de ' + formatNum(Math.round(montant)) + ' MAD TTC ?\n\nÉchéance de paiement : ' + (typeof S33_DELAI_PAIEMENT_J !== 'undefined' ? S33_DELAI_PAIEMENT_J : 15) + ' jours.')) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const due = (typeof s33DueDateFrom === 'function') ? s33DueDateFrom(today) : today;
+    try {
+      const num = 'FAC-' + String(db.invoiceCounter).padStart(3, '0');
+      const ins = await sbInsertOrThrow('invoices', {
+        num, client_id: p.clientId != null ? p.clientId : p.client_id, project_id: p.id,
+        object: 'Honoraires — ' + (r.label || ''),
+        amount: montant, date: today, due_date: due, status: 'En attente'
+      });
+      db.invoiceCounter++; await saveDB();
+      db.invoices.push({ ...ins[0], clientId: ins[0].client_id, projectId: ins[0].project_id });
+      await sbUpdate('honoraires_echeances', echId, { invoice_id: ins[0].id, due_date: due });
+      r.invoice_id = ins[0].id;
+      _echCache = null;
+      toast('Facture ' + num + ' créée — échéance le ' + due);
+      renderInvoices();
+    } catch(e) {
+      console.error('facture échéance', e);
+      toast('Facture non créée — réessayez');
+    }
+  };
 
   // ── Trésorerie prévisionnelle + rentabilité globale (page Finance, direction) ──
   let _echCache = null, _echCacheAt = 0;
   async function getAllEcheances() {
     if (_echCache && Date.now() - _echCacheAt < 60000) return _echCache;
-    const rows = await sbGet('honoraires_echeances', '?select=id,project_id,label,montant,invoice_id&order=project_id,position');
+    const rows = await sbGet('honoraires_echeances', '?select=id,project_id,label,montant,invoice_id,position&order=project_id,position');
     _echCache = rows || [];
     _echCacheAt = Date.now();
     return _echCache;

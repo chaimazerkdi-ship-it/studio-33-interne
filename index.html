@@ -194,7 +194,12 @@
     .dash-sc-grid { grid-template-columns: repeat(2, 1fr); }
     .dash-sc { flex-direction: row; align-items: center; padding: 11px 12px; gap: 10px; }
     .dash-sc .sc-ic { width: 32px; height: 32px; }
+    /* Onglet Tâches : cartes plus compactes sur téléphone */
+    #page-taches .card { padding: 14px 14px; }
   }
+  /* Astuce glissement : visible uniquement sur écran tactile */
+  .s33-swipe-hint { display: none; }
+  @media (pointer: coarse) { .s33-swipe-hint { display: inline; } }
 
   /* Jauge de chargement animée (ouverture de l'app et du portail) */
   @keyframes s33-load-fill { 0% { width: 4%; } 30% { width: 45%; } 60% { width: 72%; } 85% { width: 88%; } 100% { width: 94%; } }
@@ -2892,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.8 — ménage des tâches';
+const S33_BUILD = '2026-07-19.9 — onglet tâches amélioré';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -15336,23 +15341,64 @@ function renderMesTaches() {
       })
     })).filter(p => p.tasks.length > 0);
 
+    // Tri : urgents d'abord, puis les moins avancés ; projets 100 % terminés en bas
+    const _isDoneT = (p, t) => savedDone[p.id + '_' + t.id] || isTaskDone(t);
+    const _stat = p => {
+      const done = p.tasks.filter(t => _isDoneT(p, t)).length;
+      return {
+        finished: done >= p.tasks.length,
+        urgent: p.tasks.some(t => t.priority === 'urgent' && !_isDoneT(p, t)),
+        pct: p.tasks.length ? done / p.tasks.length : 0
+      };
+    };
+    projects.sort((a, b) => {
+      const sa = _stat(a), sb = _stat(b);
+      if (sa.finished !== sb.finished) return sa.finished ? 1 : -1;
+      if (sa.urgent !== sb.urgent) return sa.urgent ? -1 : 1;
+      return sa.pct - sb.pct;
+    });
+
+    // Résumé en tête : ce qu'il reste à faire aujourd'hui
+    let _left = 0, _urgLeft = 0, _finishedProj = 0;
+    projects.forEach(p => {
+      if (_stat(p).finished) _finishedProj++;
+      p.tasks.forEach(t => { if (!_isDoneT(p, t)) { _left++; if (t.priority === 'urgent') _urgLeft++; } });
+    });
+    const _adminLeft = (!filterPid) ? adminTasks.filter(t => !isTaskDone(t)).length : 0;
+    if (projects.length || _adminLeft) {
+      html += `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+        <span style="font-size:13px;color:var(--text-dim);"><strong style="font-size:18px;color:var(--text);">${_left + _adminLeft}</strong> tâche${_left + _adminLeft !== 1 ? 's' : ''} à faire</span>
+        ${_urgLeft ? `<span class="badge badge-red" style="font-size:11px;">${_urgLeft} urgente${_urgLeft > 1 ? 's' : ''}</span>` : ''}
+        ${_finishedProj ? `<span style="font-size:11px;color:var(--text-faint);">${_finishedProj} projet${_finishedProj > 1 ? 's' : ''} terminé${_finishedProj > 1 ? 's' : ''} en bas de liste</span>` : ''}
+        <span class="s33-swipe-hint" style="font-size:11px;color:var(--text-faint);"><span class="mi" style="font-size:12px;vertical-align:-2px;">swipe_left</span> Glissez une tâche vers la gauche pour la terminer</span>
+      </div>`;
+    }
+
     projects.forEach(p => {
       if (!p.tasks || p.tasks.length === 0) return;
       const donePids = p.tasks.filter(t => savedDone[p.id + '_' + t.id] || isTaskDone(t));
       totalDone += donePids.length;
       totalAll  += p.tasks.length;
+      const finished = donePids.length >= p.tasks.length;
       const isOpen = _openProjs.has(p.id);
       const pct = p.tasks.length > 0 ? Math.round(donePids.length / p.tasks.length * 100) : 0;
       const client = db.clients && db.clients.find(c => c.id === p.clientId);
       const hasUrgent = p.tasks.some(t => t.priority === 'urgent' && !(savedDone[p.id+'_'+t.id] || isTaskDone(t)));
+      // Dans un groupe ouvert : tâches actives d'abord (urgentes en tête), terminées à la fin
+      const sortedTasks = [...p.tasks].sort((t1, t2) => {
+        const d1 = _isDoneT(p, t1) ? 1 : 0, d2 = _isDoneT(p, t2) ? 1 : 0;
+        if (d1 !== d2) return d1 - d2;
+        return (t1.priority === 'urgent' ? 0 : 1) - (t2.priority === 'urgent' ? 0 : 1);
+      });
 
-      html += `<div class="card" style="margin-bottom:10px;overflow:hidden;">
+      html += `<div class="card" style="margin-bottom:10px;overflow:hidden;${finished ? 'opacity:.62;' : ''}">
         <!-- En-tête accordéon -->
         <div onclick="_toggleTacheProject(${p.id})" style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:2px 0;user-select:none;" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
           <span class="mi" style="color:var(--gold);transition:transform .22s ease;transform:rotate(${isOpen?'90':'0'}deg);font-size:20px;">chevron_right</span>
           <div style="flex:1;min-width:0;">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
               <span style="font-size:14px;font-weight:700;color:var(--text);">${p.name}</span>
+              ${finished ? '<span class="badge badge-green" style="font-size:9px;">✓ Terminé</span>' : ''}
               ${hasUrgent ? '<span class="badge badge-red" style="font-size:9px;">Urgent</span>' : ''}
               ${p.phase ? `<span class="badge badge-dim" style="font-size:10px;">${p.phase}</span>` : ''}
             </div>
@@ -15361,7 +15407,7 @@ function renderMesTaches() {
           <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
             <!-- Mini barre de progression -->
             <div style="width:60px;height:5px;background:var(--surface3);border-radius:99px;overflow:hidden;">
-              <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:99px;"></div>
+              <div style="height:100%;width:${pct}%;background:${finished ? '#3dd68c' : 'var(--gold)'};border-radius:99px;"></div>
             </div>
             <span class="badge badge-dim" style="font-size:11px;">${donePids.length}/${p.tasks.length}</span>
           </div>
@@ -15370,11 +15416,11 @@ function renderMesTaches() {
         <!-- Corps (liste de tâches) -->
         ${isOpen ? `
         <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding-top:14px;">
-          ${p.tasks.map(t => {
+          ${sortedTasks.map(t => {
             const key = p.id + '_' + t.id;
             const isDone = savedDone[key] || isTaskDone(t);
             const tStatus = getTaskStatus(t);
-            return `<div style="padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);transition:opacity .2s;opacity:${isDone?'.5':'1'}">
+            return `<div class="s33-swipe" data-pid="${p.id}" data-tid="${t.id}" data-done="${isDone ? 1 : 0}" style="padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);transition:opacity .2s;opacity:${isDone?'.5':'1'}">
               <div style="display:flex;align-items:center;gap:12px;">
                 <div style="flex:1;min-width:0;">
                   <div style="font-size:13px;font-weight:${isDone?'400':'500'};color:var(--text);text-decoration:${isDone?'line-through':'none'};">${t.name}</div>
@@ -15427,7 +15473,7 @@ function renderMesTaches() {
       <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding-top:14px;">
         ${adminTasks.map(t => {
           const isDone = isTaskDone(t);
-          return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);transition:opacity .2s;opacity:${isDone?'.5':'1'}">
+          return `<div class="s33-swipe" data-admin="1" data-tid="${t.id}" data-done="${isDone ? 1 : 0}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);transition:opacity .2s;opacity:${isDone?'.5':'1'}">
             <div style="flex:1;min-width:0;">
               <div style="font-size:13px;font-weight:${isDone?'400':'500'};color:var(--text);text-decoration:${isDone?'line-through':'none'};">${t.name}</div>
             </div>
@@ -15461,6 +15507,65 @@ function renderMesTaches() {
   }
 
   document.getElementById('taches-content').innerHTML = html;
+  s33BindTaskSwipe();
+}
+
+// Marquer une tâche projet terminée (utilisé par le glissement vers la gauche)
+async function s33MarkTaskDone(projId, taskId) {
+  try {
+    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
+    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
+    const task = freshTasks.find(t => t.id === taskId);
+    if (task) { task.status = 'done'; task.done = true; }
+    const p = db.projects.find(x => x.id === projId);
+    if (p) p.tasks = freshTasks;
+    await sbUpdate('projects', projId, { tasks: freshTasks });
+    toast('Tâche terminée ✓');
+    renderMesTaches();
+  } catch(e) {
+    console.error('swipe done', e);
+    toast('Erreur — réessayez');
+    renderMesTaches();
+  }
+}
+
+// Glisser une tâche vers la gauche → marquée terminée
+function s33BindTaskSwipe() {
+  const cont = document.getElementById('taches-content');
+  if (!cont || cont._swipeBound) return;
+  cont._swipeBound = true;
+  let row = null, startX = 0, startY = 0, dx = 0, active = false;
+  cont.addEventListener('touchstart', e => {
+    row = e.target.closest('.s33-swipe');
+    if (!row || row.dataset.done === '1') { row = null; return; }
+    startX = e.touches[0].clientX; startY = e.touches[0].clientY; dx = 0; active = false;
+    row.style.transition = 'none';
+  }, { passive: true });
+  cont.addEventListener('touchmove', e => {
+    if (!row) return;
+    dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (!active && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.4) active = true;
+    if (!active) return;
+    if (dx > 0) dx = 0;
+    row.style.transform = 'translateX(' + dx + 'px)';
+    row.style.opacity = String(Math.max(.35, 1 + dx / 300));
+  }, { passive: true });
+  cont.addEventListener('touchend', () => {
+    if (!row) return;
+    const r = row; row = null;
+    r.style.transition = 'transform .2s ease, opacity .2s ease';
+    if (active && dx < -80) {
+      r.style.transform = 'translateX(-110%)';
+      r.style.opacity = '0';
+      const tid = Number(r.dataset.tid);
+      if (r.dataset.admin === '1') setTimeout(() => toggleAdminTask(tid), 180);
+      else setTimeout(() => s33MarkTaskDone(Number(r.dataset.pid), tid), 180);
+    } else {
+      r.style.transform = 'translateX(0)';
+      r.style.opacity = '';
+    }
+  });
 }
 
 async function toggleAdminTask(taskId) {

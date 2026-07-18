@@ -115,7 +115,7 @@
 </div>
 
 <div class="toolbar">
-  <button class="btn btn-out" onclick="window.print()">Imprimer / PDF</button>
+  <button class="btn btn-out" onclick="printDoc()">Imprimer / PDF</button>
   <button class="btn btn-gold" id="btn-save" onclick="saveDoc()" style="display:none;">Enregistrer dans le projet</button>
 </div>
 
@@ -296,6 +296,21 @@ function collect() {
     f_debut: v('f_debut'), f_entreprise: v('f_entreprise'),
     plan_type: state.type, rows: state.rows
   };
+}
+function buildPrintHTML() {
+  renderGantt();
+  var css = document.querySelector('style').textContent;
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + css +
+    '\nbody{background:#fff;}#gantt-output{border:none;border-radius:0;overflow:visible;}.gpage{min-width:0;}</style></head>' +
+    '<body><div id="gantt-output">' + document.getElementById('gantt-output').innerHTML + '</div></body></html>';
+}
+function printDoc() {
+  // Intégré dans l'app : l'impression directe depuis le cadre donne une
+  // page blanche sur iPhone — on délègue à l'app (cadre invisible)
+  if (IS_EMBED) {
+    try { window.parent.postMessage({ type: 'plan:print', html: buildPrintHTML() }, '*'); return; } catch(_) {}
+  }
+  window.print();
 }
 function saveDoc() {
   if (!IS_EMBED) { alert("L'enregistrement n'est disponible que depuis l'application Studio 33."); return; }

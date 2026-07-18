@@ -878,12 +878,12 @@
     </div>
   </div>
 
-  <button class="btn-generate" onclick="generateCCTP()">▶ Générer le CPS</button>
+  <button class="btn-generate" onclick="generateCCTP()">Générer le CPS</button>
   <div id="post-gen-actions" style="display:none;flex-wrap:wrap;gap:10px;justify-content:center;margin:15px 0;">
-    <button class="btn-print" id="btn-print" style="display:inline-block;" onclick="window.print()">📄 Imprimer / PDF</button>
-    <button class="btn-docx" id="btn-docx" style="display:inline-block;padding:10px 30px;background:#2b579a;color:#fff;border:none;cursor:pointer;font-size:.8rem;letter-spacing:2px;text-transform:uppercase;font-family:inherit;" onclick="generateDOCX()">📝 Exporter DOCX</button>
-    <button class="btn-dpgf" id="btn-dpgf" style="display:inline-block;" onclick="generateDPGF()">▼ DPGF / BPU (Excel)</button>
-    <button class="btn-save" id="btn-save" style="display:none;padding:10px 30px;background:#1a5e3a;color:#fff;border:none;cursor:pointer;font-size:.8rem;letter-spacing:2px;text-transform:uppercase;font-family:inherit;" onclick="saveToProject()">💾 Enregistrer dans le projet</button>
+    <button class="btn-print" id="btn-print" style="display:inline-block;" onclick="printDoc()">Imprimer / PDF</button>
+    <button class="btn-docx" id="btn-docx" style="display:inline-block;padding:10px 30px;background:#2b579a;color:#fff;border:none;cursor:pointer;font-size:.8rem;letter-spacing:2px;text-transform:uppercase;font-family:inherit;" onclick="generateDOCX()">Exporter DOCX</button>
+    <button class="btn-dpgf" id="btn-dpgf" style="display:inline-block;" onclick="generateDPGF()">DPGF / BPU (Excel)</button>
+    <button class="btn-save" id="btn-save" style="display:none;padding:10px 30px;background:#1a5e3a;color:#fff;border:none;cursor:pointer;font-size:.8rem;letter-spacing:2px;text-transform:uppercase;font-family:inherit;" onclick="saveToProject()">Enregistrer dans le projet</button>
   </div>
 
   <div id="cctp-output"></div>
@@ -1031,6 +1031,17 @@ function updateLots(){
 
 // Detect iframe mode (running inside parent app)
 const IS_EMBED = window.parent !== window;
+function printDoc() {
+  if (IS_EMBED) {
+    try {
+      var out = document.getElementById('cctp-output');
+      var css = document.querySelector('style').textContent;
+      window.parent.postMessage({ type: 'cps:print', html: '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' + css + '\nbody{background:#fff;}#cctp-output{display:block;margin:0;}</style></head><body>' + out.outerHTML + '</body></html>' }, '*');
+      return;
+    } catch(_) {}
+  }
+  window.print();
+}
 
 // All input/select IDs we want to preload from parent (full form snapshot)
 const PRELOAD_FIELDS = [

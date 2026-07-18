@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-18.5 — impression iPhone';
+const S33_BUILD = '2026-07-18.6 — impression générateurs';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -16302,6 +16302,10 @@ window.addEventListener('message', function(e) {
     }
   } else if (action === 'save') {
     _genSaveDoc(e.data.data);
+  } else if (action === 'print') {
+    // Les générateurs intégrés délèguent l'impression à l'app :
+    // depuis leur cadre, window.print() sort une page blanche sur iPhone
+    if (e.data.html && typeof s33PrintHTML === 'function') s33PrintHTML(e.data.html);
   }
 });
 

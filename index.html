@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.5 — facture logo + mentions';
+const S33_BUILD = '2026-07-19.6 — pourcentages ronds';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11069,21 +11069,25 @@ function removeDevisPhase(i) {
   updateDevis();
 }
 
-// Remet le total des taux à 100 % en respectant les proportions actuelles
-// (la dernière ligne absorbe l'arrondi pour tomber exactement sur 100)
+// Remet le total des taux à 100 % en respectant les proportions,
+// avec uniquement des pourcentages ronds multiples de 5 (10, 15, 25, 30…)
 function s33DevisRebalance(silent) {
-  const sum = devisPhases.reduce((s2, p2) => s2 + (parseFloat(p2.taux) || 0), 0);
+  const vals = devisPhases.map(p2 => parseFloat(p2.taux) || 0);
+  const sum = vals.reduce((a, b) => a + b, 0);
   if (!devisPhases.length || sum <= 0) return;
-  if (Math.round(sum * 10) === 1000) { if (!silent) toast('Déjà à 100 %'); return; }
-  let acc = 0;
-  devisPhases.forEach((p2, idx) => {
-    if (idx < devisPhases.length - 1) {
-      const t = Math.round(((parseFloat(p2.taux) || 0) * 100 / sum) * 10) / 10;
-      p2.taux = t; acc += t;
-    } else {
-      p2.taux = Math.round((100 - acc) * 10) / 10;
-    }
-  });
+  const isClean = Math.round(sum) === 100 && vals.every(v => v % 5 === 0);
+  if (isClean) { if (!silent) toast('Déjà à 100 %'); return; }
+  // Répartition en unités de 5 % (20 unités = 100 %), méthode du plus fort reste
+  const units = vals.map(v => v * 20 / sum);
+  const base = units.map(u => Math.floor(u));
+  let rest = 20 - base.reduce((a, b) => a + b, 0);
+  const order = units.map((u, i) => ({ i, frac: u - Math.floor(u) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; rest > 0 && k < order.length * 3; k++) {
+    const idx = order[k % order.length].i;
+    if (vals[idx] > 0) { base[idx]++; rest--; }
+  }
+  devisPhases.forEach((p2, i) => { p2.taux = base[i] * 5; });
   if (!silent) { renderPhasesEditor(); updateDevis(); toast('Échéancier rééquilibré à 100 %'); }
 }
 

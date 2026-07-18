@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.3 — vrai PDF facture';
+const S33_BUILD = '2026-07-19.4 — facture noir et blanc';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10375,22 +10375,12 @@ async function s33InvoicePdf(id) {
       doc.setFont('helvetica', 'normal');
       doc.text(String(r[1] || ''), M + 26, y + i * 5.4);
     });
-    try {
-      if (_logoB64) {
-        const img = new Image();
-        await new Promise(res => { img.onload = res; img.onerror = res; img.src = _logoB64; });
-        if (img.naturalWidth) {
-          const c = document.createElement('canvas');
-          const k = Math.min(1, 640 / img.naturalWidth);
-          c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-          const cx2 = c.getContext('2d');
-          cx2.fillStyle = '#ffffff'; cx2.fillRect(0, 0, c.width, c.height);
-          cx2.drawImage(img, 0, 0, c.width, c.height);
-          const lw = 46, lh = lw * c.height / c.width;
-          doc.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', W - M - lw, y - 4, lw, lh);
-        }
-      }
-    } catch(_) {}
+    // En-tête texte sobre (noir et blanc, sans image)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor.apply(doc, INK);
+    doc.text('STUDIO 33', W - M, y + 2, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.4); doc.setTextColor(120);
+    doc.text('A R C H I T E C T S', W - M, y + 7.2, { align: 'right' });
+    doc.text('Architecture · Agadir, Maroc', W - M, y + 11.4, { align: 'right' });
     y += 22;
 
     doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.5);
@@ -10399,7 +10389,7 @@ async function s33InvoicePdf(id) {
     doc.text('FACTURE ' + (inv.num || ''), M, y);
     // Statut à droite
     const paid = inv.status === 'Payée';
-    doc.setFontSize(9); doc.setTextColor.apply(doc, paid ? [22, 122, 58] : [176, 108, 0]);
+    doc.setFontSize(9); doc.setTextColor.apply(doc, INK);
     doc.text(paid ? 'PAYÉE' + (inv.paid_date ? ' LE ' + fmtD2(inv.paid_date) : '') : 'EN ATTENTE DE RÈGLEMENT', W - M, y, { align: 'right' });
     y += 3.5;
     doc.setDrawColor(221); doc.setLineWidth(0.2);
@@ -10427,11 +10417,11 @@ async function s33InvoicePdf(id) {
       body: [[inv.object || 'Honoraires', project ? project.name : '—', money(ht) + ' MAD']],
       theme: 'plain',
       styles: { fontSize: 9, cellPadding: { top: 3, bottom: 3, left: 2.5, right: 2.5 }, textColor: INK, lineWidth: 0 },
-      headStyles: { fillColor: BEIGE, fontStyle: 'bold', fontSize: 7.8, textColor: INK },
+      headStyles: { fillColor: [242, 242, 242], fontStyle: 'bold', fontSize: 7.8, textColor: INK },
       columnStyles: { 0: { cellWidth: 'auto', fontStyle: 'bold' }, 1: { cellWidth: 52 }, 2: { cellWidth: 34, halign: 'right' } },
       didDrawCell: d => { if (d.section === 'head') headBottomY = d.cell.y + d.cell.height; }
     });
-    doc.setDrawColor.apply(doc, GOLDL); doc.setLineWidth(0.35);
+    doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.3);
     if (headBottomY) doc.line(M, headBottomY, W - M, headBottomY);
     doc.line(M, doc.lastAutoTable.finalY, W - M, doc.lastAutoTable.finalY);
     y = doc.lastAutoTable.finalY + 9;
@@ -10441,11 +10431,10 @@ async function s33InvoicePdf(id) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
     doc.text('Sous-total HT', xl, y); doc.text(money(ht) + ' MAD', xr, y, { align: 'right' }); y += 5.4;
     doc.text('TVA (20 %)', xl, y); doc.text(money(tva) + ' MAD', xr, y, { align: 'right' }); y += 4;
-    doc.setDrawColor.apply(doc, GOLDL); doc.setLineWidth(0.35);
+    doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.4);
     doc.line(xl, y, xr, y); y += 5.4;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor.apply(doc, INK);
     doc.text('Total TTC', xl, y);
-    doc.setTextColor.apply(doc, GOLD);
     doc.text(money(ttc) + ' MAD', xr, y, { align: 'right' }); y += 9;
 
     // Échéance / règlement
@@ -10453,18 +10442,17 @@ async function s33InvoicePdf(id) {
     if (!paid && inv.due_date) { doc.text('À régler avant le ' + fmtD2(inv.due_date) + '.', M, y); y += 4.4; }
     doc.text('Règlement : espèces ou virement bancaire — IBAN : 022010000008003079157925', M, y);
 
-    // Bande de contacts en bas de page
+    // Pied de page : coordonnées + mentions légales (ICE)
     const yB = 276;
-    doc.setDrawColor.apply(doc, GOLDL); doc.setLineWidth(0.25);
-    doc.line(M, yB, W / 2 - 4, yB); doc.line(W / 2 + 4, yB, W - M, yB);
-    doc.setFillColor.apply(doc, GOLD);
-    doc.circle(W / 2, yB, 0.8, 'F');
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(119);
-    doc.text('05 28 84 33 30 | @studio33architects', M, yB + 6);
-    doc.text('01 Imm paternelle, Rue de Madrid, Agadir', M, yB + 10);
-    doc.text('Studio33architecture@gmail.com', W - M, yB + 6, { align: 'right' });
-    doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, GOLD);
-    doc.text('WWW.STUDIO33ARCHITECTS.COM', W - M, yB + 10, { align: 'right' });
+    doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.3);
+    doc.line(M, yB, W - M, yB);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(90);
+    doc.text('Studio 33 Architects — 01 Imm paternelle, Rue de Madrid, Agadir', M, yB + 5.5);
+    doc.text('05 28 84 33 30 · Studio33architecture@gmail.com · www.studio33architects.com', M, yB + 9.8);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
+    doc.text('ICE : 0031 00569 0000 02', W - M, yB + 5.5, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(90);
+    doc.text('IBAN : 022010000008003079157925', W - M, yB + 9.8, { align: 'right' });
 
     await s33DownloadPdf(doc, 'Facture_' + (inv.num || id).toString().replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf');
   } catch(e) {

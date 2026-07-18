@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.9 — onglet tâches amélioré';
+const S33_BUILD = '2026-07-19.10 — devis vert, filtres factures, échéancier portail';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10028,9 +10028,43 @@ function renderInvoices() {
     return;
   }
 
-  // Group invoices by client
+  // ── Filtres : Toutes / En attente / En retard / Payées ──
+  const _if = window._invFilter || '';
+  const _todayF = new Date().toISOString().slice(0, 10);
+  const _isLateF = i => {
+    if (i.status !== 'En attente') return false;
+    const d = (typeof s33InvDueEff === 'function') ? s33InvDueEff(i) : i.due_date;
+    return d && d < _todayF;
+  };
+  const _counts = {
+    '': db.invoices.length,
+    'attente': db.invoices.filter(i => i.status === 'En attente').length,
+    'retard': db.invoices.filter(_isLateF).length,
+    'payee': db.invoices.filter(i => i.status === 'Payée').length
+  };
+  const _chip = (val, label, color) =>
+    `<button onclick="window._invFilter='${val}';renderInvoices()" style="padding:7px 15px;border-radius:99px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;${
+      _if === val
+        ? 'background:' + color + ';color:#fff;border:1px solid ' + color + ';'
+        : 'background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);'
+    }">${label} <span style="opacity:.75;">(${_counts[val]})</span></button>`;
+  const chipsHTML =
+    `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">` +
+      _chip('', 'Toutes', 'var(--gold)') +
+      _chip('attente', 'En attente', '#d97706') +
+      _chip('retard', 'En retard', '#c0392b') +
+      _chip('payee', 'Payées', '#1a9a5c') +
+    `</div>`;
+
+  // Group invoices by client (après filtre)
+  const _filteredInvoices = db.invoices.filter(i => {
+    if (_if === 'attente') return i.status === 'En attente';
+    if (_if === 'retard') return _isLateF(i);
+    if (_if === 'payee') return i.status === 'Payée';
+    return true;
+  });
   const groups = {};
-  db.invoices.forEach(inv => {
+  _filteredInvoices.forEach(inv => {
     const key = inv.clientId || '__none__';
     if (!groups[key]) groups[key] = [];
     groups[key].push(inv);
@@ -10043,7 +10077,9 @@ function renderInvoices() {
     return na.localeCompare(nb, 'fr');
   });
 
-  container.innerHTML = sortedKeys.map(key => {
+  container.innerHTML = chipsHTML + (sortedKeys.length === 0
+    ? `<div style="padding:26px;text-align:center;color:var(--text-faint);font-size:13px;">Aucune facture dans ce filtre.</div>`
+    : '') + sortedKeys.map(key => {
     const client = db.clients.find(c => c.id == key);
     const clientName = client ? client.name : 'Sans client';
     const invList = groups[key];
@@ -10094,7 +10130,7 @@ function renderInvoices() {
       <div class="inv-client-header" onclick="toggleInvGroup('${groupId}')"
         style="display:flex;align-items:center;gap:16px;padding:14px 20px;background:var(--surface);cursor:pointer;user-select:none;transition:background .15s;"
         onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='var(--surface)'">
-        <span class="mi" id="${groupId}-chevron" style="transition:transform .2s;color:var(--text-dim);">expand_more</span>
+        <span class="mi" id="${groupId}-chevron" style="transition:transform .2s;color:var(--text-dim);${_if ? 'transform:rotate(180deg);' : ''}">expand_more</span>
         <div style="flex:1;">
           <div style="font-size:14px;font-weight:700;color:var(--text);">${clientName}</div>
           <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">${invList.length} facture${invList.length > 1 ? 's' : ''} · ${pendingCount > 0 ? `<span style="color:var(--red);">${pendingCount} en attente</span>` : ''} ${paidCount > 0 ? `<span style="color:var(--green);">${paidCount} payée${paidCount > 1 ? 's' : ''}</span>` : ''}</div>
@@ -10104,7 +10140,7 @@ function renderInvoices() {
           <div style="font-size:10px;color:var(--text-faint);">TTC total</div>
         </div>
       </div>
-      <div id="${groupId}" style="display:none;border-top:1px solid var(--border);">
+      <div id="${groupId}" style="display:${_if ? 'block' : 'none'};border-top:1px solid var(--border);">
         <div style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;">
             <thead>
@@ -10125,8 +10161,8 @@ function renderInvoices() {
     </div>`;
   }).join('');
 
-  // Auto-expand first group if only one client
-  if (sortedKeys.length === 1) toggleInvGroup('inv-group-' + sortedKeys[0]);
+  // Auto-expand first group if only one client (sans filtre : les groupes sont déjà ouverts quand un filtre est actif)
+  if (!_if && sortedKeys.length === 1) toggleInvGroup('inv-group-' + sortedKeys[0]);
 }
 
 function toggleInvGroup(id) {
@@ -11299,22 +11335,24 @@ function renderDevisList() {
     return;
   }
   tbody.innerHTML = [...db.devis].reverse().map(d => {
-    const statusColors = {
-      'Envoyé': 'badge-blue',
-      'Accepté': 'badge-green',
-      'Refusé': 'badge-red',
-      'Brouillon': 'badge-dim'
+    // Couleur du statut appliquée directement sur le menu déroulant
+    const statusStyles = {
+      'Accepté':   'background:rgba(61,214,140,.14);border:1px solid rgba(61,214,140,.55);color:#1a9a5c;font-weight:700;',
+      'Refusé':    'background:rgba(240,112,112,.12);border:1px solid rgba(240,112,112,.55);color:#c0392b;font-weight:700;',
+      'Envoyé':    'background:rgba(59,130,246,.10);border:1px solid rgba(59,130,246,.45);color:#2563eb;font-weight:700;',
+      'Brouillon': 'background:var(--surface2);border:1px solid var(--border);color:var(--text);'
     };
+    const stStyle = statusStyles[d.status] || statusStyles['Brouillon'];
     const dateStr = d.dateVal ? new Date(d.dateVal).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—';
     const isActive = currentDevisId === d.id;
     return `<tr style="${isActive ? 'background:rgba(201,169,110,0.05);' : ''}">
-      <td class="primary" style="font-family:'DM Mono',monospace;font-size:11px;">${d.num || d.ref}</td>
+      <td class="primary" style="font-family:'DM Mono',monospace;font-size:11px;">${d.num || d.ref}${d.status === 'Accepté' ? ' <span class="mi" style="font-size:13px;color:#1a9a5c;vertical-align:-2px;" title="Devis accepté">check_circle</span>' : ''}</td>
       <td>${d.clientName}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;">${d.projet}</td>
       <td style="color:var(--gold);font-weight:400;">${formatNum(d.ttc)} MAD</td>
       <td style="font-size:11px;">${dateStr}</td>
       <td>
-        <select onchange="changeDevisStatus(${d.id}, this.value)" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;font-size:10px;border-radius:var(--radius);font-family:'Inter',system-ui,-apple-system,sans-serif;cursor:pointer;">
+        <select onchange="changeDevisStatus(${d.id}, this.value)" style="${stStyle}padding:4px 8px;font-size:10px;border-radius:var(--radius);font-family:'Inter',system-ui,-apple-system,sans-serif;cursor:pointer;">
           <option value="Brouillon" ${d.status==='Brouillon'?'selected':''}>Brouillon</option>
           <option value="Envoyé" ${d.status==='Envoyé'?'selected':''}>Envoyé</option>
           <option value="Accepté" ${d.status==='Accepté'?'selected':''}>Accepté</option>
@@ -28489,6 +28527,8 @@ window.addEventListener('appinstalled', () => {
       phase: 'Phase : ', progress: 'Avancement', fees: 'Règlement des honoraires',
       feesPct: 'du budget d\'honoraires réglé', remaining: 'reste', settled: 'solde réglé, merci !', mad: 'MAD',
       feesDetail: 'Voir le détail des paiements', invPaid: 'Payée le', invDue: 'À régler avant le', invLate: 'Échéance dépassée depuis le',
+      echeTitle: 'Échéancier des honoraires', stepPaid: 'Réglée', stepDue: 'À régler', stepUpcoming: 'À venir',
+      totalPaid: 'Réglé', totalLeft: 'Reste à régler',
       video: 'VIDÉO',
       nextSteps: 'Prochaines étapes', docs: 'Documents partagés', photos: 'Photos du chantier', messages: 'Messages',
       open: 'Ouvrir →', event: 'Événement', approve: 'Valider', approvedOn: 'Validé le',
@@ -28515,6 +28555,8 @@ window.addEventListener('appinstalled', () => {
       phase: 'المرحلة : ', progress: 'تقدّم الأشغال', fees: 'أداء الأتعاب',
       feesPct: 'من ميزانية الأتعاب تم أداؤها', remaining: 'المتبقي', settled: 'تم أداء كامل المبلغ، شكرًا لكم!', mad: 'درهم',
       feesDetail: 'عرض تفاصيل الأداءات', invPaid: 'تم الأداء في', invDue: 'يُرجى الأداء قبل', invLate: 'تجاوز أجل الأداء منذ',
+      echeTitle: 'جدول أداء الأتعاب', stepPaid: 'تم الأداء', stepDue: 'مستحقّة الأداء', stepUpcoming: 'قادمة',
+      totalPaid: 'تم أداؤه', totalLeft: 'المتبقي للأداء',
       video: 'فيديو',
       nextSteps: 'المواعيد القادمة', docs: 'الوثائق المشتركة', photos: 'صور الورش', messages: 'الرسائل',
       open: 'فتح', event: 'موعد', approve: 'مصادقة', approvedOn: 'تمت المصادقة في',
@@ -28618,6 +28660,39 @@ window.addEventListener('appinstalled', () => {
           '</div>' +
           '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + pctPaid + '%;background:linear-gradient(90deg,#16a34a,#4ade80);border-radius:99px;"></div></div>' +
           '<div style="font-size:10.5px;color:#999;margin-top:5px;">' + pctPaid + '% ' + t.feesPct + (f.budget > f.paid ? ' · ' + t.remaining + ' ' + money(f.budget - f.paid) + ' ' + t.mad : ' · ' + t.settled) + '</div>' +
+          // Échéancier complet : étapes réglées / à régler / à venir
+          (Array.isArray(f.echeancier) && f.echeancier.length ? (function() {
+            const todayISO = new Date().toISOString().slice(0, 10);
+            const fd = function(s) { try { return new Date(s + 'T00:00').toLocaleDateString(t.locale, { day: 'numeric', month: 'short', year: 'numeric' }); } catch(_) { return s || ''; } };
+            const totalPaidE = f.echeancier.filter(function(e) { return e.status === 'payee'; }).reduce(function(s, e) { return s + e.montant; }, 0);
+            const totalLeftE = f.echeancier.filter(function(e) { return e.status !== 'payee'; }).reduce(function(s, e) { return s + e.montant; }, 0);
+            return '<div style="margin-top:16px;border:1px solid #f0ece2;border-radius:12px;overflow:hidden;">' +
+              '<div style="background:#faf8f3;padding:10px 14px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a58a3c;">' + t.echeTitle + '</div>' +
+              f.echeancier.map(function(e) {
+                const paidE = e.status === 'payee';
+                const lateE = e.status === 'attente' && e.due_date && e.due_date < todayISO;
+                const icon = paidE ? 'check_circle' : e.status === 'attente' ? (lateE ? 'error' : 'schedule') : 'radio_button_unchecked';
+                const iconColor = paidE ? '#16a34a' : e.status === 'attente' ? (lateE ? '#dc2626' : '#F97316') : '#c9c4b8';
+                const stTxt = paidE
+                  ? t.stepPaid + (e.paid_date ? ' · ' + fd(e.paid_date) : '')
+                  : e.status === 'attente'
+                    ? (lateE ? t.invLate + ' ' + fd(e.due_date) : t.stepDue + (e.due_date ? ' · ' + t.invDue + ' ' + fd(e.due_date) : ''))
+                    : t.stepUpcoming;
+                return '<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid #f5f2ea;flex-wrap:wrap;' + (e.status === 'a_venir' ? 'opacity:.6;' : '') + '">' +
+                  '<span class="mi" style="font-size:17px;color:' + iconColor + ';flex-shrink:0;">' + icon + '</span>' +
+                  '<div style="flex:1;min-width:130px;">' +
+                    '<div style="font-size:12.5px;font-weight:600;">' + esc(e.label || '') + '</div>' +
+                    '<div style="font-size:10.5px;color:' + (lateE ? '#dc2626' : '#999') + ';' + (lateE ? 'font-weight:700;' : '') + '">' + stTxt + '</div>' +
+                  '</div>' +
+                  '<span style="font-size:13px;font-weight:800;color:' + (paidE ? '#16a34a' : '#1a1a1a') + ';white-space:nowrap;">' + money(e.montant) + ' ' + t.mad + '</span>' +
+                '</div>';
+              }).join('') +
+              '<div style="display:flex;justify-content:space-between;gap:10px;padding:10px 14px;border-top:1px solid #f0ece2;background:#faf8f3;font-size:12px;flex-wrap:wrap;">' +
+                '<span style="color:#16a34a;font-weight:800;">' + t.totalPaid + ' : ' + money(totalPaidE) + ' ' + t.mad + '</span>' +
+                '<span style="color:#1a1a1a;font-weight:800;">' + t.totalLeft + ' : ' + money(totalLeftE) + ' ' + t.mad + '</span>' +
+              '</div>' +
+            '</div>';
+          })() : '') +
           // Détail des factures : payées + en attente avec dates limites
           (Array.isArray(f.invoices) && f.invoices.length ?
             '<button onclick="s33pToggleFactures(this)" style="margin-top:12px;background:#fff;border:1px solid #eee;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;color:#F97316;cursor:pointer;font-family:inherit;">' + t.feesDetail + '</button>' +

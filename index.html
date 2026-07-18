@@ -2892,7 +2892,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-17.9 — calendrier mobile';
+const S33_BUILD = '2026-07-18.1 — PV de chantier';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6767,7 +6767,8 @@ function renderDashboard() {
       { icon: 'request_quote',  color: '#c9a96e', label: 'Générer un devis',           action: "navigate('devis')",           nav: 'nav-devis' },
       { icon: 'contacts',       color: '#3b82f6', label: 'Ajouter un contact pro',     action: "openContactModal()",          nav: 'nav-contacts' },
       { icon: 'local_shipping', color: '#f59e0b', label: 'Ajouter un fournisseur',     action: "openSupplierModal()" },
-      { icon: 'assignment',     color: '#10b981', label: 'PV de réunion de chantier',  action: "navigate('pv')" },
+      { icon: 'fact_check',     color: '#10b981', label: 'PV de chantier',             action: "navigate('pvchantier')" },
+      { icon: 'assignment',     color: '#0ea5e9', label: 'PV de réunion',              action: "navigate('pv')" },
       { icon: 'event',          color: '#ef4444', label: 'Ajouter au calendrier',      action: "navigate('calendar');setTimeout(function(){openCalEventModal();},150)" },
       { icon: 'edit_note',      color: '#06b6d4', label: 'Écrire mon rapport',         action: "navigate('rapport')" },
       { icon: 'forum',          color: '#ec4899', label: 'Message à l\'équipe',        action: "navigate('messagerie')" },
@@ -29639,6 +29640,1369 @@ window.addEventListener('appinstalled', () => {
   };
 
   console.log('✓ Accordéons fiche projet loaded');
+})();
+</script>
+
+<!-- ═══ PV DE CHANTIER (PlanRadar simplifié : annotation photos, réserves numérotées, validation directeur) ═══ -->
+<script>
+(function() {
+  'use strict';
+
+  // ── État ────────────────────────────────────────────────────────
+  let _pvs = [];          // tous les PV (tous projets)
+  let _res = [];          // toutes les réserves (tous projets)
+  let _loaded = false;
+  let _tab = 'pv';
+  let _cur = null;        // PV en cours d'édition
+  let _fil = { pvProj: '', pvStatut: '', rProj: '', rEnt: '', rStatut: 'ouverte', rLate: false };
+
+  const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
+  const today = () => new Date().toISOString().slice(0, 10);
+  const isAdmin = () => currentUser && (currentUser.role === 'admin' || (currentUser.permissions || {}).is_co_admin === true);
+  const myName = () => (currentUser && currentUser.name) || '';
+  const projName = pid => { const p = (db.projects || []).find(x => x.id === parseInt(pid)); return p ? p.name : 'Projet ' + pid; };
+  const fmtD = s => { try { return new Date(String(s).slice(0, 10) + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }); } catch(_) { return s || ''; } };
+  const fmtDT = s => { try { const d = new Date(s); return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } };
+
+  const STATUTS = {
+    brouillon:  { label: 'Brouillon',                c: '#8a8a8a' },
+    attente:    { label: 'En attente de validation', c: '#f59e0b' },
+    a_corriger: { label: 'À corriger',               c: '#ef4444' },
+    valide:     { label: 'Validé',                   c: '#16a34a' }
+  };
+  const GRAV = {
+    mineur:   { label: 'Mineur',   c: '#f59e0b' },
+    majeur:   { label: 'Majeur',   c: '#f97316' },
+    bloquant: { label: 'Bloquant', c: '#ef4444' }
+  };
+  const LOTS = ['Gros œuvre', 'Étanchéité', 'Électricité', 'Plomberie', 'Menuiserie', 'Revêtements', 'Peinture', 'Climatisation', 'Aménagements ext.', 'Autre'];
+
+  // ── Chargement ──────────────────────────────────────────────────
+  async function loadAll(force) {
+    if (_loaded && !force) return;
+    const [pvs, res] = await Promise.all([
+      sbGet('pv_chantier', '?deleted_at=is.null&order=id.desc').catch(() => []),
+      sbGet('chantier_reserves', '?order=id.desc').catch(() => [])
+    ]);
+    _pvs = Array.isArray(pvs) ? pvs : [];
+    _res = Array.isArray(res) ? res : [];
+    _loaded = true;
+    updateNavBadge();
+  }
+
+  function updateNavBadge() {
+    const n = isAdmin() ? _pvs.filter(p => p.statut === 'attente').length : 0;
+    ['nav-pvch-badge', 'mnav-pvch-badge'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) { b.textContent = n; b.style.display = n > 0 ? 'inline-flex' : 'none'; }
+    });
+  }
+
+  // ── Injection nav + page ────────────────────────────────────────
+  function injectCSS() {
+    if (document.getElementById('s33-pvch-css')) return;
+    const st = document.createElement('style');
+    st.id = 's33-pvch-css';
+    st.textContent =
+      '.pvch-tab{padding:9px 18px;border:none;background:none;font-family:inherit;font-size:13px;font-weight:700;color:var(--text-dim);cursor:pointer;border-bottom:2.5px solid transparent;}' +
+      '.pvch-tab.active{color:var(--gold);border-bottom-color:var(--gold);}' +
+      '.pvch-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;}' +
+      '.pvch-chip{font-size:10px;font-weight:800;letter-spacing:.04em;border-radius:99px;padding:3px 10px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;}' +
+      '.pvch-btn{border:none;border-radius:var(--radius-pill);padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;}' +
+      '.pvch-field label{font-size:11px;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px;}' +
+      '.pvch-field input,.pvch-field select,.pvch-field textarea{width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 10px;font-size:13px;border-radius:8px;font-family:inherit;outline:none;}' +
+      '.pvch-sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;}' +
+      '.pvch-sec h3{margin:0 0 12px;font-size:13px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;gap:7px;}' +
+      '.pvch-row{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;}' +
+      '.pvch-photo{position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:#141414;cursor:pointer;border:1px solid var(--border);}' +
+      '.pvch-photo img{width:100%;height:100%;object-fit:cover;}' +
+      '.pvch-anno-tool{width:44px;height:44px;border-radius:10px;border:1.5px solid rgba(255,255,255,.25);background:rgba(0,0,0,.5);color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;}' +
+      '.pvch-anno-tool.on{border-color:#e53935;background:rgba(229,57,53,.35);}' +
+      '.pvch-table{width:100%;border-collapse:collapse;font-size:12.5px;}' +
+      '.pvch-table th{text-align:left;padding:8px 10px;background:var(--surface2);color:var(--text-dim);font-weight:700;font-size:11px;}' +
+      '.pvch-table td{padding:8px 10px;border-top:1px solid var(--border);vertical-align:top;}' +
+      '@media(max-width:640px){.pvch-hide-m{display:none;}.pvch-an-hint{display:none;}#s33-pv-an .pvch-anno-tool{width:38px;height:38px;}}';
+    document.head.appendChild(st);
+  }
+
+  function injectNav() {
+    if (!document.getElementById('nav-pvchantier')) {
+      const ref = document.getElementById('nav-pv');
+      if (ref) ref.insertAdjacentHTML('beforebegin',
+        '<div class="nav-item" id="nav-pvchantier" onclick="navigate(\'pvchantier\')">' +
+          '<span class="nav-icon"><span class="mi">fact_check</span></span><span class="nav-text">PV de chantier</span>' +
+          '<span id="nav-pvch-badge" style="display:none;margin-left:auto;background:#f59e0b;color:#fff;font-size:10px;font-weight:800;border-radius:99px;min-width:18px;height:18px;align-items:center;justify-content:center;padding:0 5px;">0</span>' +
+        '</div>');
+    }
+    if (!document.getElementById('mnav-pvchantier')) {
+      const ref = document.getElementById('mnav-more-pv');
+      if (ref) ref.insertAdjacentHTML('beforebegin',
+        '<div class="mobile-more-item" id="mnav-pvchantier" onclick="mobileNavigate(\'pvchantier\'); closeMobileMore()">' +
+          '<span class="mnav-icon"><span class="mi">fact_check</span></span> PV de chantier' +
+          '<span id="mnav-pvch-badge" style="display:none;margin-left:auto;background:#f59e0b;color:#fff;font-size:10px;font-weight:800;border-radius:99px;min-width:18px;height:18px;align-items:center;justify-content:center;padding:0 5px;">0</span>' +
+        '</div>');
+    }
+  }
+
+  function injectPage() {
+    if (document.getElementById('page-pvchantier')) return;
+    const anyPage = document.querySelector('.page');
+    if (!anyPage || !anyPage.parentElement) return;
+    anyPage.parentElement.insertAdjacentHTML('beforeend',
+      '<div class="page" id="page-pvchantier">' +
+        '<div class="page-header">' +
+          '<div><div class="page-title">PV de chantier</div><div class="page-subtitle">Annotation photos · réserves numérotées · validation avant diffusion</div></div>' +
+          '<button class="btn btn-gold" onclick="s33PvNew()" style="display:flex;align-items:center;gap:6px;"><span class="mi mi-sm">add</span> Nouveau PV</button>' +
+        '</div>' +
+        '<div style="display:flex;border-bottom:2px solid var(--border);margin-bottom:16px;">' +
+          '<button class="pvch-tab active" id="pvch-tab-pv" onclick="s33PvTab(\'pv\')">PV de chantier</button>' +
+          '<button class="pvch-tab" id="pvch-tab-res" onclick="s33PvTab(\'res\')">Réserves — tous chantiers <span id="pvch-res-count" style="background:rgba(220,50,50,.12);color:#c0392b;border-radius:99px;padding:1px 8px;font-size:10.5px;margin-left:4px;"></span></button>' +
+        '</div>' +
+        '<div id="pvch-content"><div style="padding:30px;text-align:center;color:var(--text-faint);font-size:13px;">Chargement…</div></div>' +
+      '</div>');
+  }
+
+  // ── Page : onglets ──────────────────────────────────────────────
+  window.s33PvTab = function(t) {
+    _tab = t;
+    document.getElementById('pvch-tab-pv').classList.toggle('active', t === 'pv');
+    document.getElementById('pvch-tab-res').classList.toggle('active', t === 'res');
+    renderContent();
+  };
+
+  async function renderPvPage() {
+    await loadAll();
+    const cnt = document.getElementById('pvch-res-count');
+    if (cnt) cnt.textContent = _res.filter(r => r.statut === 'ouverte').length;
+    renderContent();
+  }
+
+  function renderContent() {
+    const el = document.getElementById('pvch-content');
+    if (!el) return;
+    el.innerHTML = _tab === 'pv' ? pvListHTML() : resListHTML();
+  }
+
+  // ── Liste des PV ────────────────────────────────────────────────
+  function pvListHTML() {
+    const projOpts = '<option value="">Tous les projets</option>' + (db.projects || []).map(p => '<option value="' + p.id + '"' + (String(_fil.pvProj) === String(p.id) ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+    const statOpts = '<option value="">Tous les statuts</option>' + Object.keys(STATUTS).map(k => '<option value="' + k + '"' + (_fil.pvStatut === k ? ' selected' : '') + '>' + STATUTS[k].label + '</option>').join('');
+    const sel = 'background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-size:12px;border-radius:var(--radius-pill);font-family:inherit;outline:none;max-width:210px;';
+    let html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' +
+      '<select onchange="s33PvFil(\'pvProj\',this.value)" style="' + sel + '">' + projOpts + '</select>' +
+      '<select onchange="s33PvFil(\'pvStatut\',this.value)" style="' + sel + '">' + statOpts + '</select>' +
+      '</div>';
+
+    let list = _pvs.filter(p =>
+      (!_fil.pvProj || String(p.project_id) === String(_fil.pvProj)) &&
+      (!_fil.pvStatut || p.statut === _fil.pvStatut));
+
+    if (!list.length) {
+      return html + '<div style="text-align:center;padding:50px 20px;color:var(--text-faint);background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius);">' +
+        '<span class="mi" style="font-size:44px;display:block;margin-bottom:10px;color:var(--text-dim);">fact_check</span>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--text-dim);">Aucun PV pour l\'instant</div>' +
+        '<div style="font-size:12px;margin-top:4px;">Créez le premier avec « Nouveau PV » — photos annotées, réserves, validation.</div></div>';
+    }
+
+    return html + list.map(pv => {
+      const st = STATUTS[pv.statut] || STATUTS.brouillon;
+      const nbRes = countReserves(pv);
+      const canEdit = (pv.statut === 'brouillon' || pv.statut === 'a_corriger') && (isAdmin() || pv.created_by === myName());
+      // Délai de diffusion (objectif 48 h après la visite)
+      let delaiHTML = '';
+      if (pv.visit_date) {
+        if (pv.diffused_at) {
+          const h = Math.round((new Date(pv.diffused_at) - new Date(pv.visit_date + 'T09:00')) / 3600000);
+          delaiHTML = '<span style="font-size:11px;color:#16a34a;font-weight:600;"><span class="mi" style="font-size:12px;vertical-align:-2px;">send</span> Diffusé le ' + fmtDT(pv.diffused_at) + (h > 0 ? ' (' + h + ' h après visite)' : '') + '</span>';
+        } else if (pv.statut !== 'brouillon') {
+          const h = Math.round((Date.now() - new Date(pv.visit_date + 'T09:00')) / 3600000);
+          if (h > 48) delaiHTML = '<span style="font-size:11px;color:#ef4444;font-weight:700;"><span class="mi" style="font-size:12px;vertical-align:-2px;">timer</span> Non diffusé — ' + h + ' h depuis la visite (objectif 48 h)</span>';
+          else delaiHTML = '<span style="font-size:11px;color:var(--text-faint);"><span class="mi" style="font-size:12px;vertical-align:-2px;">timer</span> ' + h + ' h depuis la visite (objectif diffusion 48 h)</span>';
+        }
+      }
+      return '<div class="pvch-card">' +
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+          '<span style="font-family:\'DM Mono\',monospace;font-size:13px;font-weight:700;color:var(--gold);">' + esc(pv.ref || 'PV') + '</span>' +
+          '<span style="flex:1;min-width:120px;font-size:13.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(projName(pv.project_id)) + '</span>' +
+          '<span class="pvch-chip" style="background:' + st.c + '1f;color:' + st.c + ';border:1px solid ' + st.c + '44;">' + st.label + '</span>' +
+        '</div>' +
+        '<div style="font-size:11.5px;color:var(--text-dim);margin-top:5px;">' + (pv.visit_date ? 'Visite du ' + fmtD(pv.visit_date) : '') + (pv.auteur ? ' · rédigé par ' + esc(pv.auteur) : '') + (nbRes ? ' · <b style="color:#c0392b;">' + nbRes + ' réserve' + (nbRes > 1 ? 's' : '') + '</b>' : '') + '</div>' +
+        (delaiHTML ? '<div style="margin-top:5px;">' + delaiHTML + '</div>' : '') +
+        '<div style="display:flex;gap:7px;margin-top:10px;flex-wrap:wrap;">' +
+          (canEdit ? '<button class="pvch-btn" style="background:var(--gold);color:#fff;" onclick="s33PvEdit(' + pv.id + ')"><span class="mi" style="font-size:14px;">edit</span> ' + (pv.statut === 'a_corriger' ? 'Corriger' : 'Ouvrir') + '</button>' : '') +
+          (isAdmin() && (pv.statut === 'attente' || pv.statut === 'valide') ? '<button class="pvch-btn" style="background:' + (pv.statut === 'attente' ? '#f59e0b' : 'var(--surface2)') + ';color:' + (pv.statut === 'attente' ? '#fff' : 'var(--text)') + ';border:1px solid var(--border);" onclick="s33PvReview(' + pv.id + ')"><span class="mi" style="font-size:14px;">rate_review</span> ' + (pv.statut === 'attente' ? 'Examiner et valider' : 'Diffusion / historique') + '</button>' : '') +
+          (!isAdmin() && pv.statut === 'attente' ? '<span style="font-size:11.5px;color:var(--text-faint);align-self:center;">En attente de validation du directeur</span>' : '') +
+          (pv.pdf_media_id ? '<button class="pvch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33PvOpenPdf(' + pv.id + ')"><span class="mi" style="font-size:14px;">picture_as_pdf</span> PDF</button>' : '') +
+          ((isAdmin() || pv.created_by === myName()) && pv.statut === 'brouillon' ? '<button class="pvch-btn" style="background:none;color:#c0392b;border:1px solid rgba(220,50,50,.3);" onclick="s33PvDelete(' + pv.id + ')">Supprimer</button>' : '') +
+        '</div>' +
+        (pv.statut === 'a_corriger' && lastComment(pv) ? '<div style="margin-top:9px;padding:9px 12px;background:rgba(239,68,68,.07);border-left:3px solid #ef4444;border-radius:6px;font-size:12px;color:var(--text);"><b>Motif du refus :</b> ' + esc(lastComment(pv)) + '</div>' : '') +
+      '</div>';
+    }).join('');
+  }
+
+  function lastComment(pv) {
+    const h = (pv.validation_history || []).slice().reverse().find(x => x.action === 'refuse');
+    return h ? h.comment : '';
+  }
+  function countReserves(pv) {
+    let n = 0;
+    (pv.photos || []).forEach(ph => (ph.annotations || []).forEach(a => { if (a.n) n++; }));
+    return n;
+  }
+
+  window.s33PvFil = function(k, v) { _fil[k] = v; renderContent(); };
+  window.s33PvFilLate = function(cb) { _fil.rLate = cb.checked; renderContent(); };
+
+  // ── Tableau des réserves (transversal) ──────────────────────────
+  function resListHTML() {
+    const ents = [...new Set(_res.map(r => r.entreprise).filter(Boolean))].sort();
+    const projOpts = '<option value="">Tous les projets</option>' + (db.projects || []).map(p => '<option value="' + p.id + '"' + (String(_fil.rProj) === String(p.id) ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+    const entOpts = '<option value="">Toutes les entreprises</option>' + ents.map(e => '<option' + (_fil.rEnt === e ? ' selected' : '') + '>' + esc(e) + '</option>').join('');
+    const sel = 'background:var(--surface);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-size:12px;border-radius:var(--radius-pill);font-family:inherit;outline:none;max-width:200px;';
+    let html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">' +
+      '<select onchange="s33PvFil(\'rProj\',this.value)" style="' + sel + '">' + projOpts + '</select>' +
+      '<select onchange="s33PvFil(\'rEnt\',this.value)" style="' + sel + '">' + entOpts + '</select>' +
+      '<select onchange="s33PvFil(\'rStatut\',this.value)" style="' + sel + '"><option value="">Tous statuts</option><option value="ouverte"' + (_fil.rStatut === 'ouverte' ? ' selected' : '') + '>Ouvertes</option><option value="levée"' + (_fil.rStatut === 'levée' ? ' selected' : '') + '>Levées</option></select>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);cursor:pointer;"><input type="checkbox" ' + (_fil.rLate ? 'checked' : '') + ' onchange="s33PvFilLate(this)" style="accent-color:#ef4444;width:15px;height:15px;"> En retard seulement</label>' +
+      '</div>';
+
+    let list = _res.filter(r =>
+      (!_fil.rProj || String(r.project_id) === String(_fil.rProj)) &&
+      (!_fil.rEnt || r.entreprise === _fil.rEnt) &&
+      (!_fil.rStatut || (r.statut || 'ouverte') === _fil.rStatut) &&
+      (!_fil.rLate || (r.statut === 'ouverte' && r.deadline && r.deadline < today())));
+
+    if (!list.length) return html + '<div style="text-align:center;padding:40px;color:var(--text-faint);font-size:13px;background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius);">Aucune réserve pour ces filtres.</div>';
+
+    return html + '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">' +
+      list.map(r => {
+        const open = (r.statut || 'ouverte') === 'ouverte';
+        const late = open && r.deadline && r.deadline < today();
+        const g = GRAV[r.gravite];
+        const ref = r.pv_ref && r.point_num ? r.pv_ref + '.' + r.point_num : (r.pv_ref || '#' + r.id);
+        return '<div style="display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);align-items:flex-start;' + (late ? 'background:rgba(239,68,68,.04);' : '') + '">' +
+          '<span style="font-family:\'DM Mono\',monospace;font-size:11.5px;font-weight:700;color:var(--gold);flex-shrink:0;min-width:58px;">' + esc(ref) + '</span>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:13px;color:var(--text);font-weight:600;">' + esc(r.description || '') + '</div>' +
+            '<div style="font-size:11px;color:var(--text-dim);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+              '<span>' + esc(projName(r.project_id)) + '</span>' +
+              (r.lot ? '<span>· ' + esc(r.lot) + '</span>' : '') +
+              (r.entreprise ? '<span>· ' + esc(r.entreprise) + '</span>' : '') +
+              (g ? '<span class="pvch-chip" style="background:' + g.c + '1f;color:' + g.c + ';">' + g.label + '</span>' : '') +
+              (r.deadline ? '<span style="' + (late ? 'color:#ef4444;font-weight:800;' : '') + '">Délai : ' + fmtD(r.deadline) + (late ? ' — EN RETARD' : '') + '</span>' : '') +
+            '</div>' +
+            (!open && r.levee_date ? '<div style="font-size:11px;color:#16a34a;margin-top:3px;">Levée le ' + fmtD(r.levee_date) + '</div>' : '') +
+          '</div>' +
+          '<div style="flex-shrink:0;display:flex;flex-direction:column;gap:5px;align-items:flex-end;">' +
+            '<span class="pvch-chip" style="background:' + (open ? 'rgba(220,50,50,.1)' : 'rgba(39,174,96,.1)') + ';color:' + (open ? '#c0392b' : '#27ae60') + ';">' + (open ? 'Ouverte' : 'Levée') + '</span>' +
+            '<button class="pvch-btn" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 10px;font-size:10.5px;" onclick="s33PvResToggle(' + r.id + ')">' + (open ? 'Marquer levée' : 'Rouvrir') + '</button>' +
+          '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+  }
+
+  window.s33PvResToggle = async function(id) {
+    const r = _res.find(x => x.id === id);
+    if (!r) return;
+    const open = (r.statut || 'ouverte') === 'ouverte';
+    const patch = open ? { statut: 'levée', levee_date: today() } : { statut: 'ouverte', levee_date: null, levee_pv_id: null };
+    try {
+      await sbUpdate('chantier_reserves', id, patch);
+      Object.assign(r, patch);
+      renderContent();
+      toast(open ? 'Réserve levée' : 'Réserve rouverte');
+    } catch(_) { toast('Erreur — réessayez'); }
+  };
+
+  window.s33PvDelete = async function(id) {
+    if (!confirm('Supprimer ce brouillon de PV ?')) return;
+    try {
+      await sbUpdate('pv_chantier', id, { deleted_at: new Date().toISOString() });
+      _pvs = _pvs.filter(p => p.id !== id);
+      renderContent();
+    } catch(_) { toast('Erreur'); }
+  };
+
+  // ── Éditeur de PV ───────────────────────────────────────────────
+  window.s33PvNew = function() {
+    const now = new Date();
+    _cur = {
+      id: null, project_id: null, num: null, ref: '',
+      visit_date: today(), heure: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
+      meteo: '', auteur: myName(), presents: [], decisions: [], actions: [], photos: [], rappel: [],
+      notes: '', statut: 'brouillon', validation_history: [], director_comments: [],
+      created_by: myName()
+    };
+    renderEditor();
+  };
+
+  window.s33PvEdit = function(id) {
+    const pv = _pvs.find(p => p.id === id);
+    if (!pv) return;
+    _cur = JSON.parse(JSON.stringify(pv));
+    ['presents', 'decisions', 'actions', 'photos', 'rappel', 'validation_history', 'director_comments'].forEach(k => { if (!Array.isArray(_cur[k])) _cur[k] = []; });
+    renderEditor();
+  };
+
+  function nextRefFor(pid) {
+    const nums = _pvs.filter(p => String(p.project_id) === String(pid)).map(p => p.num || 0);
+    return (nums.length ? Math.max.apply(null, nums) : 0) + 1;
+  }
+
+  function openReservesFor(pid) {
+    return _res.filter(r => String(r.project_id) === String(pid) && (r.statut || 'ouverte') === 'ouverte' && (!_cur || r.pv_id !== _cur.id));
+  }
+
+  function renderEditor() {
+    const old = document.getElementById('s33-pv-ed'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 's33-pv-ed';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9500;background:var(--bg);overflow-y:auto;';
+    const pid = _cur.project_id;
+    const projOpts = '<option value="">— Choisir le projet —</option>' + (db.projects || []).filter(p => !p.archived).map(p => '<option value="' + p.id + '"' + (String(pid) === String(p.id) ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('');
+
+    // Rappel du PV précédent : réserves encore ouvertes du projet
+    let rappelHTML = '';
+    if (pid) {
+      const openRes = openReservesFor(pid);
+      if (openRes.length) {
+        rappelHTML = openRes.map(r => {
+          const saved = (_cur.rappel || []).find(x => x.reserve_id === r.id);
+          const late = r.deadline && r.deadline < today();
+          const cst = saved ? saved.constat : (late ? 'retard' : 'encours');
+          const chip = (val, lbl, c) =>
+            '<button onclick="s33PvRappel(' + r.id + ',\'' + val + '\')" style="padding:4px 11px;border-radius:99px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:inherit;border:1.5px solid ' + (cst === val ? c : 'var(--border)') + ';background:' + (cst === val ? c + '22' : 'var(--surface)') + ';color:' + (cst === val ? c : 'var(--text-dim)') + ';">' + lbl + '</button>';
+          const ref = r.pv_ref && r.point_num ? r.pv_ref + '.' + r.point_num : '#' + r.id;
+          return '<div style="padding:9px 0;border-bottom:1px solid var(--border);">' +
+            '<div style="font-size:12.5px;color:var(--text);"><b style="color:var(--gold);font-family:\'DM Mono\',monospace;">' + esc(ref) + '</b> ' + esc(r.description || '') + (r.deadline ? ' <span style="font-size:11px;color:' + (late ? '#ef4444' : 'var(--text-faint)') + ';">(délai ' + fmtD(r.deadline) + ')</span>' : '') + '</div>' +
+            '<div style="display:flex;gap:6px;margin-top:6px;">' + chip('realise', 'Réalisé / levée', '#16a34a') + chip('encours', 'En cours', '#f59e0b') + chip('retard', 'En retard', '#ef4444') + '</div>' +
+          '</div>';
+        }).join('');
+      } else {
+        rappelHTML = '<div style="font-size:12px;color:var(--text-faint);">Aucune réserve ouverte sur ce projet — rien à rappeler.</div>';
+      }
+    } else {
+      rappelHTML = '<div style="font-size:12px;color:var(--text-faint);">Choisissez d\'abord le projet.</div>';
+    }
+
+    // Photos
+    const photosHTML = (_cur.photos || []).map((ph, i) => {
+      if (ph.standalone) return '';
+      const nAnno = (ph.annotations || []).length;
+      const nRes = (ph.annotations || []).filter(a => a.n).length;
+      return '<div class="pvch-photo" onclick="s33PvAnno(' + i + ')">' +
+        (ph.tn ? '<img src="' + ph.tn + '" alt="">' : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;"><span class="mi" style="font-size:30px;">image</span></div>') +
+        (nRes ? '<span style="position:absolute;top:6px;left:6px;background:#e53935;color:#fff;font-size:10px;font-weight:800;border-radius:99px;padding:2px 8px;">' + nRes + ' réserve' + (nRes > 1 ? 's' : '') + '</span>' : (nAnno ? '<span style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;border-radius:99px;padding:2px 8px;">' + nAnno + ' annot.</span>' : '')) +
+        '<button onclick="event.stopPropagation();s33PvDelPhoto(' + i + ')" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border:none;color:#fff;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;">×</button>' +
+        '<span style="position:absolute;bottom:6px;right:8px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;border-radius:99px;padding:2px 7px;">Annoter</span>' +
+      '</div>';
+    }).join('');
+
+    // Réserves du PV (issues des annotations)
+    const reserves = collectDraftReserves();
+    const reservesHTML = reserves.length ? reserves.map(rs =>
+      '<div style="padding:10px 0;border-bottom:1px solid var(--border);">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          '<span style="background:#e53935;color:#fff;font-size:11px;font-weight:800;border-radius:99px;padding:2px 9px;font-family:\'DM Mono\',monospace;">' + (_cur.ref || 'PV') + '.' + rs.a.n + '</span>' +
+          (GRAV[rs.a.grav] ? '<span class="pvch-chip" style="background:' + GRAV[rs.a.grav].c + '1f;color:' + GRAV[rs.a.grav].c + ';">' + GRAV[rs.a.grav].label + '</span>' : '') +
+        '</div>' +
+        '<div class="pvch-row" style="margin-top:8px;">' +
+          '<input value="' + esc(rs.a.desc || '') + '" placeholder="Description de la réserve" oninput="s33PvResEdit(' + rs.pi + ',' + rs.ai + ',\'desc\',this.value)" style="flex:2;min-width:180px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;font-size:12.5px;border-radius:8px;font-family:inherit;">' +
+          '<select onchange="s33PvResEdit(' + rs.pi + ',' + rs.ai + ',\'lot\',this.value)" style="flex:1;min-width:110px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;font-size:12px;border-radius:8px;font-family:inherit;"><option value="">Lot / localisation</option>' + LOTS.map(l => '<option' + (rs.a.lot === l ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>' +
+        '</div>' +
+        '<div class="pvch-row">' +
+          '<select onchange="s33PvResEdit(' + rs.pi + ',' + rs.ai + ',\'grav\',this.value)" style="flex:1;min-width:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;font-size:12px;border-radius:8px;font-family:inherit;">' + Object.keys(GRAV).map(g => '<option value="' + g + '"' + (rs.a.grav === g ? ' selected' : '') + '>' + GRAV[g].label + '</option>').join('') + '</select>' +
+          '<input type="date" value="' + esc(rs.a.dl || '') + '" onchange="s33PvResEdit(' + rs.pi + ',' + rs.ai + ',\'dl\',this.value)" title="Délai de résolution" style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;font-size:12px;border-radius:8px;font-family:inherit;">' +
+          '<input value="' + esc(rs.a.ent || '') + '" placeholder="Entreprise responsable" oninput="s33PvResEdit(' + rs.pi + ',' + rs.ai + ',\'ent\',this.value)" style="flex:1;min-width:130px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;font-size:12px;border-radius:8px;font-family:inherit;">' +
+          '<button onclick="s33PvResDel(' + rs.pi + ',' + rs.ai + ')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;" title="Supprimer la réserve">×</button>' +
+        '</div>' +
+      '</div>').join('')
+      : '<div style="font-size:12px;color:var(--text-faint);">Aucune réserve. Annotez une photo (cercle, flèche, texte) ou ajoutez une réserve sans photo.</div>';
+
+    const presHTML = (_cur.presents || []).map((p, i) =>
+      '<div class="pvch-row">' +
+        '<input value="' + esc(p.nom || '') + '" placeholder="Nom" oninput="s33PvArr(\'presents\',' + i + ',\'nom\',this.value)" style="flex:1.2;min-width:110px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;font-size:12.5px;border-radius:8px;font-family:inherit;">' +
+        '<input value="' + esc(p.role || '') + '" placeholder="Rôle (MOA, BET…)" oninput="s33PvArr(\'presents\',' + i + ',\'role\',this.value)" style="flex:1;min-width:90px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;font-size:12.5px;border-radius:8px;font-family:inherit;">' +
+        '<input value="' + esc(p.entreprise || '') + '" placeholder="Entreprise" oninput="s33PvArr(\'presents\',' + i + ',\'entreprise\',this.value)" style="flex:1;min-width:90px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;font-size:12.5px;border-radius:8px;font-family:inherit;">' +
+        '<button onclick="s33PvArrDel(\'presents\',' + i + ')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;">×</button>' +
+      '</div>').join('');
+
+    const decHTML = (_cur.decisions || []).map((d, i) =>
+      '<div class="pvch-row">' +
+        '<input value="' + esc(d) + '" placeholder="Décision prise…" oninput="_s33PvDec(' + i + ',this.value)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;font-size:12.5px;border-radius:8px;font-family:inherit;">' +
+        '<button onclick="_s33PvDecDel(' + i + ')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;">×</button>' +
+      '</div>').join('');
+
+    const actHTML = (_cur.actions || []).map((a, i) =>
+      '<div class="pvch-row">' +
+        '<input value="' + esc(a.qui || '') + '" placeholder="Qui" oninput="s33PvArr(\'actions\',' + i + ',\'qui\',this.value)" style="flex:1;min-width:90px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;font-size:12.5px;border-radius:8px;font-family:inherit;">' +
+        '<input value="' + esc(a.quoi || '') + '" placeholder="Quoi" oninput="s33PvArr(\'actions\',' + i + ',\'quoi\',this.value)" style="flex:2;min-width:140px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;font-size:12.5px;border-radius:8px;font-family:inherit;">' +
+        '<input type="date" value="' + esc(a.quand || '') + '" onchange="s33PvArr(\'actions\',' + i + ',\'quand\',this.value)" style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px;font-size:12px;border-radius:8px;font-family:inherit;">' +
+        '<button onclick="s33PvArrDel(\'actions\',' + i + ')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;">×</button>' +
+      '</div>').join('');
+
+    ov.innerHTML =
+      '<div style="position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+        '<button onclick="s33PvEdClose()" style="background:none;border:none;cursor:pointer;color:var(--text-dim);display:flex;align-items:center;font-size:22px;padding:4px;"><span class="mi">arrow_back</span></button>' +
+        '<div style="flex:1;min-width:140px;">' +
+          '<div style="font-size:15px;font-weight:800;color:var(--text);">' + (_cur.ref || 'Nouveau PV') + (_cur.statut === 'a_corriger' ? ' <span class="pvch-chip" style="background:rgba(239,68,68,.12);color:#ef4444;">À corriger</span>' : '') + '</div>' +
+          '<div style="font-size:11px;color:var(--text-faint);">' + (pid ? esc(projName(pid)) : 'Projet non choisi') + ' · brouillon enregistré à chaque étape</div>' +
+        '</div>' +
+        '<button class="pvch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33PvSave(true)"><span class="mi" style="font-size:14px;">save</span> Enregistrer</button>' +
+        '<button class="pvch-btn" style="background:var(--gold);color:#fff;" onclick="s33PvFinish()"><span class="mi" style="font-size:14px;">task_alt</span> Terminer le PV</button>' +
+      '</div>' +
+      '<div style="max-width:860px;margin:0 auto;padding:16px 14px 80px;">' +
+        (_cur.statut === 'a_corriger' && lastComment(_cur) ? '<div style="margin-bottom:14px;padding:11px 14px;background:rgba(239,68,68,.07);border-left:3px solid #ef4444;border-radius:8px;font-size:12.5px;color:var(--text);"><b>Commentaire du directeur :</b> ' + esc(lastComment(_cur)) + '</div>' : '') +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">info</span> Informations</h3>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">' +
+            '<div class="pvch-field" style="grid-column:1/-1;"><label>Projet *</label><select onchange="s33PvSetProj(this.value)" ' + (_cur.id ? 'disabled' : '') + '>' + projOpts + '</select></div>' +
+            '<div class="pvch-field"><label>Date de visite *</label><input type="date" value="' + esc(_cur.visit_date || '') + '" onchange="_cur_set(\'visit_date\',this.value)"></div>' +
+            '<div class="pvch-field"><label>Heure</label><input type="time" value="' + esc(_cur.heure || '') + '" onchange="_cur_set(\'heure\',this.value)"></div>' +
+            '<div class="pvch-field"><label>Météo</label><input value="' + esc(_cur.meteo || '') + '" placeholder="Ensoleillé, 28°C…" oninput="_cur_set(\'meteo\',this.value)"></div>' +
+            '<div class="pvch-field"><label>Rédigé par</label><input value="' + esc(_cur.auteur || '') + '" oninput="_cur_set(\'auteur\',this.value)"></div>' +
+          '</div></div>' +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">groups</span> Présents</h3>' + presHTML +
+          '<button class="pvch-btn" style="background:var(--surface2);color:var(--text-dim);border:1px dashed var(--border);" onclick="s33PvArrAdd(\'presents\')"><span class="mi" style="font-size:14px;">add</span> Ajouter un présent</button></div>' +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">history</span> Rappel du PV précédent — réserves ouvertes</h3>' + rappelHTML + '</div>' +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">photo_camera</span> Photos du chantier</h3>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:12px;">' + photosHTML + '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<button class="pvch-btn" style="background:var(--gold);color:#fff;" onclick="document.getElementById(\'pvch-file\').click()"><span class="mi" style="font-size:14px;">add_a_photo</span> Ajouter des photos</button>' +
+            '<button class="pvch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33PvPlanPick()"><span class="mi" style="font-size:14px;">map</span> Annoter un plan (PDF)</button>' +
+            '<input type="file" id="pvch-file" accept="image/*" capture="environment" multiple style="display:none;" onchange="s33PvAddPhotos(this)">' +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--text-faint);margin-top:8px;">Touchez une photo pour dessiner dessus (cercle, flèche, texte) — chaque annotation peut devenir une réserve numérotée.</div></div>' +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">report_problem</span> Réserves de ce PV</h3>' + reservesHTML +
+          '<button class="pvch-btn" style="background:var(--surface2);color:var(--text-dim);border:1px dashed var(--border);margin-top:10px;" onclick="s33PvResNoPhoto()"><span class="mi" style="font-size:14px;">add</span> Réserve sans photo</button></div>' +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">gavel</span> Décisions prises</h3>' + decHTML +
+          '<button class="pvch-btn" style="background:var(--surface2);color:var(--text-dim);border:1px dashed var(--border);" onclick="_s33PvDecAdd()"><span class="mi" style="font-size:14px;">add</span> Ajouter une décision</button></div>' +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">assignment_turned_in</span> Actions à suivre (qui / quoi / pour quand)</h3>' + actHTML +
+          '<button class="pvch-btn" style="background:var(--surface2);color:var(--text-dim);border:1px dashed var(--border);" onclick="s33PvArrAdd(\'actions\')"><span class="mi" style="font-size:14px;">add</span> Ajouter une action</button></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    document.body.style.overflow = 'hidden';
+  }
+
+  window._cur_set = function(k, v) { if (_cur) _cur[k] = v; };
+  window.s33PvSetProj = function(v) {
+    if (!_cur) return;
+    _cur.project_id = v ? parseInt(v) : null;
+    if (_cur.project_id && !_cur.ref) {
+      _cur.num = nextRefFor(_cur.project_id);
+      _cur.ref = 'PV-' + String(_cur.num).padStart(2, '0');
+    }
+    renderEditor();
+  };
+  window.s33PvArr = function(key, i, field, v) { if (_cur && _cur[key] && _cur[key][i]) _cur[key][i][field] = v; };
+  window.s33PvArrAdd = function(key) { if (!_cur) return; _cur[key].push(key === 'presents' ? { nom: '', role: '', entreprise: '' } : { qui: '', quoi: '', quand: '' }); renderEditor(); };
+  window.s33PvArrDel = function(key, i) { if (!_cur) return; _cur[key].splice(i, 1); renderEditor(); };
+  window._s33PvDec = function(i, v) { if (_cur) _cur.decisions[i] = v; };
+  window._s33PvDecAdd = function() { _cur.decisions.push(''); renderEditor(); };
+  window._s33PvDecDel = function(i) { _cur.decisions.splice(i, 1); renderEditor(); };
+  window.s33PvRappel = function(rid, constat) {
+    if (!_cur) return;
+    const r = _res.find(x => x.id === rid);
+    const ref = r && r.pv_ref && r.point_num ? r.pv_ref + '.' + r.point_num : '#' + rid;
+    const ex = (_cur.rappel || []).find(x => x.reserve_id === rid);
+    if (ex) ex.constat = constat;
+    else _cur.rappel.push({ reserve_id: rid, ref: ref, desc: r ? r.description : '', constat: constat });
+    renderEditor();
+  };
+
+  function collectDraftReserves() {
+    const out = [];
+    (_cur.photos || []).forEach((ph, pi) => (ph.annotations || []).forEach((a, ai) => { if (a.n) out.push({ pi: pi, ai: ai, a: a }); }));
+    out.sort((x, y) => x.a.n - y.a.n);
+    return out;
+  }
+  function renumber() {
+    let n = 0;
+    (_cur.photos || []).forEach(ph => (ph.annotations || []).forEach(a => { if (a.n) { n++; a.n = n; } }));
+  }
+  window.s33PvResEdit = function(pi, ai, field, v) { const a = _cur.photos[pi].annotations[ai]; if (a) a[field] = v; };
+  window.s33PvResDel = function(pi, ai) {
+    const ph = _cur.photos[pi];
+    if (ph.standalone) _cur.photos.splice(pi, 1);
+    else ph.annotations.splice(ai, 1);
+    renumber(); renderEditor();
+  };
+  window.s33PvResNoPhoto = function() {
+    const n = collectDraftReserves().length + 1;
+    _cur.photos.push({ media_id: null, standalone: true, annotations: [{ t: 'r', n: n, desc: '', lot: '', grav: 'mineur', dl: '', ent: '' }] });
+    renumber(); renderEditor();
+  };
+  window.s33PvDelPhoto = function(i) {
+    if (!confirm('Retirer cette photo du PV ?')) return;
+    _cur.photos.splice(i, 1); renumber(); renderEditor();
+  };
+
+  window.s33PvEdClose = async function() {
+    // Enregistre le brouillon en quittant (sans bloquer si hors-ligne)
+    if (_cur && _cur.project_id) { try { await saveCur(); } catch(_) {} }
+    const ov = document.getElementById('s33-pv-ed'); if (ov) ov.remove();
+    document.body.style.overflow = '';
+    _cur = null;
+    renderContent();
+  };
+
+  async function saveCur() {
+    if (!_cur || !_cur.project_id) return null;
+    const obj = {
+      project_id: _cur.project_id, num: _cur.num, ref: _cur.ref,
+      visit_date: _cur.visit_date || null, heure: _cur.heure || null, meteo: _cur.meteo || null,
+      auteur: _cur.auteur || myName(),
+      presents: _cur.presents, decisions: _cur.decisions.filter(d => (d || '').trim()),
+      actions: _cur.actions, photos: _cur.photos, rappel: _cur.rappel,
+      notes: _cur.notes || null, statut: _cur.statut,
+      validation_history: _cur.validation_history, director_comments: _cur.director_comments,
+      updated_at: new Date().toISOString()
+    };
+    if (_cur.id) {
+      await sbUpdate('pv_chantier', _cur.id, obj);
+      const i = _pvs.findIndex(p => p.id === _cur.id);
+      if (i >= 0) _pvs[i] = Object.assign({}, _pvs[i], obj);
+      return _cur.id;
+    }
+    obj.created_by = myName();
+    const ins = await sbInsertOrThrow('pv_chantier', obj);
+    if (ins && ins[0]) { _cur.id = ins[0].id; _pvs.unshift(Object.assign({}, ins[0])); }
+    return _cur.id;
+  }
+
+  window.s33PvSave = async function(showToast) {
+    if (!_cur.project_id) { toast('Choisissez d\'abord le projet'); return; }
+    try { await saveCur(); if (showToast) toast('Brouillon enregistré'); } catch(e) { toast('Erreur d\'enregistrement — réessayez'); }
+  };
+
+  // ── Photos : ajout + vignettes ──────────────────────────────────
+  function fileToDataURL(f) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(f); }); }
+  function downscale(src, maxDim, q) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.naturalWidth * k));
+        c.height = Math.max(1, Math.round(img.naturalHeight * k));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', q || 0.8));
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  window.s33PvAddPhotos = async function(input) {
+    if (!input.files || !input.files.length) return;
+    if (!_cur.project_id) { toast('Choisissez d\'abord le projet'); input.value = ''; return; }
+    const files = Array.from(input.files);
+    input.value = '';
+    toast('Ajout de ' + files.length + ' photo(s)…');
+    for (const f of files) {
+      try {
+        const raw = await fileToDataURL(f);
+        const big = await downscale(raw, 1600, 0.82);   // version travail/PDF
+        const tn = await downscale(raw, 340, 0.7);      // vignette éditeur
+        if (!big) continue;
+        // Envoi au Storage (pour archivage / rechargement sur un autre appareil)
+        let filePath = null;
+        try {
+          const b64 = big.split(',')[1];
+          const bin = atob(b64);
+          const arr = new Uint8Array(bin.length);
+          for (let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
+          const path = 'proj/' + _cur.project_id + '/PV_de_chantier/' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + '.jpg';
+          const up = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + path, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'image/jpeg', 'x-upsert': 'true' },
+            body: new Blob([arr], { type: 'image/jpeg' })
+          });
+          if (up.ok) filePath = path;
+        } catch(_) {}
+        _cur.photos.push({ media_id: null, file_path: filePath, name: f.name, tn: tn, annotations: [], _src: big });
+      } catch(e) { console.warn('photo add err', e); }
+    }
+    renderEditor();
+    try { await saveCur(); } catch(_) {}
+  };
+
+  // ── Annoter un plan PDF (page rendue en image) ──────────────────
+  window.s33PvPlanPick = function() {
+    if (!_cur.project_id) { toast('Choisissez d\'abord le projet'); return; }
+    const pdfs = (db.media || []).filter(m => (m.is_pdf || m.isPDF) && (m.project_id === _cur.project_id || m.projectId === _cur.project_id));
+    if (!pdfs.length) { toast('Aucun plan PDF dans les documents de ce projet'); return; }
+    const old = document.getElementById('s33-pv-planpick'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 's33-pv-planpick';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9600;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML = '<div style="background:var(--surface);border-radius:14px;max-width:420px;width:100%;max-height:70vh;overflow-y:auto;padding:18px;" onclick="event.stopPropagation()">' +
+      '<div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:12px;">Choisir le plan à annoter</div>' +
+      pdfs.map(m => '<div onclick="s33PvPlanLoad(' + m.id + ')" style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;"><span class="mi" style="color:#c0392b;">picture_as_pdf</span><span style="font-size:13px;color:var(--text);flex:1;">' + esc(m.name) + '</span></div>').join('') +
+      '</div>';
+    ov.addEventListener('click', () => ov.remove());
+    document.body.appendChild(ov);
+  };
+
+  window.s33PvPlanLoad = async function(mediaId) {
+    const pick = document.getElementById('s33-pv-planpick'); if (pick) pick.remove();
+    toast('Préparation du plan…');
+    try {
+      if (!window.pdfjsLib) {
+        await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+        if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+      if (!window.pdfjsLib) throw new Error('pdf.js indisponible');
+      const src = await getMediaData(mediaId);
+      if (!src) throw new Error('plan introuvable');
+      const doc = await window.pdfjsLib.getDocument(src.startsWith('data:') ? { data: Uint8Array.from(atob(src.split(',')[1]), c => c.charCodeAt(0)) } : { url: src }).promise;
+      const page = await doc.getPage(1);
+      const vp = page.getViewport({ scale: 2 });
+      const c = document.createElement('canvas');
+      c.width = vp.width; c.height = vp.height;
+      await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      const big = c.toDataURL('image/jpeg', 0.85);
+      const tn = await downscale(big, 340, 0.7);
+      const m = (db.media || []).find(x => x.id === mediaId);
+      _cur.photos.push({ media_id: null, file_path: null, plan: true, name: 'Plan — ' + (m ? m.name : ''), tn: tn, annotations: [], _src: big });
+      renderEditor();
+      s33PvAnno(_cur.photos.length - 1);
+    } catch(e) {
+      console.error('plan load', e);
+      toast('Impossible de charger ce plan — vérifiez la connexion');
+    }
+  };
+
+  // ── Éditeur d'annotation (canvas) ───────────────────────────────
+  let _an = null; // { pi, img, cw, ch, tool, color, drawing, sx, sy, preview }
+
+  async function photoSrc(ph) {
+    if (ph._src) return ph._src;
+    if (ph.file_path && typeof _mediaStorageUrl === 'function') {
+      const u = await _mediaStorageUrl(ph.file_path, 3600);
+      return u;
+    }
+    return null;
+  }
+
+  window.s33PvAnno = async function(pi) {
+    const ph = _cur.photos[pi];
+    if (!ph || ph.standalone) return;
+    const src = await photoSrc(ph);
+    if (!src) { toast('Photo introuvable'); return; }
+    const img = new Image();
+    if (!src.startsWith('data:')) img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      _an = { pi: pi, img: img, tool: 'circle', color: '#e53935', drawing: false };
+      const old = document.getElementById('s33-pv-an'); if (old) old.remove();
+      const ov = document.createElement('div');
+      ov.id = 's33-pv-an';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9700;background:#000;display:flex;flex-direction:column;';
+      ov.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(20,20,20,.95);flex-wrap:wrap;">' +
+          '<button onclick="s33PvAnnoClose()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;"><span class="mi">arrow_back</span></button>' +
+          '<span class="pvch-an-hint" style="color:#fff;font-size:13px;font-weight:700;flex:1;">Annoter — chaque forme peut devenir une réserve</span>' +
+          '<button class="pvch-anno-tool" id="an-t-circle" onclick="s33PvTool(\'circle\')" title="Cercle"><span class="mi">circle</span></button>' +
+          '<button class="pvch-anno-tool" id="an-t-arrow" onclick="s33PvTool(\'arrow\')" title="Flèche"><span class="mi">north_east</span></button>' +
+          '<button class="pvch-anno-tool" id="an-t-text" onclick="s33PvTool(\'text\')" title="Texte"><span class="mi">title</span></button>' +
+          '<span style="width:1px;height:26px;background:rgba(255,255,255,.2);"></span>' +
+          '<button class="pvch-anno-tool" id="an-c-r" onclick="s33PvColor(\'#e53935\')" style="background:#e53935;border-color:#fff;" title="Rouge"></button>' +
+          '<button class="pvch-anno-tool" id="an-c-o" onclick="s33PvColor(\'#fb8c00\')" style="background:#fb8c00;" title="Orange"></button>' +
+          '<button class="pvch-anno-tool" id="an-c-g" onclick="s33PvColor(\'#43a047\')" style="background:#43a047;" title="Vert"></button>' +
+          '<span style="width:1px;height:26px;background:rgba(255,255,255,.2);"></span>' +
+          '<button class="pvch-anno-tool" onclick="s33PvUndo()" title="Annuler la dernière"><span class="mi">undo</span></button>' +
+          '<button class="pvch-btn" style="background:var(--gold);color:#fff;" onclick="s33PvAnnoClose()">Terminé</button>' +
+        '</div>' +
+        '<div id="an-stage" style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;">' +
+          '<canvas id="an-canvas" style="max-width:100%;max-height:100%;touch-action:none;"></canvas>' +
+        '</div>';
+      document.body.appendChild(ov);
+      const cv = document.getElementById('an-canvas');
+      // Taille d'affichage adaptée à l'écran, coordonnées normalisées 0..1
+      const stage = document.getElementById('an-stage');
+      const fit = Math.min((stage.clientWidth - 12) / img.naturalWidth, (stage.clientHeight - 12) / img.naturalHeight, 1.6);
+      cv.width = Math.round(img.naturalWidth * fit);
+      cv.height = Math.round(img.naturalHeight * fit);
+      _an.cw = cv.width; _an.ch = cv.height;
+      drawAnno();
+      cv.addEventListener('pointerdown', anDown);
+      cv.addEventListener('pointermove', anMove);
+      cv.addEventListener('pointerup', anUp);
+      s33PvTool('circle');
+    };
+    img.onerror = () => toast('Photo illisible (connexion ?)');
+    img.src = src;
+  };
+
+  window.s33PvTool = function(t) {
+    _an.tool = t;
+    ['circle', 'arrow', 'text'].forEach(x => { const b = document.getElementById('an-t-' + x); if (b) b.classList.toggle('on', x === t); });
+  };
+  window.s33PvColor = function(c) {
+    _an.color = c;
+    [['an-c-r', '#e53935'], ['an-c-o', '#fb8c00'], ['an-c-g', '#43a047']].forEach(([id, col]) => {
+      const b = document.getElementById(id); if (b) b.style.borderColor = (col === c) ? '#fff' : 'rgba(255,255,255,.25)';
+    });
+  };
+  window.s33PvUndo = function() {
+    const anns = _cur.photos[_an.pi].annotations;
+    if (anns.length) { anns.pop(); renumber(); drawAnno(); }
+  };
+
+  function drawShape(ctx, a, W, H) {
+    ctx.strokeStyle = a.color || '#e53935';
+    ctx.fillStyle = a.color || '#e53935';
+    ctx.lineWidth = Math.max(2.5, W / 260);
+    if (a.t === 'c') {
+      const cx = (a.x + a.x2) / 2 * W, cy = (a.y + a.y2) / 2 * H;
+      const rx = Math.abs(a.x2 - a.x) / 2 * W, ry = Math.abs(a.y2 - a.y) / 2 * H;
+      ctx.beginPath(); ctx.ellipse(cx, cy, Math.max(rx, 8), Math.max(ry, 8), 0, 0, Math.PI * 2); ctx.stroke();
+    } else if (a.t === 'a') {
+      const x1 = a.x * W, y1 = a.y * H, x2 = a.x2 * W, y2 = a.y2 * H;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      const ang = Math.atan2(y2 - y1, x2 - x1), hl = Math.max(10, W / 60);
+      ctx.beginPath(); ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - hl * Math.cos(ang - 0.45), y2 - hl * Math.sin(ang - 0.45));
+      ctx.lineTo(x2 - hl * Math.cos(ang + 0.45), y2 - hl * Math.sin(ang + 0.45));
+      ctx.closePath(); ctx.fill();
+    } else if (a.t === 't' && a.txt) {
+      const fs = Math.max(15, W / 34);
+      ctx.font = '700 ' + fs + 'px Inter, sans-serif';
+      const x = a.x * W, y = a.y * H;
+      ctx.lineWidth = fs / 5; ctx.strokeStyle = 'rgba(0,0,0,.65)';
+      ctx.strokeText(a.txt, x, y); ctx.fillText(a.txt, x, y);
+    }
+    // Pastille numéro de réserve
+    if (a.n) {
+      const bx = ((a.t === 't' ? a.x : Math.min(a.x, a.x2 == null ? a.x : a.x2)) * W) - 6;
+      const by = ((a.t === 't' ? a.y : Math.min(a.y, a.y2 == null ? a.y : a.y2)) * H) - 6;
+      const r = Math.max(11, W / 90);
+      ctx.beginPath(); ctx.arc(Math.max(r, bx), Math.max(r, by), r, 0, Math.PI * 2);
+      ctx.fillStyle = a.color || '#e53935'; ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '800 ' + Math.round(r * 1.1) + 'px Inter, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(a.n), Math.max(r, bx), Math.max(r, by) + 0.5);
+      ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+    }
+  }
+
+  function drawAnno(previewShape) {
+    const cv = document.getElementById('an-canvas');
+    if (!cv || !_an) return;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(_an.img, 0, 0, cv.width, cv.height);
+    (_cur.photos[_an.pi].annotations || []).forEach(a => drawShape(ctx, a, cv.width, cv.height));
+    if (previewShape) drawShape(ctx, previewShape, cv.width, cv.height);
+  }
+
+  function evtNorm(e) {
+    const cv = document.getElementById('an-canvas');
+    const r = cv.getBoundingClientRect();
+    return { x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) };
+  }
+  function anDown(e) {
+    e.preventDefault();
+    const p = evtNorm(e);
+    if (_an.tool === 'text') {
+      const txt = prompt('Texte de l\'annotation :');
+      if (txt && txt.trim()) {
+        const a = { t: 't', x: p.x, y: p.y, txt: txt.trim(), color: _an.color };
+        _cur.photos[_an.pi].annotations.push(a);
+        drawAnno();
+        askReserve(a);
+      }
+      return;
+    }
+    _an.drawing = true; _an.sx = p.x; _an.sy = p.y;
+  }
+  function anMove(e) {
+    if (!_an || !_an.drawing) return;
+    e.preventDefault();
+    const p = evtNorm(e);
+    drawAnno({ t: _an.tool === 'circle' ? 'c' : 'a', x: _an.sx, y: _an.sy, x2: p.x, y2: p.y, color: _an.color });
+  }
+  function anUp(e) {
+    if (!_an || !_an.drawing) return;
+    _an.drawing = false;
+    const p = evtNorm(e);
+    if (Math.abs(p.x - _an.sx) < 0.015 && Math.abs(p.y - _an.sy) < 0.015) { drawAnno(); return; }
+    const a = { t: _an.tool === 'circle' ? 'c' : 'a', x: _an.sx, y: _an.sy, x2: p.x, y2: p.y, color: _an.color };
+    _cur.photos[_an.pi].annotations.push(a);
+    drawAnno();
+    askReserve(a);
+  }
+
+  function askReserve(a) {
+    const old = document.getElementById('s33-pv-askres'); if (old) old.remove();
+    const n = collectDraftReserves().length + 1;
+    const ov = document.createElement('div');
+    ov.id = 's33-pv-askres';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:16px 16px 0 0;width:100%;max-width:520px;padding:18px 18px 24px;" onclick="event.stopPropagation()">' +
+        '<div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:10px;">Créer la réserve n° ' + n + ' à partir de cette annotation ?</div>' +
+        '<input id="ar-desc" placeholder="Description (ex : fissure au droit du linteau)" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 12px;font-size:13.5px;border-radius:10px;font-family:inherit;margin-bottom:8px;">' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">' +
+          '<select id="ar-lot" style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px;font-size:12.5px;border-radius:10px;font-family:inherit;"><option value="">Lot / localisation</option>' + LOTS.map(l => '<option>' + l + '</option>').join('') + '</select>' +
+          '<select id="ar-grav" style="flex:1;min-width:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px;font-size:12.5px;border-radius:10px;font-family:inherit;">' + Object.keys(GRAV).map(g => '<option value="' + g + '">' + GRAV[g].label + '</option>').join('') + '</select>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">' +
+          '<div style="flex:1;min-width:130px;"><label style="font-size:10.5px;font-weight:700;color:var(--text-dim);">Délai de résolution</label><input type="date" id="ar-dl" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px;font-size:12.5px;border-radius:10px;font-family:inherit;"></div>' +
+          '<div style="flex:1;min-width:130px;"><label style="font-size:10.5px;font-weight:700;color:var(--text-dim);">Entreprise responsable</label><input id="ar-ent" placeholder="Ex : SOTRAVO" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px;font-size:12.5px;border-radius:10px;font-family:inherit;"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button onclick="document.getElementById(\'s33-pv-askres\').remove()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);padding:11px;border-radius:99px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;">Annotation simple</button>' +
+          '<button onclick="s33PvAskResOk()" style="flex:1.4;background:#e53935;border:none;color:#fff;padding:11px;border-radius:99px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;">Créer la réserve ' + n + '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    window._s33PvAskA = a;
+    setTimeout(() => { const d = document.getElementById('ar-desc'); if (d) d.focus(); }, 80);
+  }
+
+  window.s33PvAskResOk = function() {
+    const a = window._s33PvAskA;
+    if (!a) return;
+    const desc = (document.getElementById('ar-desc') || {}).value || '';
+    if (!desc.trim()) { toast('Décrivez la réserve'); return; }
+    a.n = collectDraftReserves().length + 1;
+    a.desc = desc.trim();
+    a.lot = (document.getElementById('ar-lot') || {}).value || '';
+    a.grav = (document.getElementById('ar-grav') || {}).value || 'mineur';
+    a.dl = (document.getElementById('ar-dl') || {}).value || '';
+    a.ent = (document.getElementById('ar-ent') || {}).value || '';
+    renumber();
+    const ov = document.getElementById('s33-pv-askres'); if (ov) ov.remove();
+    drawAnno();
+    toast('Réserve ' + (_cur.ref || 'PV') + '.' + a.n + ' créée');
+  };
+
+  window.s33PvAnnoClose = async function() {
+    const ov = document.getElementById('s33-pv-an'); if (ov) ov.remove();
+    // Vignette mise à jour avec annotations
+    try {
+      const ph = _cur.photos[_an.pi];
+      const c = document.createElement('canvas');
+      const k = Math.min(1, 340 / Math.max(_an.img.naturalWidth, _an.img.naturalHeight));
+      c.width = Math.round(_an.img.naturalWidth * k); c.height = Math.round(_an.img.naturalHeight * k);
+      const ctx = c.getContext('2d');
+      ctx.drawImage(_an.img, 0, 0, c.width, c.height);
+      (ph.annotations || []).forEach(a => drawShape(ctx, a, c.width, c.height));
+      ph.tn = c.toDataURL('image/jpeg', 0.7);
+    } catch(_) {}
+    _an = null;
+    renderEditor();
+    try { await saveCur(); } catch(_) {}
+  };
+
+  // ── Terminer le PV : PDF + réserves + statut attente ────────────
+  async function flatten(ph) {
+    // Photo + annotations aplaties en une image pour le PDF
+    const src = await photoSrc(ph);
+    if (!src) return null;
+    return new Promise(resolve => {
+      const img = new Image();
+      if (!src.startsWith('data:')) img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const k = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+          const ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          (ph.annotations || []).forEach(a => drawShape(ctx, a, c.width, c.height));
+          resolve({ data: c.toDataURL('image/jpeg', 0.78), w: c.width, h: c.height });
+        } catch(e) { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  window.s33PvFinish = async function() {
+    if (!_cur.project_id) { toast('Choisissez le projet'); return; }
+    if (!_cur.visit_date) { toast('Indiquez la date de visite'); return; }
+    if (!confirm('Terminer le PV ' + _cur.ref + ' ?\n\nLe PDF sera généré et le PV passera « En attente de validation » du directeur. Il ne sera PAS diffusé avant validation.')) return;
+    toast('Génération du PV en cours…');
+    try {
+      await saveCur();
+
+      // 1. Créer / mettre à jour les réserves en base
+      const drafts = collectDraftReserves();
+      for (const d of drafts) {
+        const a = d.a;
+        const body = {
+          project_id: _cur.project_id, pv_id: _cur.id, pv_ref: _cur.ref, point_num: a.n,
+          description: a.desc || 'Réserve ' + _cur.ref + '.' + a.n,
+          lot: a.lot || '', gravite: a.grav || 'mineur',
+          deadline: a.dl || null, entreprise: a.ent || '',
+          statut: 'ouverte', opened_date: _cur.visit_date, author: _cur.auteur || myName()
+        };
+        if (a.rid) {
+          await sbUpdate('chantier_reserves', a.rid, body);
+          const i = _res.findIndex(r => r.id === a.rid);
+          if (i >= 0) Object.assign(_res[i], body);
+        } else {
+          const ins = await sbInsertOrThrow('chantier_reserves', body);
+          if (ins && ins[0]) { a.rid = ins[0].id; _res.unshift(ins[0]); }
+        }
+      }
+
+      // 2. Rappel : réserves constatées « réalisé » → levées automatiquement
+      for (const rp of (_cur.rappel || [])) {
+        if (rp.constat === 'realise') {
+          const r = _res.find(x => x.id === rp.reserve_id);
+          if (r && (r.statut || 'ouverte') === 'ouverte') {
+            await sbUpdate('chantier_reserves', rp.reserve_id, { statut: 'levée', levee_pv_id: _cur.id, levee_date: _cur.visit_date });
+            Object.assign(r, { statut: 'levée', levee_pv_id: _cur.id, levee_date: _cur.visit_date });
+          }
+        }
+      }
+
+      // 3. PDF
+      const pdfBlob = await buildPdf();
+
+      // 4. Archivage dans la médiathèque du projet
+      const path = 'proj/' + _cur.project_id + '/PV_de_chantier/' + _cur.ref + '_' + Date.now() + '.pdf';
+      const up = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + path, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/pdf', 'x-upsert': 'true' },
+        body: pdfBlob
+      });
+      if (!up.ok) throw new Error('upload PDF');
+      let mediaId = _cur.pdf_media_id || null;
+      const mediaBody = {
+        name: _cur.ref + ' — PV de chantier du ' + fmtD(_cur.visit_date),
+        doc_type: 'pv_chantier', folder: 'PV de chantier',
+        is_project_doc: true, is_pdf: true, mime: 'application/pdf',
+        file_path: path, data: null, project_id: _cur.project_id,
+        added_by: myName(), added_at: new Date().toLocaleDateString('fr-MA')
+      };
+      if (mediaId) {
+        await sbUpdate('media', mediaId, { file_path: path });
+      } else {
+        let ins = null;
+        try { ins = await sbInsertOrThrow('media', mediaBody); }
+        catch(e) { const { folder, ...rest } = mediaBody; ins = await sbInsertOrThrow('media', rest); }
+        if (ins && ins[0]) { mediaId = ins[0].id; ins[0].folder = 'PV de chantier'; (db.media = db.media || []).push(ins[0]); }
+      }
+
+      // 5. Statut « en attente de validation » + historique
+      _cur.statut = 'attente';
+      _cur.validation_history.push({ action: 'soumis', by: myName(), at: new Date().toISOString() });
+      _cur.pdf_media_id = mediaId;
+      await sbUpdate('pv_chantier', _cur.id, {
+        statut: 'attente', validation_history: _cur.validation_history,
+        pdf_media_id: mediaId, photos: _cur.photos, rappel: _cur.rappel, updated_at: new Date().toISOString()
+      });
+      const i = _pvs.findIndex(p => p.id === _cur.id);
+      if (i >= 0) Object.assign(_pvs[i], { statut: 'attente', validation_history: _cur.validation_history, pdf_media_id: mediaId, photos: _cur.photos, rappel: _cur.rappel });
+
+      // 6. Notifier le(s) directeur(s)
+      try {
+        const admins = (db.teamMembers || []).filter(m => m.active !== false && (m.role === 'admin' || (m.permissions || {}).is_co_admin === true));
+        for (const ad of admins) {
+          if (String(ad.user_id) === String(currentUser.id)) continue;
+          await createNotification(ad.user_id, '<span class="mi mi-sm">fact_check</span> PV à valider', _cur.ref + ' — ' + projName(_cur.project_id) + ' (par ' + myName() + ')', 'pv', 'pvchantier', null);
+        }
+      } catch(_) {}
+
+      const ov = document.getElementById('s33-pv-ed'); if (ov) ov.remove();
+      document.body.style.overflow = '';
+      _cur = null;
+      updateNavBadge();
+      renderContent();
+      toast('PV terminé — en attente de validation du directeur');
+    } catch(e) {
+      console.error('finish PV', e);
+      toast('Erreur pendant la génération — le brouillon est conservé, réessayez');
+    }
+  };
+
+  // ── PDF professionnel ───────────────────────────────────────────
+  async function buildPdf() {
+    if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, M = 15;
+    const ORANGE = [249, 115, 22], DARK = [26, 26, 26], GREY = [110, 110, 110];
+    let y = 0;
+
+    const header = () => {
+      doc.setFillColor.apply(doc, ORANGE); doc.rect(0, 0, W, 3, 'F');
+      doc.setTextColor.apply(doc, DARK);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+      doc.text('STUDIO 33 ARCHITECTS', M, 14);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor.apply(doc, GREY);
+      doc.text('Architecture · Agadir, Maroc', M, 19);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor.apply(doc, ORANGE);
+      doc.text('PV DE CHANTIER', W - M, 13, { align: 'right' });
+      doc.setFontSize(11); doc.setTextColor.apply(doc, DARK);
+      doc.text(_cur.ref || '', W - M, 19, { align: 'right' });
+      doc.setDrawColor(220); doc.line(M, 23, W - M, 23);
+      y = 29;
+    };
+    const need = h => { if (y + h > 280) { footer(); doc.addPage(); header(); } };
+    const footer = () => {
+      doc.setFontSize(7.5); doc.setTextColor.apply(doc, GREY);
+      doc.text('Studio 33 Architects — PV soumis au circuit de validation interne', M, 291);
+      doc.text('Page ' + doc.internal.getNumberOfPages(), W - M, 291, { align: 'right' });
+    };
+    const secTitle = t => {
+      need(12);
+      doc.setFillColor(245, 242, 235); doc.rect(M, y - 4.5, W - 2 * M, 7, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, DARK);
+      doc.text(t.toUpperCase(), M + 2, y);
+      y += 7;
+    };
+
+    header();
+    // Infos
+    const p = (db.projects || []).find(x => x.id === _cur.project_id) || {};
+    const cli = (db.clients || []).find(c => c.id === (p.clientId ?? p.client_id));
+    doc.setFontSize(9); doc.setTextColor.apply(doc, DARK);
+    const info = [
+      ['Projet', p.name || ''], ['Maître d\'ouvrage', cli ? cli.name : '—'],
+      ['Date de visite', fmtD(_cur.visit_date) + (_cur.heure ? ' à ' + _cur.heure : '')],
+      ['Météo', _cur.meteo || '—'], ['Rédigé par', _cur.auteur || '']
+    ];
+    doc.autoTable({ startY: y, margin: { left: M, right: M }, body: info, theme: 'plain',
+      styles: { fontSize: 9, cellPadding: 1.2 }, columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } } });
+    y = doc.lastAutoTable.finalY + 6;
+
+    // Présents
+    if ((_cur.presents || []).some(x => (x.nom || '').trim())) {
+      secTitle('Présents');
+      doc.autoTable({ startY: y, margin: { left: M, right: M },
+        head: [['Nom', 'Rôle', 'Entreprise']],
+        body: _cur.presents.filter(x => (x.nom || '').trim()).map(x => [x.nom, x.role || '', x.entreprise || '']),
+        theme: 'grid', headStyles: { fillColor: ORANGE, fontSize: 8.5 }, styles: { fontSize: 9, cellPadding: 1.6 } });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    // Rappel réserves précédentes
+    if ((_cur.rappel || []).length) {
+      secTitle('Rappel du PV précédent — réserves ouvertes');
+      const CST = { realise: 'Réalisé / levée', encours: 'En cours', retard: 'EN RETARD' };
+      doc.autoTable({ startY: y, margin: { left: M, right: M },
+        head: [['Réf.', 'Réserve', 'Constat de la visite']],
+        body: _cur.rappel.map(r => [r.ref, r.desc || '', CST[r.constat] || 'En cours']),
+        theme: 'grid', headStyles: { fillColor: [90, 90, 90], fontSize: 8.5 }, styles: { fontSize: 8.6, cellPadding: 1.6 },
+        didParseCell: d2 => { if (d2.section === 'body' && d2.column.index === 2 && d2.cell.raw === 'EN RETARD') { d2.cell.styles.textColor = [220, 40, 40]; d2.cell.styles.fontStyle = 'bold'; } } });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    // Réserves du PV + photos annotées
+    const drafts = collectDraftReserves();
+    if (drafts.length || (_cur.photos || []).some(ph => !ph.standalone)) {
+      secTitle('Réserves de la visite (' + drafts.length + ')');
+      for (const d of drafts) {
+        const a = d.a;
+        need(16);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+        doc.setTextColor(229, 57, 53);
+        doc.text('Réserve ' + _cur.ref + '.' + a.n + (a.grav ? '   ·   ' + (GRAV[a.grav] || {}).label : ''), M, y);
+        y += 5;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2); doc.setTextColor.apply(doc, DARK);
+        const lines = doc.splitTextToSize(a.desc || '', W - 2 * M);
+        doc.text(lines, M, y); y += lines.length * 4.2 + 1;
+        doc.setFontSize(8.2); doc.setTextColor.apply(doc, GREY);
+        const meta = [a.lot, a.ent ? 'Entreprise : ' + a.ent : '', a.dl ? 'À résoudre avant le ' + fmtD(a.dl) : ''].filter(Boolean).join('   ·   ');
+        if (meta) { doc.text(meta, M, y); y += 5; } else y += 1;
+      }
+      // Photos annotées
+      for (let pi = 0; pi < (_cur.photos || []).length; pi++) {
+        const ph = _cur.photos[pi];
+        if (ph.standalone) continue;
+        const flat = await flatten(ph);
+        if (!flat) continue;
+        const iw = Math.min(W - 2 * M, 120);
+        const ih = iw * flat.h / flat.w;
+        need(ih + 8);
+        try { doc.addImage(flat.data, 'JPEG', M, y, iw, ih); y += ih + 3; } catch(_) {}
+        const resNums = (ph.annotations || []).filter(a => a.n).map(a => _cur.ref + '.' + a.n).join(', ');
+        doc.setFontSize(8); doc.setTextColor.apply(doc, GREY);
+        doc.text('Photo ' + (pi + 1) + (resNums ? ' — réserves ' + resNums : ''), M, y);
+        y += 6;
+      }
+    }
+
+    // Décisions
+    const decs = (_cur.decisions || []).filter(d2 => (d2 || '').trim());
+    if (decs.length) {
+      secTitle('Décisions prises');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2); doc.setTextColor.apply(doc, DARK);
+      decs.forEach((d2, i) => {
+        const lines = doc.splitTextToSize((i + 1) + '.  ' + d2, W - 2 * M);
+        need(lines.length * 4.4 + 2);
+        doc.text(lines, M, y); y += lines.length * 4.4 + 1.5;
+      });
+      y += 3;
+    }
+
+    // Actions
+    const acts = (_cur.actions || []).filter(a => (a.quoi || '').trim());
+    if (acts.length) {
+      secTitle('Actions à suivre');
+      doc.autoTable({ startY: y, margin: { left: M, right: M },
+        head: [['Qui', 'Quoi', 'Pour quand']],
+        body: acts.map(a => [a.qui || '', a.quoi || '', a.quand ? fmtD(a.quand) : '']),
+        theme: 'grid', headStyles: { fillColor: ORANGE, fontSize: 8.5 }, styles: { fontSize: 9, cellPadding: 1.6 } });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    footer();
+    return doc.output('blob');
+  }
+
+  // ── Revue directeur ─────────────────────────────────────────────
+  window.s33PvReview = function(id) {
+    const pv = _pvs.find(p => p.id === id);
+    if (!pv) return;
+    const old = document.getElementById('s33-pv-rev'); if (old) old.remove();
+    const st = STATUTS[pv.statut] || STATUTS.brouillon;
+    const proj = (db.projects || []).find(x => x.id === pv.project_id) || {};
+    const nbRes = countReserves(pv);
+    const drafts = [];
+    (pv.photos || []).forEach(ph => (ph.annotations || []).forEach(a => { if (a.n) drafts.push(a); }));
+    drafts.sort((a, b) => a.n - b.n);
+
+    const histHTML = (pv.validation_history || []).map(h => {
+      const AL = { soumis: ['upload_file', 'Déposé pour validation', '#f59e0b'], valide: ['task_alt', 'Validé', '#16a34a'], refuse: ['block', 'Refusé', '#ef4444'], commente: ['chat', 'Commentaire', '#3b82f6'], diffuse: ['send', 'Diffusé', '#16a34a'] };
+      const [ic, lbl, c] = AL[h.action] || ['circle', h.action, '#888'];
+      return '<div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">' +
+        '<span class="mi" style="font-size:15px;color:' + c + ';flex-shrink:0;">' + ic + '</span>' +
+        '<div style="flex:1;"><b style="color:' + c + ';">' + lbl + '</b> par ' + esc(h.by || '') + ' — ' + fmtDT(h.at) +
+        (h.comment ? '<div style="color:var(--text-dim);margin-top:2px;">« ' + esc(h.comment) + ' »</div>' : '') + '</div></div>';
+    }).join('') || '<div style="font-size:12px;color:var(--text-faint);">Aucun historique.</div>';
+
+    const comHTML = (pv.director_comments || []).map(c =>
+      '<div style="padding:8px 10px;background:rgba(59,130,246,.06);border-left:3px solid #3b82f6;border-radius:6px;margin-bottom:6px;font-size:12px;color:var(--text);">' +
+      (c.reserve_ref ? '<b style="color:#3b82f6;">' + esc(c.reserve_ref) + '</b> — ' : '') + esc(c.text) +
+      '<div style="font-size:10.5px;color:var(--text-faint);margin-top:2px;">' + esc(c.by || '') + ' · ' + fmtDT(c.at) + '</div></div>').join('');
+
+    const resSelOpts = '<option value="">Remarque générale</option>' + drafts.map(a => '<option value="' + pv.ref + '.' + a.n + '">' + pv.ref + '.' + a.n + ' — ' + esc((a.desc || '').slice(0, 40)) + '</option>').join('');
+
+    // Diffusion (si validé)
+    let diffHTML = '';
+    if (pv.statut === 'valide') {
+      const recips = Array.isArray(proj.pv_recipients) ? proj.pv_recipients : [];
+      diffHTML =
+        '<div class="pvch-sec" style="border-color:#16a34a55;">' +
+          '<h3 style="color:#16a34a;"><span class="mi" style="font-size:16px;">send</span> Diffusion' + (pv.diffused_at ? ' — faite le ' + fmtDT(pv.diffused_at) : ' — à faire (objectif 48 h après visite)') + '</h3>' +
+          '<div style="font-size:11.5px;color:var(--text-dim);margin-bottom:8px;">Destinataires prédéfinis du projet (MOA, entreprises, BET) :</div>' +
+          '<div id="pv-recips">' +
+          recips.map((r, i) => '<div class="pvch-row"><input value="' + esc(r.name || '') + '" placeholder="Nom" oninput="s33PvRecip(' + pv.id + ',' + i + ',\'name\',this.value)" style="flex:1;min-width:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 9px;font-size:12px;border-radius:8px;font-family:inherit;"><input value="' + esc(r.email || '') + '" placeholder="Email" oninput="s33PvRecip(' + pv.id + ',' + i + ',\'email\',this.value)" style="flex:1.4;min-width:140px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 9px;font-size:12px;border-radius:8px;font-family:inherit;"><button onclick="s33PvRecipDel(' + pv.id + ',' + i + ')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:15px;">×</button></div>').join('') +
+          '</div>' +
+          '<button class="pvch-btn" style="background:var(--surface2);color:var(--text-dim);border:1px dashed var(--border);margin-bottom:12px;" onclick="s33PvRecipAdd(' + pv.id + ')"><span class="mi" style="font-size:13px;">add</span> Ajouter un destinataire</button>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<button class="pvch-btn" style="background:#16a34a;color:#fff;" onclick="s33PvDiffuse(' + pv.id + ',\'email\')"><span class="mi" style="font-size:14px;">mail</span> Envoyer par email</button>' +
+            '<button class="pvch-btn" style="background:#25d366;color:#fff;" onclick="s33PvDiffuse(' + pv.id + ',\'wa\')"><span class="mi" style="font-size:14px;">send</span> WhatsApp</button>' +
+            '<button class="pvch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33PvCopyLink(' + pv.id + ')"><span class="mi" style="font-size:14px;">link</span> Copier le lien PDF</button>' +
+          '</div>' +
+          '<div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;">L\'email s\'ouvre pré-rempli avec le lien de téléchargement du PDF (valable 1 an). L\'horodatage de diffusion est enregistré au premier envoi.</div>' +
+        '</div>';
+    }
+
+    const ov = document.createElement('div');
+    ov.id = 's33-pv-rev';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:14px;';
+    ov.innerHTML =
+      '<div style="background:var(--bg);border-radius:16px;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;padding:18px;" onclick="event.stopPropagation()">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
+          '<div style="flex:1;">' +
+            '<div style="font-size:17px;font-weight:800;color:var(--text);">' + esc(pv.ref) + ' — ' + esc(projName(pv.project_id)) + '</div>' +
+            '<div style="font-size:11.5px;color:var(--text-dim);">Visite du ' + fmtD(pv.visit_date) + ' · par ' + esc(pv.auteur || pv.created_by || '') + ' · ' + nbRes + ' réserve(s) · <span style="color:' + st.c + ';font-weight:800;">' + st.label + '</span></div>' +
+          '</div>' +
+          '<button onclick="document.getElementById(\'s33-pv-rev\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-faint);">×</button>' +
+        '</div>' +
+        '<button class="pvch-btn" style="background:var(--gold);color:#fff;margin-bottom:14px;" onclick="s33PvOpenPdf(' + pv.id + ')"><span class="mi" style="font-size:15px;">picture_as_pdf</span> Ouvrir le PDF du PV</button>' +
+        (drafts.length ? '<div class="pvch-sec"><h3>Réserves du PV</h3>' + drafts.map(a => '<div style="font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--border);color:var(--text);"><b style="color:#e53935;font-family:\'DM Mono\',monospace;">' + pv.ref + '.' + a.n + '</b> ' + esc(a.desc || '') + (GRAV[a.grav] ? ' <span class="pvch-chip" style="background:' + GRAV[a.grav].c + '1f;color:' + GRAV[a.grav].c + ';">' + GRAV[a.grav].label + '</span>' : '') + (a.dl ? ' <span style="font-size:11px;color:var(--text-faint);">délai ' + fmtD(a.dl) + '</span>' : '') + '</div>').join('') + '</div>' : '') +
+        (comHTML ? '<div class="pvch-sec"><h3>Remarques du directeur</h3>' + comHTML + '</div>' : '') +
+        diffHTML +
+        (pv.statut === 'attente' ?
+        '<div class="pvch-sec" style="border-color:var(--gold);">' +
+          '<h3><span class="mi" style="font-size:16px;">rate_review</span> Votre décision</h3>' +
+          '<select id="pv-rev-target" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px;font-size:12.5px;border-radius:10px;font-family:inherit;margin-bottom:8px;">' + resSelOpts + '</select>' +
+          '<textarea id="pv-rev-comment" rows="3" placeholder="Commentaire (obligatoire pour refuser)…" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px;font-size:13px;border-radius:10px;font-family:inherit;resize:vertical;margin-bottom:10px;"></textarea>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<button class="pvch-btn" style="background:#16a34a;color:#fff;" onclick="s33PvDecide(' + pv.id + ',\'valide\')"><span class="mi" style="font-size:14px;">task_alt</span> Valider</button>' +
+            '<button class="pvch-btn" style="background:#ef4444;color:#fff;" onclick="s33PvDecide(' + pv.id + ',\'refuse\')"><span class="mi" style="font-size:14px;">block</span> Refuser</button>' +
+            '<button class="pvch-btn" style="background:#3b82f6;color:#fff;" onclick="s33PvDecide(' + pv.id + ',\'commente\')"><span class="mi" style="font-size:14px;">chat</span> Commenter sans bloquer</button>' +
+          '</div>' +
+        '</div>' : '') +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">history</span> Historique de validation</h3>' + histHTML + '</div>' +
+      '</div>';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+  };
+
+  async function notifyAuthor(pv, title, body) {
+    try {
+      const m = (db.teamMembers || []).find(x => (x.display_name || x.username || '') === (pv.created_by || pv.auteur));
+      if (m && String(m.user_id) !== String(currentUser.id)) {
+        await createNotification(m.user_id, title, body, 'pv', 'pvchantier', null);
+      }
+    } catch(_) {}
+  }
+
+  window.s33PvDecide = async function(id, action) {
+    const pv = _pvs.find(p => p.id === id);
+    if (!pv) return;
+    const comment = ((document.getElementById('pv-rev-comment') || {}).value || '').trim();
+    const target = (document.getElementById('pv-rev-target') || {}).value || '';
+    if ((action === 'refuse' || action === 'commente') && !comment) { toast('Un commentaire est obligatoire'); return; }
+    const hist = Array.isArray(pv.validation_history) ? pv.validation_history : [];
+    const patch = { updated_at: new Date().toISOString() };
+    try {
+      if (action === 'valide') {
+        hist.push({ action: 'valide', by: myName(), at: new Date().toISOString(), comment: comment || '' });
+        patch.statut = 'valide';
+        patch.validation_history = hist;
+        // Lien PDF longue durée pour la diffusion
+        const media = (db.media || []).find(m => m.id === pv.pdf_media_id);
+        if (media && media.file_path && typeof _mediaStorageUrl === 'function') {
+          const url = await _mediaStorageUrl(media.file_path, 31536000);
+          if (url) patch.pdf_url = url;
+        }
+        await sbUpdate('pv_chantier', id, patch);
+        Object.assign(pv, patch);
+        await notifyAuthor(pv, '<span class="mi mi-sm">task_alt</span> PV validé', pv.ref + ' — ' + projName(pv.project_id) + ' est validé, prêt à diffuser');
+        toast('PV validé — passez à la diffusion');
+      } else if (action === 'refuse') {
+        hist.push({ action: 'refuse', by: myName(), at: new Date().toISOString(), comment: comment });
+        patch.statut = 'a_corriger';
+        patch.validation_history = hist;
+        await sbUpdate('pv_chantier', id, patch);
+        Object.assign(pv, patch);
+        await notifyAuthor(pv, '<span class="mi mi-sm">block</span> PV à corriger', pv.ref + ' — ' + projName(pv.project_id) + ' : ' + comment);
+        toast('PV renvoyé en correction');
+      } else {
+        const coms = Array.isArray(pv.director_comments) ? pv.director_comments : [];
+        coms.push({ by: myName(), at: new Date().toISOString(), text: comment, reserve_ref: target || null });
+        hist.push({ action: 'commente', by: myName(), at: new Date().toISOString(), comment: comment });
+        patch.director_comments = coms;
+        patch.validation_history = hist;
+        await sbUpdate('pv_chantier', id, patch);
+        Object.assign(pv, patch);
+        await notifyAuthor(pv, '<span class="mi mi-sm">chat</span> Remarque sur ' + pv.ref, comment);
+        toast('Remarque enregistrée (statut inchangé)');
+      }
+      updateNavBadge();
+      renderContent();
+      const ov = document.getElementById('s33-pv-rev'); if (ov) ov.remove();
+      window.s33PvReview(id);
+    } catch(e) { console.error(e); toast('Erreur — réessayez'); }
+  };
+
+  // Destinataires prédéfinis (enregistrés sur le projet)
+  function projOf(pvId) { const pv = _pvs.find(p => p.id === pvId); return (db.projects || []).find(x => x.id === (pv || {}).project_id); }
+  window.s33PvRecip = async function(pvId, i, field, v) {
+    const p = projOf(pvId); if (!p) return;
+    if (!Array.isArray(p.pv_recipients)) p.pv_recipients = [];
+    if (!p.pv_recipients[i]) p.pv_recipients[i] = {};
+    p.pv_recipients[i][field] = v;
+    clearTimeout(window._pvRecT);
+    window._pvRecT = setTimeout(() => sbUpdate('projects', p.id, { pv_recipients: p.pv_recipients }).catch(() => {}), 800);
+  };
+  window.s33PvRecipAdd = function(pvId) {
+    const p = projOf(pvId); if (!p) return;
+    if (!Array.isArray(p.pv_recipients)) p.pv_recipients = [];
+    p.pv_recipients.push({ name: '', email: '' });
+    const ov = document.getElementById('s33-pv-rev'); if (ov) ov.remove();
+    window.s33PvReview(pvId);
+  };
+  window.s33PvRecipDel = async function(pvId, i) {
+    const p = projOf(pvId); if (!p) return;
+    p.pv_recipients.splice(i, 1);
+    await sbUpdate('projects', p.id, { pv_recipients: p.pv_recipients }).catch(() => {});
+    const ov = document.getElementById('s33-pv-rev'); if (ov) ov.remove();
+    window.s33PvReview(pvId);
+  };
+
+  async function ensurePdfUrl(pv) {
+    if (pv.pdf_url) return pv.pdf_url;
+    const media = (db.media || []).find(m => m.id === pv.pdf_media_id);
+    if (media && media.file_path && typeof _mediaStorageUrl === 'function') {
+      const url = await _mediaStorageUrl(media.file_path, 31536000);
+      if (url) { pv.pdf_url = url; sbUpdate('pv_chantier', pv.id, { pdf_url: url }).catch(() => {}); return url; }
+    }
+    return null;
+  }
+
+  async function markDiffused(pv, how) {
+    if (!pv.diffused_at) {
+      const now = new Date().toISOString();
+      const hist = Array.isArray(pv.validation_history) ? pv.validation_history : [];
+      hist.push({ action: 'diffuse', by: myName(), at: now, comment: how });
+      await sbUpdate('pv_chantier', pv.id, { diffused_at: now, validation_history: hist }).catch(() => {});
+      pv.diffused_at = now; pv.validation_history = hist;
+      renderContent();
+    }
+  }
+
+  window.s33PvDiffuse = async function(pvId, how) {
+    const pv = _pvs.find(p => p.id === pvId);
+    const proj = projOf(pvId) || {};
+    if (!pv) return;
+    const url = await ensurePdfUrl(pv);
+    if (!url) { toast('Lien PDF indisponible — rouvrez le PV'); return; }
+    const subject = pv.ref + ' — PV de chantier « ' + (proj.name || '') + ' » du ' + fmtD(pv.visit_date);
+    const bodyTxt = 'Bonjour,\n\nVeuillez trouver le PV de chantier ' + pv.ref + ' du projet « ' + (proj.name || '') + ' » (visite du ' + fmtD(pv.visit_date) + ').\n\nTéléchargement du PV (PDF) : ' + url + '\n\nMerci de prendre connaissance des réserves et de leurs délais de résolution.\n\nBien cordialement,\nStudio 33 Architects — Agadir';
+    if (how === 'email') {
+      const emails = (Array.isArray(proj.pv_recipients) ? proj.pv_recipients : []).map(r => (r.email || '').trim()).filter(Boolean);
+      window.location.href = 'mailto:' + emails.join(',') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(bodyTxt);
+    } else {
+      window.open('https://wa.me/?text=' + encodeURIComponent(subject + '\n\n' + bodyTxt), '_blank');
+    }
+    await markDiffused(pv, how === 'email' ? 'email' : 'WhatsApp');
+    const ov = document.getElementById('s33-pv-rev'); if (ov) ov.remove();
+    window.s33PvReview(pvId);
+  };
+
+  window.s33PvCopyLink = async function(pvId) {
+    const pv = _pvs.find(p => p.id === pvId);
+    const url = await ensurePdfUrl(pv);
+    if (!url) { toast('Lien indisponible'); return; }
+    try { await navigator.clipboard.writeText(url); toast('Lien du PDF copié (valable 1 an)'); }
+    catch(_) { prompt('Copiez le lien :', url); }
+    await markDiffused(pv, 'lien copié');
+  };
+
+  window.s33PvOpenPdf = async function(pvId) {
+    const pv = _pvs.find(p => p.id === pvId);
+    if (!pv || !pv.pdf_media_id) { toast('PDF non généré'); return; }
+    toast('Ouverture du PDF…');
+    const data = await getMediaData(pv.pdf_media_id);
+    if (!data) { toast('PDF introuvable'); return; }
+    const w = window.open(data, '_blank');
+    if (!w) toast('Autorisez les pop-ups pour ouvrir le PDF');
+  };
+
+  // ── Init ────────────────────────────────────────────────────────
+  function _init() {
+    try { injectCSS(); injectNav(); injectPage(); } catch(e) { console.error('pvch init', e); }
+    const _origRender = window.renderPage;
+    if (typeof _origRender === 'function') {
+      window.renderPage = function(page) {
+        _origRender.apply(this, arguments);
+        if (page === 'pvchantier') { try { renderPvPage(); } catch(e) { console.error('renderPvPage', e); } }
+      };
+    }
+    const _origUpdateUI = window.updateUIForUser;
+    if (typeof _origUpdateUI === 'function') {
+      window.updateUIForUser = function() {
+        const r = _origUpdateUI.apply(this, arguments);
+        try { injectNav(); loadAll(true).catch(() => {}); } catch(_) {}
+        return r;
+      };
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _init);
+  else _init();
+
+  console.log('✓ PV de chantier loaded');
 })();
 </script>
 

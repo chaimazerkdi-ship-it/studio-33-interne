@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.13 — tout supprimer les tâches';
+const S33_BUILD = '2026-07-19.14 — tâches zéro friction';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -15346,6 +15346,12 @@ function renderMesTaches() {
   const filterPid = (filterVal && filterVal !== 'admin') ? parseInt(filterVal) : null;
   const filterAdmin = filterVal === 'admin';
 
+  // ── Vue « Ma journée » (par défaut) : liste plate classée par urgence ──
+  if ((localStorage.getItem('s33_taches_view') || 'jour') === 'jour' && !filterAdmin) {
+    s33RenderTachesJour({ filterPid: filterPid, filterMember: filterMember, isAdmin: isAdmin });
+    return;
+  }
+
   // ── Tâches auto (templates, non assignées) : masquées par défaut ──
   const showAuto = localStorage.getItem('s33_taches_show_auto') === 'true';
   if (!document.getElementById('taches-toggle-auto') && sel.parentElement) {
@@ -15369,7 +15375,7 @@ function renderMesTaches() {
   const adminTasks = (db.userTasks || []).filter(t => String(t.user_id || t.userId) === uid);
   const savedDone  = JSON.parse(localStorage.getItem('s33_done_tasks_' + currentUser.id) || '{}');
 
-  let html = '';
+  let html = s33TachesViewToggleHTML('projet') + s33QuickAddHTML();
   let totalDone = 0, totalAll = 0;
 
   // ── État accordéon par projet (persisté en localStorage) ──
@@ -15494,7 +15500,8 @@ function renderMesTaches() {
                 </div>
                 ${taskDeadlineBadge(t.deadline, isDone)}
                 ${t.priority==='urgent' && !isDone ? '<span class="badge badge-red" style="flex-shrink:0;">Urgent</span>' : ''}
-                ${statusPillHTML(p.id, t.id, tStatus)}
+                ${!isDone ? `<span onclick="s33ToggleEncours(${p.id},${t.id})" style="flex-shrink:0;font-size:10px;font-weight:700;padding:3px 10px;border-radius:99px;cursor:pointer;${s33IsEnCours(t) ? 'background:rgba(59,130,246,.14);color:#2563eb;border:1px solid rgba(59,130,246,.4);' : 'background:var(--surface3);color:var(--text-faint);border:1px solid var(--border);'}">En cours</span>` : ''}
+                ${s33TaskCheckboxHTML(p.id, t.id, isDone)}
                 <button onclick="if(confirm('Supprimer cette tâche ?'))deleteTask(${p.id},${t.id})" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:none;background:#fff0f0;color:#c0392b;cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;">×</button>
               </div>
               ${taskExtraPanelsHTML(p.id, t)}
@@ -15545,9 +15552,7 @@ function renderMesTaches() {
             </div>
             ${taskDeadlineBadge(t.deadline, isDone)}
             ${t.priority==='urgent' && !isDone ? '<span class="badge badge-red" style="flex-shrink:0;">Urgent</span>' : ''}
-            <button onclick="toggleAdminTask(${t.id})" style="flex-shrink:0;padding:7px 16px;border-radius:var(--radius-pill);border:none;cursor:pointer;font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;transition:all .18s;background:${isDone?'var(--surface3)':'var(--gold)'};color:${isDone?'var(--text-dim)':'#fff'};">
-              ${isDone ? 'Rouvrir' : 'Terminé'}
-            </button>
+            <button onclick="toggleAdminTask(${t.id})" title="${isDone ? 'Rouvrir' : 'Marquer terminée'}" style="flex-shrink:0;width:30px;height:30px;border-radius:50%;border:2px solid ${isDone ? '#3dd68c' : 'var(--border)'};background:${isDone ? '#3dd68c' : 'var(--surface)'};color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;">${isDone ? '<span class="mi" style="font-size:17px;">check</span>' : ''}</button>
             <button onclick="if(confirm('Supprimer cette tâche ?'))deleteAdminTask(${t.id})" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:none;background:#fff0f0;color:#c0392b;cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;">×</button>
           </div>`;
         }).join('')}
@@ -15643,6 +15648,363 @@ async function toggleAdminTask(taskId) {
   renderMesTaches();
   toast(newDone ? 'Tâche marquée comme terminée ✓' : 'Tâche réouverte');
 }
+
+/* ═══ ONGLET TÂCHES v2 — Ma journée, ajout express, filtres, réassignation, report ═══ */
+
+function s33IsEnCours(t) {
+  const s = (t.status || '').toLowerCase();
+  return s === 'inprogress' || s === 'en cours' || s === 'review';
+}
+
+function s33TeamList() {
+  const tm = (db.teamMembers || []).filter(m => m.active !== false);
+  if (tm.length) return tm.map(m => ({ id: m.user_id != null ? m.user_id : m.id, name: m.display_name || m.username || '' })).filter(x => x.name);
+  return USERS.map(u => ({ id: u.id, name: u.name }));
+}
+
+function s33TaskCheckboxHTML(pid, tid, isDone) {
+  return `<button onclick="event.stopPropagation();s33ToggleDoneQuick(${pid},${tid})" title="${isDone ? 'Rouvrir' : 'Marquer terminée'}" style="flex-shrink:0;width:30px;height:30px;border-radius:50%;border:2px solid ${isDone ? '#3dd68c' : 'var(--border)'};background:${isDone ? '#3dd68c' : 'var(--surface)'};color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;">${isDone ? '<span class="mi" style="font-size:17px;">check</span>' : ''}</button>`;
+}
+
+function s33TachesViewToggleHTML(active) {
+  const b = (v, label, ic) =>
+    `<button onclick="s33TachesSetView('${v}')" style="flex:1;padding:9px 14px;border-radius:99px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;${active === v ? 'background:var(--gold);color:#fff;border:1px solid var(--gold);' : 'background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);'}"><span class="mi" style="font-size:14px;vertical-align:-2px;">${ic}</span> ${label}</button>`;
+  return `<div style="display:flex;gap:8px;margin-bottom:12px;max-width:380px;">${b('jour', 'Ma journée', 'wb_sunny')}${b('projet', 'Par projet', 'folder')}</div>`;
+}
+
+function s33QuickAddHTML() {
+  const projOpts = '<option value="">Projet…</option><option value="admin"' + (window._qaProj === 'admin' ? ' selected' : '') + '>Administratif</option>' +
+    (db.projects || []).filter(p => !p.archived).map(p => `<option value="${p.id}"${String(window._qaProj) === String(p.id) ? ' selected' : ''}>${escHTML(p.name)}</option>`).join('');
+  const canAssign = currentUser && (currentUser.role === 'admin' || currentUser?.permissions?.can_assign === true);
+  const whoOpts = '<option value="">Pour…</option>' + s33TeamList().map(m =>
+    `<option value="${escHTML(m.name)}"${window._qaWho === m.name ? ' selected' : ''}>${escHTML(m.name)}</option>`).join('');
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px;">
+    <input id="s33-qa-name" type="text" placeholder="+ Nouvelle tâche… (Entrée pour créer)" onkeydown="if(event.key==='Enter')s33QuickAddTask()" style="flex:1;min-width:170px;background:transparent;border:none;outline:none;font-family:inherit;font-size:13px;color:var(--text);padding:6px 2px;">
+    <select id="s33-qa-proj" onchange="window._qaProj=this.value" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;font-size:11.5px;border-radius:99px;font-family:inherit;outline:none;max-width:150px;">${projOpts}</select>
+    ${canAssign ? `<select id="s33-qa-who" onchange="window._qaWho=this.value" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;font-size:11.5px;border-radius:99px;font-family:inherit;outline:none;max-width:120px;">${whoOpts}</select>` : ''}
+    <button onclick="s33QuickAddTask()" style="padding:7px 16px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">Ajouter</button>
+  </div>`;
+}
+
+function s33TachesSetView(v) {
+  localStorage.setItem('s33_taches_view', v);
+  renderMesTaches();
+}
+function s33TachesQuick(f) {
+  window._tQuick = window._tQuick === f ? '' : f;
+  renderMesTaches();
+}
+function s33TachesMember(name) {
+  window._tMember = window._tMember === name ? '' : name;
+  renderMesTaches();
+}
+
+async function s33QuickAddTask() {
+  const nameEl = document.getElementById('s33-qa-name');
+  const name = (nameEl ? nameEl.value : '').trim();
+  if (!name) { toast('Écrivez le nom de la tâche'); return; }
+  const projVal = (document.getElementById('s33-qa-proj') || {}).value || '';
+  if (!projVal) { toast('Choisissez un projet (ou Administratif)'); return; }
+  const whoName = ((document.getElementById('s33-qa-who') || {}).value || '').trim();
+  const team = s33TeamList();
+  const who = team.find(m => m.name === whoName) || null;
+  try {
+    if (projVal === 'admin') {
+      const target = who || { id: currentUser.id, name: currentUser.name };
+      const res = await sbInsert('user_tasks', { user_id: String(target.id), user_name: target.name, name: name, priority: 'normal', deadline: null, done: false });
+      if (res && res[0]) { db.userTasks = db.userTasks || []; db.userTasks.push({ ...res[0], userId: res[0].user_id }); }
+    } else {
+      const projId = parseInt(projVal);
+      const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
+      const freshTasks = (fresh && fresh[0] && Array.isArray(fresh[0].tasks)) ? fresh[0].tasks : [];
+      const newId = freshTasks.length ? Math.max(...freshTasks.map(t => t.id || 0)) + 1 : 1;
+      freshTasks.push({ id: newId, name: name, done: false, priority: 'normal',
+        assignedTo: who ? who.name : (currentUser.role === 'admin' ? '' : currentUser.name),
+        assignedUserId: who ? who.id : (currentUser.role === 'admin' ? null : currentUser.id), deadline: null });
+      const p = db.projects.find(x => x.id === projId);
+      if (p) p.tasks = freshTasks;
+      await sbUpdate('projects', projId, { tasks: freshTasks });
+    }
+    if (nameEl) nameEl.value = '';
+    renderMesTaches();
+    const el2 = document.getElementById('s33-qa-name');
+    if (el2) el2.focus();
+    toast('Tâche « ' + name + ' » créée' + (who ? ' → ' + who.name : ''));
+  } catch(e) { console.error('quick add', e); toast('Tâche non créée — réessayez'); }
+}
+
+async function s33ToggleDoneQuick(projId, taskId) {
+  try {
+    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
+    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
+    const task = freshTasks.find(t => t.id === taskId);
+    if (task) {
+      const nowDone = !(task.status === 'done' || task.done === true);
+      task.status = nowDone ? 'done' : 'todo';
+      task.done = nowDone;
+    }
+    const p = db.projects.find(x => x.id === projId);
+    if (p) p.tasks = freshTasks;
+    await sbUpdate('projects', projId, { tasks: freshTasks });
+    if (currentPage === 'project-detail') renderProjectDetailPage(); else renderMesTaches();
+  } catch(e) { console.error('toggle done', e); toast('Erreur — réessayez'); }
+}
+
+async function s33ToggleEncours(projId, taskId) {
+  try {
+    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
+    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
+    const task = freshTasks.find(t => t.id === taskId);
+    if (task) task.status = s33IsEnCours(task) ? 'todo' : 'inprogress';
+    const p = db.projects.find(x => x.id === projId);
+    if (p) p.tasks = freshTasks;
+    await sbUpdate('projects', projId, { tasks: freshTasks });
+    renderMesTaches();
+  } catch(e) { console.error('toggle en cours', e); }
+}
+
+function s33NextDate(when) {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  if (when === 'demain') d.setDate(d.getDate() + 1);
+  else { // prochain lundi
+    const dow = d.getDay();
+    d.setDate(d.getDate() + ((8 - dow) % 7 || 7));
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+async function s33PostponeTask(projId, taskId, when, isAdminTask) {
+  const date = s33NextDate(when);
+  const label = when === 'demain' ? 'demain' : 'lundi';
+  try {
+    if (isAdminTask) {
+      await sbUpdate('user_tasks', taskId, { deadline: date });
+      const t = (db.userTasks || []).find(x => x.id === taskId);
+      if (t) t.deadline = date;
+    } else {
+      const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
+      const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
+      const task = freshTasks.find(t => t.id === taskId);
+      if (task) task.deadline = date;
+      const p = db.projects.find(x => x.id === projId);
+      if (p) p.tasks = freshTasks;
+      await sbUpdate('projects', projId, { tasks: freshTasks });
+    }
+    renderMesTaches();
+    toast('Reportée à ' + label);
+  } catch(e) { console.error('postpone', e); toast('Report impossible — réessayez'); }
+}
+
+function s33OpenReassign(projId, taskId, ev) {
+  ev.stopPropagation();
+  const old = document.getElementById('s33-reassign-pop');
+  if (old) old.remove();
+  const pop = document.createElement('div');
+  pop.id = 's33-reassign-pop';
+  pop.style.cssText = 'position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:6px;min-width:170px;';
+  pop.innerHTML = '<div style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);padding:6px 10px;">Assigner à</div>' +
+    s33TeamList().map(m =>
+      `<button onclick="s33ReassignTask(${projId},${taskId},'${escHTML(m.name).replace(/'/g, "\\'")}')" style="display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;background:none;border:none;border-radius:8px;font-family:inherit;font-size:12.5px;color:var(--text);cursor:pointer;text-align:left;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${(() => { const u = USERS.find(x => x.name === m.name); return u ? avatarHTML(u.id, 22) : '<span style="width:22px;height:22px;border-radius:50%;background:var(--surface3);display:inline-block;"></span>'; })()} ${escHTML(m.name)}</button>`
+    ).join('') +
+    `<button onclick="s33ReassignTask(${projId},${taskId},'')" style="display:block;width:100%;padding:7px 10px;background:none;border:none;border-top:1px solid var(--border);font-family:inherit;font-size:11.5px;color:var(--text-faint);cursor:pointer;text-align:left;">Personne (non assignée)</button>`;
+  document.body.appendChild(pop);
+  const r = ev.target.closest('button, span, div').getBoundingClientRect();
+  const w = 190;
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left - 60)) + 'px';
+  pop.style.top = Math.min(window.innerHeight - 60, r.bottom + 6) + 'px';
+  setTimeout(() => document.addEventListener('click', function h(e) {
+    if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', h); }
+  }), 50);
+}
+
+async function s33ReassignTask(projId, taskId, whoName) {
+  const pop = document.getElementById('s33-reassign-pop');
+  if (pop) pop.remove();
+  const who = s33TeamList().find(m => m.name === whoName) || null;
+  try {
+    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
+    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
+    const task = freshTasks.find(t => t.id === taskId);
+    if (task) { task.assignedTo = who ? who.name : ''; task.assignedUserId = who ? who.id : null; }
+    const p = db.projects.find(x => x.id === projId);
+    if (p) p.tasks = freshTasks;
+    await sbUpdate('projects', projId, { tasks: freshTasks });
+    renderMesTaches();
+    toast(who ? 'Tâche transférée à ' + who.name : 'Tâche désassignée');
+    if (who && typeof s33SendPush === 'function' && task) {
+      const authUuid = (typeof s33ResolveAuthUuid === 'function') ? s33ResolveAuthUuid(who.id) : String(who.id);
+      if (authUuid && authUuid !== String(currentUser.id)) {
+        s33SendPush({ userIds: [authUuid] }, 'Tâche assignée', (p ? p.name + ' — ' : '') + (task.name || ''), '/', 'task_' + projId + '_' + taskId);
+      }
+    }
+  } catch(e) { console.error('reassign', e); toast('Transfert impossible — réessayez'); }
+}
+
+// ── Vue « Ma journée » ──
+function s33RenderTachesJour(opts) {
+  const container = document.getElementById('taches-content');
+  if (!container) return;
+  const isAdmin = opts.isAdmin;
+  const canAssign = isAdmin || currentUser?.permissions?.is_co_admin;
+  const showAuto = localStorage.getItem('s33_taches_show_auto') === 'true';
+  const hasAssignee = t => ((t.assignedTo || '').trim() !== '') || (t.assignedUserId != null && t.assignedUserId !== '');
+  const savedDone = JSON.parse(localStorage.getItem('s33_done_tasks_' + currentUser.id) || '{}');
+
+  // Collecte des tâches visibles (mêmes règles que la vue par projet)
+  let items = [];
+  (db.projects || []).forEach(p => {
+    if (p.archived) return;
+    if (opts.filterPid && p.id !== opts.filterPid) return;
+    (p.tasks || []).forEach(t => {
+      if (!showAuto && !hasAssignee(t)) return;
+      if (canAssign && opts.filterMember && (t.assignedTo || '').toLowerCase() !== opts.filterMember.toLowerCase()) return;
+      if (!canAssign && !(String(t.assignedUserId || '') === String(currentUser.id) || (t.assignedTo || '').toLowerCase() === currentUser.name.toLowerCase() || (showAuto && !hasAssignee(t)))) return;
+      items.push({ t: t, p: p, admin: false, done: !!(savedDone[p.id + '_' + t.id] || isTaskDone(t)) });
+    });
+  });
+  if (!opts.filterPid) {
+    const uid = String(currentUser.id);
+    (db.userTasks || []).filter(t => String(t.user_id || t.userId) === uid).forEach(t => {
+      items.push({ t: t, p: null, admin: true, done: isTaskDone(t) });
+    });
+  }
+
+  // Filtre avatar (vue jour)
+  if (window._tMember) items = items.filter(x => !x.admin && (x.t.assignedTo || '').toLowerCase() === window._tMember.toLowerCase());
+
+  const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
+  const dayDiff = t => {
+    if (!t.deadline) return null;
+    const d = new Date(t.deadline); d.setHours(0, 0, 0, 0);
+    return Math.round((d - todayD) / 86400000);
+  };
+  const counts = {
+    retard: items.filter(x => !x.done && dayDiff(x.t) != null && dayDiff(x.t) < 0).length,
+    urgent: items.filter(x => !x.done && x.t.priority === 'urgent').length,
+    today: items.filter(x => !x.done && dayDiff(x.t) === 0).length,
+    done: items.filter(x => x.done).length
+  };
+
+  const q = window._tQuick || '';
+  let shown = items;
+  if (q === 'retard') shown = items.filter(x => !x.done && dayDiff(x.t) != null && dayDiff(x.t) < 0);
+  else if (q === 'urgent') shown = items.filter(x => !x.done && x.t.priority === 'urgent');
+  else if (q === 'today') shown = items.filter(x => !x.done && dayDiff(x.t) === 0);
+  else if (q === 'done') shown = items.filter(x => x.done);
+  else shown = items.filter(x => !x.done);
+
+  // Chips de filtre + avatars équipe
+  const chip = (key, label, n, color) =>
+    `<button onclick="s33TachesQuick('${key}')" style="padding:6px 13px;border-radius:99px;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;${q === key ? 'background:' + color + ';color:#fff;border:1px solid ' + color + ';' : 'background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);'}">${label}${n ? ' (' + n + ')' : ''}</button>`;
+  let toolbar = s33TachesViewToggleHTML('jour') + s33QuickAddHTML();
+  toolbar += `<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">` +
+    chip('retard', 'En retard', counts.retard, '#c0392b') +
+    chip('urgent', 'Urgentes', counts.urgent, '#d97706') +
+    chip('today', "Aujourd'hui", counts.today, '#2563eb') +
+    chip('done', 'Terminées', counts.done, '#1a9a5c');
+  if (canAssign) {
+    toolbar += `<span style="width:1px;height:22px;background:var(--border);margin:0 3px;"></span>` +
+      s33TeamList().map(m => {
+        const u = USERS.find(x => x.name === m.name);
+        const on = window._tMember === m.name;
+        return `<button onclick="s33TachesMember('${escHTML(m.name).replace(/'/g, "\\'")}')" title="${escHTML(m.name)}" style="padding:2px;border-radius:50%;border:2px solid ${on ? 'var(--gold)' : 'transparent'};background:none;cursor:pointer;line-height:0;">${u ? avatarHTML(u.id, 28) : '<span style="width:28px;height:28px;border-radius:50%;background:var(--surface3);display:inline-block;font-size:10px;line-height:28px;text-align:center;color:var(--text-dim);">' + escHTML((m.name || '?').slice(0, 2).toUpperCase()) + '</span>'}</button>`;
+      }).join('');
+  }
+  toolbar += `</div>`;
+
+  // Ligne de tâche
+  const row = x => {
+    const t = x.t, diff = dayDiff(t);
+    const isLate = !x.done && diff != null && diff < 0;
+    const projChip = x.admin
+      ? `<span style="font-size:10px;color:var(--text-faint);background:var(--surface3);padding:2px 8px;border-radius:99px;flex-shrink:0;">Administratif</span>`
+      : `<span onclick="event.stopPropagation();openProjectDetail(${x.p.id})" style="font-size:10px;color:var(--gold);background:rgba(201,169,110,.12);padding:2px 8px;border-radius:99px;cursor:pointer;flex-shrink:0;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHTML(x.p.name)}</span>`;
+    const postpone = (!x.done && (isLate || diff === 0))
+      ? `<span style="display:inline-flex;gap:4px;flex-shrink:0;">
+          <button onclick="event.stopPropagation();s33PostponeTask(${x.admin ? 0 : x.p.id},${t.id},'demain',${x.admin})" style="padding:3px 9px;border-radius:99px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;">→ Demain</button>
+          <button onclick="event.stopPropagation();s33PostponeTask(${x.admin ? 0 : x.p.id},${t.id},'lundi',${x.admin})" style="padding:3px 9px;border-radius:99px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;">→ Lun</button>
+        </span>` : '';
+    const avatar = (!x.admin && canAssign)
+      ? `<span onclick="s33OpenReassign(${x.p.id},${t.id},event)" title="${escHTML(t.assignedTo || 'Assigner')}" style="cursor:pointer;flex-shrink:0;line-height:0;">${(() => { const u = USERS.find(z => z.name === t.assignedTo); return u ? avatarHTML(u.id, 26) : '<span style="width:26px;height:26px;border-radius:50%;border:1.5px dashed var(--border);display:inline-flex;align-items:center;justify-content:center;color:var(--text-faint);"><span class="mi" style="font-size:14px;">person_add</span></span>'; })()}</span>`
+      : '';
+    const encours = (!x.done && !x.admin)
+      ? `<span onclick="event.stopPropagation();s33ToggleEncours(${x.p.id},${t.id})" style="flex-shrink:0;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:99px;cursor:pointer;${s33IsEnCours(t) ? 'background:rgba(59,130,246,.14);color:#2563eb;' : 'background:var(--surface3);color:var(--text-faint);'}">En cours</span>` : '';
+    const check = x.admin
+      ? `<button onclick="event.stopPropagation();toggleAdminTask(${t.id})" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:2px solid ${x.done ? '#3dd68c' : 'var(--border)'};background:${x.done ? '#3dd68c' : 'var(--surface)'};color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;">${x.done ? '<span class="mi" style="font-size:15px;">check</span>' : ''}</button>`
+      : s33TaskCheckboxHTML(x.p.id, t.id, x.done);
+    return `<div class="s33-swipe" ${x.admin ? `data-admin="1"` : `data-pid="${x.p.id}"`} data-tid="${t.id}" data-done="${x.done ? 1 : 0}" style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:7px;flex-wrap:wrap;${x.done ? 'opacity:.55;' : ''}">
+      ${check}
+      <div style="flex:1;min-width:140px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);${x.done ? 'text-decoration:line-through;font-weight:400;' : ''}">${escHTML(t.name)}${t.priority === 'urgent' && !x.done ? ' <span class="badge badge-red" style="font-size:9px;vertical-align:2px;">Urgent</span>' : ''}</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap;">${projChip}${!x.admin && t.assignedTo && !canAssign ? '' : ''}</div>
+      </div>
+      ${taskDeadlineBadge(t.deadline, x.done)}
+      ${postpone}
+      ${encours}
+      ${avatar}
+    </div>`;
+  };
+
+  const section = (title, list, color) => list.length
+    ? `<div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${color};margin:16px 0 8px;">${title} (${list.length})</div>` + list.map(row).join('')
+    : '';
+
+  let body = '';
+  if (q === 'done') {
+    body = section('Terminées', shown, 'var(--text-faint)') || `<div class="empty-state"><p>Aucune tâche terminée.</p></div>`;
+  } else if (q) {
+    body = shown.map(row).join('') || `<div class="empty-state"><p>Rien dans ce filtre — c'est bon signe.</p></div>`;
+  } else {
+    const late = shown.filter(x => { const d = dayDiff(x.t); return d != null && d < 0; });
+    const today = shown.filter(x => dayDiff(x.t) === 0);
+    const week = shown.filter(x => { const d = dayDiff(x.t); return d != null && d >= 1 && d <= 7; });
+    const later = shown.filter(x => { const d = dayDiff(x.t); return d != null && d > 7; });
+    const nodate = shown.filter(x => dayDiff(x.t) == null);
+    body = section('En retard', late, '#c0392b') +
+      section("Aujourd'hui", today, '#b7600a') +
+      section('Cette semaine', week, '#2563eb') +
+      section('Plus tard', later, 'var(--text-dim)') +
+      section('Sans échéance', nodate, 'var(--text-faint)');
+    if (!body) body = `<div class="empty-state"><p>Aucune tâche à faire. Ajoutez-en une ci-dessus, ou passez en vue « Par projet ».</p></div>`;
+  }
+
+  const left = items.filter(x => !x.done).length;
+  const summary = `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+    <span style="font-size:13px;color:var(--text-dim);"><strong style="font-size:18px;color:var(--text);">${left}</strong> tâche${left !== 1 ? 's' : ''} à faire</span>
+    <span class="s33-swipe-hint" style="font-size:11px;color:var(--text-faint);"><span class="mi" style="font-size:12px;vertical-align:-2px;">swipe_left</span> Glissez à gauche pour terminer</span>
+  </div>`;
+
+  container.innerHTML = toolbar + summary + body;
+  s33BindTaskSwipe();
+}
+
+// ── Récap automatique du lundi matin (direction) ──
+function s33MondayRecapCheck() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  const now = new Date();
+  if (now.getDay() !== 1 || now.getHours() < 8) return;
+  const weekKey = now.toISOString().slice(0, 10);
+  if (localStorage.getItem('s33_recap_lundi') === weekKey) return;
+  const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
+  let late = 0, week = 0;
+  (db.projects || []).forEach(p => {
+    if (p.archived) return;
+    (p.tasks || []).forEach(t => {
+      if (isTaskDone(t) || !t.deadline) return;
+      const d = new Date(t.deadline); d.setHours(0, 0, 0, 0);
+      const diff = Math.round((d - todayD) / 86400000);
+      if (diff < 0) late++; else if (diff <= 7) week++;
+    });
+  });
+  localStorage.setItem('s33_recap_lundi', weekKey);
+  const body = (late ? late + ' tâche' + (late > 1 ? 's' : '') + ' en retard · ' : '') + week + ' à faire cette semaine';
+  if (typeof createNotification === 'function') {
+    try { createNotification(currentUser.id, '<span class="mi mi-sm">wb_sunny</span> Récap du lundi', body, 'weekly_recap', 'taches', null); } catch(_) {}
+  }
+  toast('Récap du lundi : ' + body);
+}
+setTimeout(() => { try { s33MondayRecapCheck(); } catch(_) {} }, 9000);
+setInterval(() => { try { s33MondayRecapCheck(); } catch(_) {} }, 300000);
 
 async function deleteAdminTask(taskId) {
   await sbDelete('user_tasks', taskId);

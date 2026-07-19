@@ -2848,6 +2848,10 @@
   .pv-wrap .pv-point-row { grid-template-columns: 1fr 32px; }
   .pv-wrap .pv-point-row .pv-col-statut, .pv-wrap .pv-point-row .pv-col-responsable { display: none; }
   .pv-wrap .pv-action-row { grid-template-columns: 1fr 32px; }
+  /* En-têtes de colonnes : suivre le même repli (leur grille est en style inline) */
+  .pv-wrap .pv-cols-head { grid-template-columns: 1fr 32px !important; }
+  .pv-wrap .pv-cols-head .pv-col-label:nth-child(2),
+  .pv-wrap .pv-cols-head .pv-col-label:nth-child(3) { display: none; }
 }
 
 </style>
@@ -2928,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.29 — dates alignées à gauche';
+const S33_BUILD = '2026-07-19.30 — revue complète 125 vues';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -4660,7 +4664,7 @@ const S33_BUILD = '2026-07-19.29 — dates alignées à gauche';
         <div class="pv-card">
           <div class="pv-card-header"><div class="pv-icon">5</div> Actions & Délais</div>
           <div class="pv-card-body">
-            <div style="display:grid;grid-template-columns:2fr 1fr 1fr 32px;gap:8px;margin-bottom:6px;">
+            <div class="pv-cols-head" style="display:grid;grid-template-columns:2fr 1fr 1fr 32px;gap:8px;margin-bottom:6px;">
               <div class="pv-col-label">Action à réaliser</div>
               <div class="pv-col-label">Responsable</div>
               <div class="pv-col-label">Délai / Date limite</div>
@@ -9549,7 +9553,7 @@ function pvAddLot(name='') {
       <button class="pv-btn-remove" onclick="document.getElementById('${id}').remove()" title="Supprimer ce lot">×</button>
     </div>
     <div class="pv-lot-body">
-      <div style="display:grid;grid-template-columns:1fr 150px 170px 32px;gap:8px;margin-bottom:4px;">
+      <div class="pv-cols-head" style="display:grid;grid-template-columns:1fr 150px 170px 32px;gap:8px;margin-bottom:4px;">
         <div class="pv-col-label">Point / Observation</div>
         <div class="pv-col-label">Statut</div>
         <div class="pv-col-label">Responsable</div>
@@ -17902,7 +17906,7 @@ function _buildAgendaHTML() {
   }
 
   const cg = _buildCongesHTML();
-  const agendaLabel = 'Prochains événements <span style="color:var(--text-dim);font-size:13px;font-weight:400;">(60 jours)</span>';
+  const agendaLabel = 'Prochains événements <span style="color:var(--text-dim);font-size:13px;font-weight:400;white-space:nowrap;">(60 j)</span>';
   document.getElementById('calendar-content').innerHTML =
     _calRenderToolbar(agendaLabel) +
     '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;background:var(--surface);">' + _calRenderFilterBar() + '</div>' +

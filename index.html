@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.25 — signature lissée + points';
+const S33_BUILD = '2026-07-19.26 — signature lissée partout';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -24047,23 +24047,54 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
   };
   SigPad.prototype.bind = function() {
     const self = this;
+    let pts = [], moved = false;
     const onDown = function(ev) {
       ev.preventDefault();
       self.drawing = true;
-      self.empty = false;
-      const p = self.pos(ev);
-      self.ctx.beginPath();
-      self.ctx.moveTo(p.x, p.y);
+      moved = false;
+      pts = [self.pos(ev)];
       self.canvas.classList.add('signed');
     };
     const onMove = function(ev) {
       if (!self.drawing) return;
       ev.preventDefault();
-      const p = self.pos(ev);
-      self.ctx.lineTo(p.x, p.y);
-      self.ctx.stroke();
+      const raw = self.pos(ev);
+      const last = pts[pts.length - 1];
+      // Aide au tracé : amortissement du tremblement + courbes douces
+      const p = { x: last.x + (raw.x - last.x) * 0.45, y: last.y + (raw.y - last.y) * 0.45 };
+      if (Math.hypot(p.x - last.x, p.y - last.y) < 0.8) return;
+      pts.push(p);
+      moved = true;
+      self.empty = false;
+      const n = pts.length;
+      if (n >= 3) {
+        const m1 = { x: (pts[n - 3].x + pts[n - 2].x) / 2, y: (pts[n - 3].y + pts[n - 2].y) / 2 };
+        const m2 = { x: (pts[n - 2].x + pts[n - 1].x) / 2, y: (pts[n - 2].y + pts[n - 1].y) / 2 };
+        self.ctx.beginPath();
+        self.ctx.moveTo(m1.x, m1.y);
+        self.ctx.quadraticCurveTo(pts[n - 2].x, pts[n - 2].y, m2.x, m2.y);
+        self.ctx.stroke();
+      }
     };
-    const onUp = function(ev) { self.drawing = false; };
+    const onUp = function(ev) {
+      if (!self.drawing) return;
+      self.drawing = false;
+      if (!moved && pts.length) {
+        // Simple appui = un point
+        const p = pts[0];
+        self.ctx.beginPath();
+        self.ctx.fillStyle = self.ctx.strokeStyle;
+        self.ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
+        self.ctx.fill();
+        self.empty = false;
+      } else if (moved && pts.length === 2) {
+        self.ctx.beginPath();
+        self.ctx.moveTo(pts[0].x, pts[0].y);
+        self.ctx.lineTo(pts[1].x, pts[1].y);
+        self.ctx.stroke();
+      }
+      pts = [];
+    };
     this.canvas.addEventListener('pointerdown', onDown);
     this.canvas.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);

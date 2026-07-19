@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.12 — échéancier dans facturation';
+const S33_BUILD = '2026-07-19.13 — tout supprimer les tâches';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6711,7 +6711,10 @@ function renderProjectDetailPage() {
             <span style="font-family:'Cormorant Garamond',Georgia,serif;font-size:17px;font-weight:600;letter-spacing:.5px;">Tâches (${tasks.length})</span>
             ${tasks.length ? `<span style="font-size:11px;color:var(--text-dim);font-weight:500;">· ${done}/${tasks.length} complètes · ${pct}%</span>` : ''}
           </span>
-          ${isAdmin ? `<span onclick="event.stopPropagation();openTaskModal(${p.id})" style="padding:5px 12px;background:var(--gold);color:#fff;border-radius:var(--radius-pill);font-size:11px;font-weight:600;cursor:pointer;">+ Ajouter</span>` : ''}
+          <span style="display:flex;align-items:center;gap:8px;">
+            ${isAdmin && tasks.length ? `<span onclick="event.stopPropagation();s33DeleteAllTasks(${p.id})" title="Supprimer toutes les tâches du projet" style="padding:5px 12px;background:#fff0f0;color:#c0392b;border:1px solid #f5c6cb;border-radius:var(--radius-pill);font-size:11px;font-weight:600;cursor:pointer;"><span class="mi" style="font-size:13px;vertical-align:-2px;">delete_sweep</span> Tout supprimer</span>` : ''}
+            ${isAdmin ? `<span onclick="event.stopPropagation();openTaskModal(${p.id})" style="padding:5px 12px;background:var(--gold);color:#fff;border-radius:var(--radius-pill);font-size:11px;font-weight:600;cursor:pointer;">+ Ajouter</span>` : ''}
+          </span>
         </div>
         <div id="proj-tasks-panel-${p.id}" style="display:${open ? 'block' : 'none'};margin-top:12px;">
           <div class="card" style="padding:12px;">
@@ -7571,6 +7574,26 @@ async function deleteTask(projId, taskId) {
   else if (currentPage === 'taches') renderMesTaches();
   else openProjectDetail(projId);
   toast('Tâche supprimée');
+}
+
+// Supprimer TOUTES les tâches d'un projet d'un coup (admin, double confirmation)
+async function s33DeleteAllTasks(projId) {
+  const p = db.projects.find(x => x.id === projId);
+  if (!p) return;
+  const n = (p.tasks || []).length;
+  if (!n) { toast('Aucune tâche à supprimer'); return; }
+  if (!confirm('Supprimer les ' + n + ' tâches du projet « ' + p.name + ' » ?\n\nLes heures pointées sur ces tâches seront perdues.')) return;
+  if (!confirm('Dernière confirmation : tout supprimer, définitivement ?')) return;
+  try {
+    await sbUpdate('projects', projId, { tasks: [] });
+    p.tasks = [];
+    if (currentPage === 'project-detail') renderProjectDetailPage();
+    else if (currentPage === 'taches') renderMesTaches();
+    toast(n + ' tâches supprimées');
+  } catch(e) {
+    console.error('delete all tasks', e);
+    toast('Suppression impossible — réessayez');
+  }
 }
 
 // ===== SUBTASK FUNCTIONS =====

@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.14 — tâches zéro friction';
+const S33_BUILD = '2026-07-19.15 — facturation en bas d\'écran';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -13556,9 +13556,9 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
       <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></span>
       <span>Projets</span>
     </div>
-    <div class="mobile-nav-item" id="mnav-clients" onclick="mobileNavigate('clients')">
-      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-      <span>Clients</span>
+    <div class="mobile-nav-item" id="mnav-invoices" onclick="mobileNavigate('invoices')">
+      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span>
+      <span>Facturation</span>
     </div>
     <div class="mobile-nav-item" id="mnav-taches" style="display:none;" onclick="mobileNavigate('taches')">
       <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
@@ -13611,8 +13611,8 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     <div class="mobile-more-item" id="mnav-more-devis" onclick="mobileNavigate('devis'); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span> Devis
     </div>
-    <div class="mobile-more-item" id="mnav-more-invoices" onclick="mobileNavigate('invoices'); closeMobileMore()">
-      <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span> Facturation
+    <div class="mobile-more-item" id="mnav-more-clients" onclick="mobileNavigate('clients'); closeMobileMore()">
+      <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Clients
     </div>
     <div class="mobile-more-item" id="mnav-more-finance" onclick="mobileNavigate('finance'); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span> Finances
@@ -18504,8 +18504,8 @@ function updateUIForUser() {
   }
 
   // Reset gated items
-  _setVis(['nav-clients','mnav-clients'], false);
-  _setVis(['nav-invoices','mnav-more-invoices'], false);
+  _setVis(['nav-clients','mnav-more-clients'], false);
+  _setVis(['nav-invoices','mnav-invoices'], false);
   _setVis(['nav-devis','mnav-more-devis'], false);
   _setVis(['nav-finance','mnav-more-finance'], false);
   _setVis(['nav-section-finance'], false);
@@ -18518,9 +18518,9 @@ function updateUIForUser() {
   // Show based on permissions
   if (_canSee('equipe'))        _setVis(['nav-equipe','mnav-more-equipe'], true);
   if (_canSee('finance'))       _setVis(['nav-finance','mnav-more-finance'], true);
-  if (_canSee('invoices'))      _setVis(['nav-invoices','mnav-more-invoices'], true);
+  if (_canSee('invoices'))      _setVis(['nav-invoices','mnav-invoices'], true);
   if (_canSee('devis'))         _setVis(['nav-devis','mnav-more-devis'], true);
-  if (_canSee('clients'))       _setVis(['nav-clients','mnav-clients'], true);
+  if (_canSee('clients'))       _setVis(['nav-clients','mnav-more-clients'], true);
   if (_canSee('contacts'))      _setVis(['nav-contacts','mnav-more-contacts'], true);
   if (_canSee('administratif')) _setVis(['nav-administratif','mnav-more-administratif'], true);
   if (_canSee('mediatheque'))   _setVis(['nav-mediatheque','mnav-more-mediatheque'], true);

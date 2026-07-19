@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.21 — lien de signature réparé';
+const S33_BUILD = '2026-07-19.22 — anti-doublons échéancier';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11648,7 +11648,18 @@ async function s33ConfirmerValidationDevis(devisId) {
       if (pLoc) pLoc.budget = ttc;
     }
 
-    // 3. Échéancier d'honoraires (barème trésorerie)
+    // 3. Échéancier d'honoraires — jamais en double : si le projet en a déjà un, on s'arrête là
+    const dejaEch = await sbGet('honoraires_echeances', '?project_id=eq.' + projectId + '&select=id&limit=1');
+    if (Array.isArray(dejaEch) && dejaEch.length) {
+      await sbUpdate('devis', devisId, { status: 'Accepté' });
+      const m0 = document.getElementById('s33-vd-modal'); if (m0) m0.remove();
+      await loadDB();
+      renderDevisList(); renderInvoices();
+      toast('Devis accepté — ce projet avait déjà son échéancier, rien n\'a été dupliqué');
+      window._currentProjectDetailId = projectId;
+      navigate('project-detail');
+      return;
+    }
     const rows = s33BaremeMontants(ttc);
     const echIds = [];
     for (let i = 0; i < rows.length; i++) {

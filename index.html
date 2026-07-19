@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.23 — rafraîchissement fiche projet';
+const S33_BUILD = '2026-07-19.24 — échéancier sur la page de signature';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -32674,7 +32674,19 @@ window.addEventListener('appinstalled', () => {
                 '<span style="font-size:12px;color:#666;">Montant TTC</span>' +
                 '<span style="font-size:20px;font-weight:800;color:#a5813c;">' + (Math.round(d.ttc) || 0).toLocaleString('fr-MA') + ' MAD</span>' +
               '</div>' +
-              '<div style="font-size:11px;color:#999;margin-top:14px;">En signant ci-dessous, vous acceptez ce devis. Votre signature, votre nom, la date et l\'heure seront enregistrés.</div>' +
+              (Array.isArray(d.phases) && d.phases.length ?
+                '<div style="margin-top:14px;border:1px solid #f0ece2;border-radius:12px;overflow:hidden;">' +
+                  '<div style="background:#faf8f3;padding:9px 14px;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a58a3c;">Échéancier de paiement</div>' +
+                  d.phases.map(function(ph) {
+                    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid #f5f2ea;">' +
+                      '<div style="flex:1;font-size:12.5px;color:#1a1a1a;">' + esc(ph.mission) + '</div>' +
+                      '<span style="font-size:11px;font-weight:700;color:#a58a3c;background:#faf8f3;border-radius:99px;padding:2px 8px;flex-shrink:0;">' + ph.taux + ' %</span>' +
+                      '<span style="font-size:12.5px;font-weight:800;color:#1a1a1a;white-space:nowrap;flex-shrink:0;">' + (ph.montant || 0).toLocaleString('fr-MA') + ' MAD</span>' +
+                    '</div>';
+                  }).join('') +
+                  '<div style="padding:8px 14px;border-top:1px solid #f0ece2;background:#faf8f3;font-size:10.5px;color:#999;">Chaque étape n\'est due qu\'à sa réalisation — vous ne payez pas tout d\'un coup.</div>' +
+                '</div>' : '') +
+              '<div style="font-size:11px;color:#999;margin-top:14px;">En signant ci-dessous, vous acceptez ce devis et son échéancier de paiement. Votre signature, votre nom, la date et l\'heure seront enregistrés.</div>' +
               '<label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;display:block;margin:16px 0 6px;">Votre nom complet</label>' +
               '<input id="s33s-name" type="text" value="' + esc(d.client_name || '') + '" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid #ddd;border-radius:10px;font-size:14px;font-family:inherit;">' +
               '<label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;display:block;margin:16px 0 6px;">Votre signature <span style="font-weight:400;text-transform:none;">(signez avec le doigt)</span></label>' +

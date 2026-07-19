@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.16 — rappels auto, partiels, chèques, brief';
+const S33_BUILD = '2026-07-19.17 — signature à distance, reçus, tarifs, journal';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -4053,6 +4053,7 @@ const S33_BUILD = '2026-07-19.16 — rappels auto, partiels, chèques, brief';
         <div style="display:flex;gap:10px;align-items:center;">
           <select id="finance-month" onchange="renderFinance()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:12px;border-radius:var(--radius);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;"></select>
           <select id="finance-year" onchange="renderFinance()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:12px;border-radius:var(--radius);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;"></select>
+          <button class="btn btn-outline" onclick="s33ScanRecu()" title="Photographier un reçu et créer la dépense"><span class="mi mi-sm">photo_camera</span> Reçu</button>
           <button class="btn btn-gold" onclick="openModal('charge-modal')">+ Charge</button>
           <button class="btn btn-outline" onclick="openModal('entree-modal')">+ Entrée</button>
           <button class="btn btn-outline" onclick="exportFinancesCSV()" title="Exporter l'année en CSV (Excel)"><span class="mi">download</span> Exporter</button>
@@ -11400,6 +11401,7 @@ function renderDevisList() {
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="btn btn-ghost" onclick="loadDevis(${d.id})" style="font-size:10px;">Ouvrir</button>
         ${d.status !== 'Accepté' && d.status !== 'Refusé' ? `<button class="btn btn-outline" onclick="convertDevisToInvoice(${d.id})" style="font-size:10px;color:var(--green);border-color:rgba(110,201,138,0.3);"><span class="mi" style="font-size:12px;">verified</span> Valider</button>` : ''}
+        ${d.status !== 'Accepté' && d.status !== 'Refusé' ? `<button class="btn btn-ghost" onclick="s33DevisSignShare(${d.id})" style="font-size:10px;padding:4px 10px;color:#7c5cbf;border:1px solid rgba(124,92,191,.35);background:rgba(124,92,191,.06);" title="Envoyer un lien de signature au client"><span class="mi mi-sm">draw</span> Signature</button>` : ''}
         ${d.status === 'Envoyé' ? `<button class="btn btn-ghost" onclick="s33RelancerDevis(${d.id})" style="font-size:10px;padding:4px 10px;color:#1da851;border:1px solid rgba(37,211,102,.4);background:rgba(37,211,102,.08);" title="Relancer le prospect par WhatsApp"><span class="mi mi-sm">send</span> Relancer</button>` : ''}
         <button class="btn btn-danger" onclick="deleteDevis(${d.id})">×</button>
       </td>
@@ -13078,6 +13080,7 @@ function renderFinance() {
             <div style="font-size:13px;color:var(--text);">${c.label}</div>
             <div style="font-size:10px;color:var(--text-faint);margin-top:2px;letter-spacing:.1em;">${c.cat} · ${c.recur === 'mensuel' ? 'Mensuelle' : 'Ponctuelle'}</div>
           </div>
+          ${c.receipt_photo ? `<img src="${c.receipt_photo}" onclick="s33ShowRecu(${c.id})" alt="reçu" style="width:34px;height:34px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--border);flex-shrink:0;">` : ''}
           <span style="color:var(--red);font-size:13px;font-weight:400;">− ${formatNum(c.amount)} MAD</span>
           <button class="btn btn-danger" onclick="deleteCharge(${c.id})" style="margin-left:8px;">×</button>
         </div>
@@ -32572,6 +32575,320 @@ window.addEventListener('appinstalled', () => {
   }
 
   console.log('✓ Module argent+ chargé');
+})();
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  MODULE CROISSANCE — signature de devis à distance, scan de reçus,
+//  grille tarifaire (historique), journal d'audit
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+  'use strict';
+  const FN_BASE = 'https://yjxcqptgugatrxeyzrdc.supabase.co/functions/v1';
+
+  /* ── 1. SIGNATURE DE DEVIS À DISTANCE ─────────────────────────── */
+
+  // Côté interne : générer / partager le lien de signature
+  window.s33DevisSignShare = async function(id) {
+    const d = db.devis.find(x => x.id === id);
+    if (!d) return;
+    try {
+      let token = d.sign_token;
+      if (!token) {
+        token = Array.from(crypto.getRandomValues(new Uint8Array(18))).map(b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
+        const patch = { sign_token: token };
+        if (d.status === 'Brouillon' || !d.status) patch.status = 'Envoyé';
+        await sbUpdate('devis', id, patch);
+        Object.assign(d, patch);
+        renderDevisList();
+      }
+      const link = location.origin + location.pathname + '?sign=' + token;
+      try { await navigator.clipboard.writeText(link); } catch(_) {}
+      const nameLc = (d.clientName || '').trim().toLowerCase();
+      const contact = db.clients.find(c => (c.name || '').trim().toLowerCase() === nameLc)
+        || (db.prospects || []).find(p => (p.name || '').trim().toLowerCase() === nameLc);
+      const digits = contact && contact.phone ? String(contact.phone).replace(/\D/g, '') : '';
+      const intl = digits ? (digits.startsWith('0') ? '212' + digits.slice(1) : digits) : '';
+      const msg = encodeURIComponent(
+        'Bonjour ' + (d.clientName || '') + ',\n\n' +
+        'Voici notre devis ' + (d.num || d.ref || '') + (d.projet ? ' pour « ' + d.projet + ' »' : '') +
+        ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' MAD TTC).\n\n' +
+        'Vous pouvez le consulter et le signer directement depuis votre téléphone ici :\n' + link + '\n\n' +
+        'Bien cordialement,\nStudio 33 Architects');
+      window.open('https://wa.me/' + (intl ? intl : '') + '?text=' + msg, '_blank');
+      toast('Lien de signature copié et prêt à envoyer');
+    } catch(e) { console.error('sign share', e); toast('Lien impossible — réessayez'); }
+  };
+
+  // Côté client : page de signature (?sign=<token>)
+  const signToken = (function() { try { return new URLSearchParams(location.search).get('sign'); } catch(_) { return null; } })();
+  if (signToken) {
+    document.documentElement.classList.add('s33-portal-mode');
+    document.title = 'Signature du devis — Studio 33';
+    const boot = () => {
+      const host = document.getElementById('s33-portal');
+      if (!host) return setTimeout(boot, 60);
+      const esc = s => { const dv = document.createElement('div'); dv.textContent = s == null ? '' : s; return dv.innerHTML; };
+      const shell = inner => '<div style="max-width:560px;margin:0 auto;padding:28px 18px 60px;font-family:Inter,system-ui,sans-serif;color:#1a1a1a;">' +
+        '<div style="text-align:center;margin-bottom:22px;"><div style="font-size:20px;font-weight:800;">STUDIO <span style="color:#F97316;">33</span> <span style="font-weight:400;color:#777;font-size:13px;">ARCHITECTS</span></div>' +
+        '<div style="font-size:11px;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;">Signature de devis</div></div>' + inner + '</div>';
+      host.innerHTML = shell('<div style="text-align:center;color:#888;padding:40px 0;">Chargement du devis…</div>');
+
+      fetch(FN_BASE + '/devis-sign?token=' + encodeURIComponent(signToken))
+        .then(r => r.json())
+        .then(d => {
+          if (!d || d.error) {
+            host.innerHTML = shell('<div style="text-align:center;padding:40px 20px;color:#777;">Ce lien n\'est plus valide.<br>Contactez Studio 33 pour en obtenir un nouveau.</div>');
+            return;
+          }
+          if (d.signed) {
+            host.innerHTML = shell('<div style="text-align:center;padding:40px 20px;">' +
+              '<div style="font-size:44px;color:#16a34a;">✓</div>' +
+              '<div style="font-size:17px;font-weight:700;margin-top:8px;">Devis déjà signé</div>' +
+              '<div style="font-size:13px;color:#777;margin-top:6px;">Signé par ' + esc(d.signer_name || '') + '. Merci pour votre confiance — nous revenons vers vous très vite.</div></div>');
+            return;
+          }
+          host.innerHTML = shell(
+            '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:22px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' +
+              '<div style="font-size:12px;color:#999;">Devis ' + esc(d.num || '') + '</div>' +
+              '<div style="font-size:18px;font-weight:800;margin-top:4px;">' + esc(d.projet || 'Prestation d\'architecture') + '</div>' +
+              '<div style="font-size:13px;color:#666;margin-top:2px;">' + esc(d.client_name || '') + '</div>' +
+              '<div style="margin-top:14px;padding:12px 16px;background:#faf8f3;border-radius:10px;display:flex;justify-content:space-between;align-items:center;">' +
+                '<span style="font-size:12px;color:#666;">Montant TTC</span>' +
+                '<span style="font-size:20px;font-weight:800;color:#a5813c;">' + (Math.round(d.ttc) || 0).toLocaleString('fr-MA') + ' MAD</span>' +
+              '</div>' +
+              '<div style="font-size:11px;color:#999;margin-top:14px;">En signant ci-dessous, vous acceptez ce devis. Votre signature, votre nom, la date et l\'heure seront enregistrés.</div>' +
+              '<label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;display:block;margin:16px 0 6px;">Votre nom complet</label>' +
+              '<input id="s33s-name" type="text" value="' + esc(d.client_name || '') + '" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid #ddd;border-radius:10px;font-size:14px;font-family:inherit;">' +
+              '<label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;display:block;margin:16px 0 6px;">Votre signature <span style="font-weight:400;text-transform:none;">(signez avec le doigt)</span></label>' +
+              '<canvas id="s33s-pad" style="width:100%;height:160px;border:1.5px dashed #ccc;border-radius:10px;background:#fff;touch-action:none;display:block;"></canvas>' +
+              '<button onclick="s33sClear()" style="margin-top:8px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline;">Effacer et recommencer</button>' +
+              '<button id="s33s-submit" onclick="s33sSubmit()" style="width:100%;margin-top:16px;padding:14px;background:#F97316;color:#fff;border:none;border-radius:99px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;">J\'accepte et je signe</button>' +
+            '</div>' +
+            '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir, Maroc</div>');
+          initPad();
+        })
+        .catch(() => { host.innerHTML = shell('<div style="text-align:center;padding:40px 20px;color:#777;">Connexion impossible — vérifiez votre réseau et rechargez la page.</div>'); });
+    };
+
+    let _drawn = false;
+    function initPad() {
+      const cv = document.getElementById('s33s-pad');
+      if (!cv) return;
+      const scale = window.devicePixelRatio || 1;
+      cv.width = cv.offsetWidth * scale; cv.height = 160 * scale;
+      const ctx = cv.getContext('2d');
+      ctx.scale(scale, scale); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#1a1a1a';
+      let drawing = false, last = null;
+      const pos = e => { const r = cv.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return { x: t.clientX - r.left, y: t.clientY - r.top }; };
+      const start = e => { drawing = true; last = pos(e); e.preventDefault(); };
+      const move = e => { if (!drawing) return; const p = pos(e); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; _drawn = true; e.preventDefault(); };
+      const end = () => { drawing = false; };
+      cv.addEventListener('mousedown', start); cv.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+      cv.addEventListener('touchstart', start, { passive: false }); cv.addEventListener('touchmove', move, { passive: false }); cv.addEventListener('touchend', end);
+    }
+    window.s33sClear = function() { const cv = document.getElementById('s33s-pad'); if (cv) { const c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height); _drawn = false; } };
+    window.s33sSubmit = async function() {
+      const name = (document.getElementById('s33s-name') || {}).value || '';
+      if (!name.trim()) { alert('Écrivez votre nom complet.'); return; }
+      if (!_drawn) { alert('Signez dans le cadre avec votre doigt.'); return; }
+      const btn = document.getElementById('s33s-submit');
+      btn.disabled = true; btn.textContent = 'Enregistrement…';
+      try {
+        const image = document.getElementById('s33s-pad').toDataURL('image/png');
+        const r = await fetch(FN_BASE + '/devis-sign', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: signToken, name: name.trim(), image })
+        });
+        const j = await r.json();
+        if (j && j.ok) {
+          const host = document.getElementById('s33-portal');
+          host.innerHTML = '<div style="max-width:560px;margin:0 auto;padding:60px 18px;text-align:center;font-family:Inter,system-ui,sans-serif;">' +
+            '<div style="font-size:52px;color:#16a34a;">✓</div>' +
+            '<div style="font-size:19px;font-weight:800;margin-top:10px;color:#1a1a1a;">Merci, votre devis est signé !</div>' +
+            '<div style="font-size:13px;color:#777;margin-top:8px;">Studio 33 a été prévenu. Nous revenons vers vous très rapidement pour la suite.</div></div>';
+        } else { throw new Error((j && j.error) || 'err'); }
+      } catch(e) {
+        btn.disabled = false; btn.textContent = 'J\'accepte et je signe';
+        alert('Enregistrement impossible — vérifiez votre connexion et réessayez.');
+      }
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+  }
+
+  /* ── 2. SCAN DE REÇUS ─────────────────────────────────────────── */
+  window.s33ScanRecu = function() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+    input.onchange = () => {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      const img = new Image();
+      img.onload = () => {
+        const max = 1200, ratio = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * ratio); cv.height = Math.round(img.height * ratio);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        const dataUrl = cv.toDataURL('image/jpeg', 0.72);
+        s33RecuModal(dataUrl);
+      };
+      img.src = URL.createObjectURL(f);
+    };
+    input.click();
+  };
+
+  function s33RecuModal(photo) {
+    const cats = [...new Set((db.charges || []).map(c => c.cat).filter(Boolean))];
+    const ov = document.createElement('div');
+    ov.id = 's33-recu-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto;';
+    ov.innerHTML = '<div style="background:var(--surface);border-radius:var(--radius);padding:22px;width:100%;max-width:420px;" onclick="event.stopPropagation()">' +
+      '<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:12px;"><span class="mi" style="vertical-align:-3px;">receipt</span> Nouvelle dépense (reçu)</div>' +
+      '<img src="' + photo + '" style="width:100%;max-height:220px;object-fit:contain;border-radius:10px;background:var(--surface2);margin-bottom:14px;">' +
+      '<input id="s33-recu-montant" type="number" inputmode="decimal" placeholder="Montant (MAD)" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--surface2);color:var(--text);margin-bottom:10px;">' +
+      '<input id="s33-recu-label" type="text" placeholder="C\'est quoi ? (ex : fournitures bureau)" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--surface2);color:var(--text);margin-bottom:10px;">' +
+      '<input id="s33-recu-cat" type="text" list="s33-recu-cats" placeholder="Catégorie" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;background:var(--surface2);color:var(--text);margin-bottom:16px;">' +
+      '<datalist id="s33-recu-cats">' + cats.map(c => '<option value="' + escHTML(c) + '">').join('') + '<option value="Fournitures"><option value="Déplacement"><option value="Impression"></datalist>' +
+      '<div style="display:flex;gap:10px;">' +
+        '<button onclick="document.getElementById(\'s33-recu-modal\').remove()" style="flex:1;padding:11px;background:var(--surface2);border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">Annuler</button>' +
+        '<button id="s33-recu-save" style="flex:2;padding:11px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;">Enregistrer la dépense</button>' +
+      '</div></div>';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    document.getElementById('s33-recu-save').onclick = async () => {
+      const amount = parseFloat(document.getElementById('s33-recu-montant').value);
+      const label = (document.getElementById('s33-recu-label').value || '').trim() || 'Dépense (reçu)';
+      const cat = (document.getElementById('s33-recu-cat').value || '').trim() || 'Divers';
+      if (!(amount > 0)) { toast('Saisissez le montant du reçu'); return; }
+      try {
+        const m = (typeof getFinanceMonth === 'function') ? getFinanceMonth().str : new Date().toISOString().slice(0, 7);
+        const ins = await sbInsertOrThrow('charges', { label, cat, amount, recur: 'ponctuel', month: m, receipt_photo: photo });
+        if (ins && ins[0]) {
+          db.charges.push(ins[0]);
+          if (!db._chargesIdx[m]) db._chargesIdx[m] = [];
+          db._chargesIdx[m].push(ins[0]);
+        }
+        ov.remove();
+        if (typeof renderFinance === 'function') renderFinance();
+        logActivity('add_charge', currentUser.name + ' a ajouté une dépense (reçu photographié) : ' + label + ' — ' + formatNum(amount) + ' MAD', 'charge', null, label);
+        toast('Dépense de ' + formatNum(amount) + ' MAD enregistrée avec son reçu');
+      } catch(e) { console.error('recu', e); toast('Enregistrement impossible — réessayez'); }
+    };
+  }
+
+  window.s33ShowRecu = function(chargeId) {
+    const c = (db.charges || []).find(x => x.id === chargeId);
+    if (!c || !c.receipt_photo) return;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer;';
+    ov.innerHTML = '<img src="' + c.receipt_photo + '" style="max-width:100%;max-height:92vh;border-radius:10px;">';
+    ov.onclick = () => ov.remove();
+    document.body.appendChild(ov);
+  };
+
+  /* ── 3. GRILLE TARIFAIRE (historique) ─────────────────────────── */
+  function renderTarifs() {
+    const tbody = document.getElementById('devis-saved-table');
+    if (!tbody || !currentUser || currentUser.role !== 'admin') return;
+    const tableWrap = tbody.closest('table') ? tbody.closest('table').parentElement : null;
+    if (!tableWrap) return;
+    let box = document.getElementById('s33-tarifs');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 's33-tarifs';
+      tableWrap.parentElement.insertBefore(box, tableWrap);
+    }
+    const projs = (db.projects || []).filter(p => (parseFloat(p.budget) || 0) > 0);
+    if (!projs.length) { box.innerHTML = ''; return; }
+    const byType = {};
+    projs.forEach(p => {
+      const t = p.type || 'Autre';
+      if (!byType[t]) byType[t] = [];
+      byType[t].push(parseFloat(p.budget));
+    });
+    const rows = Object.keys(byType).sort().map(t => {
+      const v = byType[t];
+      const avg = v.reduce((a, b) => a + b, 0) / v.length;
+      return '<tr>' +
+        '<td style="padding:8px 14px;font-size:12px;font-weight:600;color:var(--text);border-bottom:1px solid var(--surface2);">' + escHTML(t) + '</td>' +
+        '<td style="padding:8px 14px;font-size:12px;color:var(--text-dim);border-bottom:1px solid var(--surface2);">' + v.length + '</td>' +
+        '<td style="padding:8px 14px;font-size:12px;font-weight:700;color:var(--gold);border-bottom:1px solid var(--surface2);white-space:nowrap;">' + formatNum(Math.round(avg)) + ' MAD</td>' +
+        '<td style="padding:8px 14px;font-size:11px;color:var(--text-faint);border-bottom:1px solid var(--surface2);white-space:nowrap;">' + formatNum(Math.min.apply(null, v)) + ' – ' + formatNum(Math.max.apply(null, v)) + '</td>' +
+      '</tr>';
+    }).join('');
+    box.innerHTML = '<details style="margin-bottom:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">' +
+      '<summary style="cursor:pointer;padding:12px 16px;font-size:12.5px;font-weight:700;color:var(--text);"><span class="mi" style="font-size:15px;vertical-align:-3px;color:var(--gold);">price_check</span> Grille tarifaire — ton historique (' + projs.length + ' projets avec honoraires)</summary>' +
+      '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:420px;">' +
+        '<thead><tr>' + ['Type de projet', 'Nb', 'Honoraires moyens', 'Fourchette'].map(h => '<th style="text-align:left;padding:8px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);border-bottom:1px solid var(--border);">' + h + '</th>').join('') + '</tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>' +
+      '<div style="padding:8px 16px 12px;font-size:10.5px;color:var(--text-faint);">Calculée sur les budgets d\'honoraires de tes projets. Visible par toi uniquement.</div>' +
+    '</details>';
+  }
+  if (typeof window.renderDevisList === 'function') {
+    const _rdl = window.renderDevisList;
+    window.renderDevisList = function() {
+      _rdl.apply(this, arguments);
+      try { renderTarifs(); } catch(e) { console.error('tarifs', e); }
+    };
+  }
+
+  /* ── 4. JOURNAL D'AUDIT ───────────────────────────────────────── */
+  function injectJournalTab() {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    const wl = document.getElementById('equipe-tab-workload');
+    if (!wl || document.getElementById('equipe-tab-journal')) return;
+    const b = document.createElement('button');
+    b.className = 'equipe-tab';
+    b.id = 'equipe-tab-journal';
+    b.textContent = 'Journal';
+    b.onclick = () => window.s33JournalShow();
+    wl.insertAdjacentElement('afterend', b);
+  }
+  window.s33JournalShow = async function() {
+    document.querySelectorAll('.equipe-tab').forEach(t => t.classList.remove('active'));
+    const jb = document.getElementById('equipe-tab-journal');
+    if (jb) jb.classList.add('active');
+    const cont = document.getElementById('equipe-reports-list');
+    if (!cont) return;
+    cont.innerHTML = '<div style="padding:20px;color:var(--text-faint);font-size:13px;">Chargement du journal…</div>';
+    let rows = [];
+    try { rows = await sbGet('activity_log', '?order=created_at.desc&limit=300') || []; }
+    catch(e) { rows = db.activityLog || []; }
+    window._s33JournalRows = rows;
+    s33JournalRender('');
+  };
+  window.s33JournalRender = function(q) {
+    const cont = document.getElementById('equipe-reports-list');
+    if (!cont) return;
+    const rows = (window._s33JournalRows || []).filter(r => {
+      if (!q) return true;
+      const s = ((r.user_name || '') + ' ' + (r.description || '') + ' ' + (r.entity_name || '')).toLowerCase();
+      return s.includes(q.toLowerCase());
+    });
+    const fmt = ts => { try { const d = new Date(ts); return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } };
+    cont.innerHTML =
+      '<div style="margin-bottom:12px;"><input type="text" placeholder="Rechercher (personne, action, projet…)" value="' + escHTML(q || '') + '" oninput="s33JournalRender(this.value)" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;background:var(--surface2);color:var(--text);outline:none;"></div>' +
+      '<div class="card" style="padding:6px 16px;">' +
+      (rows.length ? rows.slice(0, 200).map(r =>
+        '<div style="display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--surface2);flex-wrap:wrap;">' +
+          '<span style="font-family:\'DM Mono\',monospace;font-size:10.5px;color:var(--text-faint);flex-shrink:0;">' + fmt(r.created_at) + '</span>' +
+          '<span style="font-size:11.5px;font-weight:700;color:var(--gold);flex-shrink:0;">' + escHTML(r.user_name || '?') + '</span>' +
+          '<span style="font-size:12px;color:var(--text);flex:1;min-width:180px;">' + (r.description || '') + '</span>' +
+        '</div>').join('')
+      : '<div style="padding:16px 0;color:var(--text-faint);font-size:13px;">Aucune entrée' + (q ? ' pour cette recherche' : '') + '.</div>') +
+      '</div>' +
+      '<div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;">Les 300 dernières actions enregistrées. Chaque création, modification ou suppression importante y est tracée automatiquement.</div>';
+  };
+  if (typeof window.renderPage === 'function') {
+    const _rp = window.renderPage;
+    window.renderPage = function(page) {
+      _rp.apply(this, arguments);
+      if (page === 'equipe') { try { injectJournalTab(); } catch(e) {} }
+    };
+  }
+
+  console.log('✓ Module croissance chargé');
 })();
 </script>
 

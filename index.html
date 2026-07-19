@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.19 — contrat conforme 4 pages';
+const S33_BUILD = '2026-07-19.20 — contrat qui se souvient';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -32946,6 +32946,7 @@ window.addEventListener('appinstalled', () => {
     const cli = (db.clients || []).find(c => (c.name || '').trim().toLowerCase() === nameLc)
       || (db.prospects || []).find(p => (p.name || '').trim().toLowerCase() === nameLc) || {};
     const ttcDevis = Math.round((typeof s33DevisTTC === 'function' ? s33DevisTTC(d) : parseFloat(d.ttc)) || 0);
+    const mem = d.contrat_data || {}; // valeurs mémorisées lors d'une génération précédente
     const old = document.getElementById('s33-ct-modal');
     if (old) old.remove();
     const inp = (id, label, val, ph, type) =>
@@ -32958,38 +32959,39 @@ window.addEventListener('appinstalled', () => {
       '<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:2px;"><span class="mi" style="vertical-align:-3px;">gavel</span> Contrat Type Unifié — Ordre des Architectes (2024)</div>' +
       '<div style="font-size:11.5px;color:var(--text-faint);margin-bottom:14px;">Pré-rempli depuis le devis ' + escHTML(d.num || '') + '. Tous les champs restent modifiables — notamment les honoraires.</div>' +
       '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 8px;">Contrat</div>' +
-      inp('ct-num', 'N° du contrat', '', 'ex : 12/2026') +
+      inp('ct-num', 'N° du contrat', mem.num || '', 'ex : 12/2026') +
       '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 8px;">Maître de l\'ouvrage</div>' +
-      inp('ct-mo', 'Nom(s) complet(s)', (d.clientName || '').toUpperCase(), 'MR X ET MME Y') +
-      inp('ct-cin', 'C.I.N n°', '', 'FH15097 / JB285475') +
-      inp('ct-dom', 'Domicilié à', cli.address || '', '') +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + inp('ct-tel', 'Téléphone', cli.phone || '') + inp('ct-email', 'Email', cli.email || '') + '</div>' +
+      inp('ct-mo', 'Nom(s) complet(s)', mem.mo || (d.clientName || '').toUpperCase(), 'MR X ET MME Y') +
+      inp('ct-cin', 'C.I.N n°', mem.cin || '', 'FH15097 / JB285475') +
+      inp('ct-dom', 'Domicilié à', mem.dom || cli.address || '', '') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + inp('ct-tel', 'Téléphone', mem.tel || cli.phone || '') + inp('ct-email', 'Email', mem.email || cli.email || '') + '</div>' +
       '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 8px;">Projet & terrain</div>' +
-      inp('ct-projet', 'Projet de', (d.projet || '').toUpperCase(), 'CONSTRUCTION D\'UN R+2') +
+      inp('ct-projet', 'Projet de', mem.projet || (d.projet || '').toUpperCase(), 'CONSTRUCTION D\'UN R+2') +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
-        inp('ct-tf', 'Titre Foncier n°', '', 'TF 269277/09') + inp('ct-supterrain', 'Superficie terrain (m²)', '', '88.00') +
+        inp('ct-tf', 'Titre Foncier n°', mem.tf || '', 'TF 269277/09') + inp('ct-supterrain', 'Superficie terrain (m²)', mem.supT || '', '88.00') +
       '</div>' +
-      inp('ct-sis', 'Sis à', '', 'SHEMS TIKIOUINE N°532') +
+      inp('ct-sis', 'Sis à', mem.sis || '', 'SHEMS TIKIOUINE N°532') +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
-        inp('ct-pref', 'Préfecture', 'AGADIR IDA OUTANANE') + inp('ct-commune', 'Commune', 'AGADIR') +
+        inp('ct-pref', 'Préfecture', mem.pref || 'AGADIR IDA OUTANANE') + inp('ct-commune', 'Commune', mem.commune || 'AGADIR') +
       '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">' +
-        inp('ct-cat', 'Catégorie (R+…)', 'R+2') + inp('ct-hauteur', 'Hauteur moyenne (m)', '', '10.20') + inp('ct-delai', 'Délai travaux (mois)', '12') +
+        inp('ct-cat', 'Catégorie (R+…)', mem.cat || 'R+2') + inp('ct-hauteur', 'Hauteur moyenne (m)', mem.hauteur || '', '10.20') + inp('ct-delai', 'Délai travaux (mois)', mem.delai || '12') +
       '</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + inp('ct-cus', 'CUS', '') + inp('ct-cos', 'COS', '') + '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + inp('ct-cus', 'CUS', mem.cus || '') + inp('ct-cos', 'COS', mem.cos || '') + '</div>' +
       '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 8px;">Honoraires (libres — c\'est toi qui décides ce qui figure sur le papier)</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">' +
-        inp('ct-plancher', 'Surface plancher (m²)', '', '248.20', 'number') +
-        inp('ct-prixm2', 'Coût travaux (DH/m²)', '1200', '', 'number') +
-        inp('ct-taux', 'Taux honoraires (%)', '4', '', 'number') +
+        inp('ct-plancher', 'Surface plancher (m²)', mem.plancher || '', '248.20', 'number') +
+        inp('ct-prixm2', 'Coût travaux (DH/m²)', mem.prixm2 || '1200', '', 'number') +
+        inp('ct-taux', 'Taux honoraires (%)', mem.taux || '4', '', 'number') +
       '</div>' +
       '<div id="ct-calc" style="font-size:12px;color:var(--text-dim);background:var(--surface2);border-radius:8px;padding:10px 14px;margin-bottom:9px;">…</div>' +
-      inp('ct-ttc', 'Total honoraires TTC à inscrire au contrat (DHS)', ttcDevis || '', '', 'number') +
+      inp('ct-ttc', 'Total honoraires TTC à inscrire au contrat (DHS)', mem.ttc || ttcDevis || '', '', 'number') +
       '<div style="font-size:10.5px;color:var(--text-faint);margin:-4px 0 12px;">Pré-rempli avec le TTC du devis. Modifie librement — le montant en lettres suivra.</div>' +
       '<div style="display:flex;gap:10px;margin-top:14px;">' +
         '<button onclick="document.getElementById(\'s33-ct-modal\').remove()" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">Annuler</button>' +
         '<button onclick="s33ContratGenerate()" style="flex:2;padding:12px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;"><span class="mi mi-sm">picture_as_pdf</span> Générer le contrat PDF</button>' +
       '</div></div>';
+    ov.dataset.devisId = String(devisId);
     ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
     const recalc = () => {
@@ -33237,6 +33239,20 @@ window.addEventListener('appinstalled', () => {
       doc.text('(3) Visa du Conseil Régional de l\'Ordre des Architectes du lieu du projet', W / 2, y, { align: 'center' });
 
       footer();
+      // Mémoriser toutes les valeurs sur le devis : le prochain contrat revient pré-rempli
+      try {
+        const modalEl = document.getElementById('s33-ct-modal');
+        const devisId2 = modalEl ? parseInt(modalEl.dataset.devisId) : null;
+        if (devisId2) {
+          const saved = { num: v.num, mo: v.mo, cin: v.cin, dom: v.dom, tel: v.tel, email: v.email,
+            projet: v.projet, tf: v.tf, supT: v.supT, sis: v.sis, pref: v.pref, commune: v.commune,
+            cat: v.cat, hauteur: v.hauteur, delai: v.delai, cus: v.cus, cos: v.cos,
+            plancher: v.plancher || '', prixm2: v.prixm2 || '', taux: v.taux || '', ttc: Math.round(ttc) };
+          sbUpdate('devis', devisId2, { contrat_data: saved }).catch(() => {});
+          const dv2 = (db.devis || []).find(x => x.id === devisId2);
+          if (dv2) dv2.contrat_data = saved;
+        }
+      } catch(_) {}
       const fname = 'Contrat-' + ((v.mo || 'client').split(' ').slice(0, 3).join('-')) + (v.num ? '-' + v.num.replace(/\W+/g, '-') : '') + '.pdf';
       document.getElementById('s33-ct-modal') && document.getElementById('s33-ct-modal').remove();
       s33DownloadPdf(doc, fname);

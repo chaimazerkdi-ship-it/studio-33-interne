@@ -201,6 +201,13 @@
   .s33-swipe-hint { display: none; }
   @media (pointer: coarse) { .s33-swipe-hint { display: inline; } }
 
+  /* iOS centre le texte des champs de date — on le remet à gauche, comme tous les autres champs */
+  input[type="date"], input[type="datetime-local"], input[type="time"], input[type="month"] {
+    text-align: left;
+    -webkit-appearance: none; appearance: none;
+  }
+  input::-webkit-date-and-time-value { text-align: left; }
+
   /* Statut de devis : pastille compacte et identique partout (iOS affichait un menu géant tronqué) */
   .s33-status-select {
     -webkit-appearance: none; appearance: none;
@@ -2921,7 +2928,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.28 — devis en cartes sur téléphone';
+const S33_BUILD = '2026-07-19.29 — dates alignées à gauche';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;

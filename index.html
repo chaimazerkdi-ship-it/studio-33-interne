@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.17 — signature à distance, reçus, tarifs, journal';
+const S33_BUILD = '2026-07-19.18 — contrat d\'architecte pré-rempli';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11402,6 +11402,7 @@ function renderDevisList() {
         <button class="btn btn-ghost" onclick="loadDevis(${d.id})" style="font-size:10px;">Ouvrir</button>
         ${d.status !== 'Accepté' && d.status !== 'Refusé' ? `<button class="btn btn-outline" onclick="convertDevisToInvoice(${d.id})" style="font-size:10px;color:var(--green);border-color:rgba(110,201,138,0.3);"><span class="mi" style="font-size:12px;">verified</span> Valider</button>` : ''}
         ${d.status !== 'Accepté' && d.status !== 'Refusé' ? `<button class="btn btn-ghost" onclick="s33DevisSignShare(${d.id})" style="font-size:10px;padding:4px 10px;color:#7c5cbf;border:1px solid rgba(124,92,191,.35);background:rgba(124,92,191,.06);" title="Envoyer un lien de signature au client"><span class="mi mi-sm">draw</span> Signature</button>` : ''}
+        <button class="btn btn-ghost" onclick="s33ContratModal(${d.id})" style="font-size:10px;padding:4px 10px;color:#1d6fa5;border:1px solid rgba(52,152,219,.35);background:rgba(52,152,219,.06);" title="Générer le contrat type de l'Ordre pré-rempli"><span class="mi mi-sm">gavel</span> Contrat</button>
         ${d.status === 'Envoyé' ? `<button class="btn btn-ghost" onclick="s33RelancerDevis(${d.id})" style="font-size:10px;padding:4px 10px;color:#1da851;border:1px solid rgba(37,211,102,.4);background:rgba(37,211,102,.08);" title="Relancer le prospect par WhatsApp"><span class="mi mi-sm">send</span> Relancer</button>` : ''}
         <button class="btn btn-danger" onclick="deleteDevis(${d.id})">×</button>
       </td>
@@ -32889,6 +32890,338 @@ window.addEventListener('appinstalled', () => {
   }
 
   console.log('✓ Module croissance chargé');
+})();
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  MODULE CONTRAT — Contrat Type Unifié d'Architecte (Ordre, 2024)
+//  pré-rempli depuis le devis/client, honoraires libres, PDF complet
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+  'use strict';
+
+  // Montant en lettres (français, dirhams)
+  window.s33NombreEnLettres = function(n) {
+    n = Math.round(Math.abs(n));
+    if (n === 0) return 'zéro';
+    const U = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf'];
+    const D = ['', 'dix', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante', 'soixante', 'quatre-vingt', 'quatre-vingt'];
+    function cent(x) {
+      let s = '';
+      const c = Math.floor(x / 100), r = x % 100;
+      if (c) s += (c > 1 ? U[c] + ' ' : '') + 'cent' + (c > 1 && r === 0 ? 's' : '');
+      if (r) {
+        if (s) s += ' ';
+        if (r <= 19) s += U[r];
+        else {
+          let d = Math.floor(r / 10), u = r % 10;
+          if (d === 7 || d === 9) { u += 10; d -= 1; }
+          s += D[d];
+          if ((u === 1 || u === 11) && d < 8) s += ' et ' + U[u];
+          else if (u) s += '-' + U[u];
+          if (d === 8 && u === 0) s += 's';
+        }
+      }
+      return s;
+    }
+    let out = '';
+    const millions = Math.floor(n / 1000000), milliers = Math.floor((n % 1000000) / 1000), reste = n % 1000;
+    if (millions) out += (millions > 1 ? cent(millions) + ' millions' : 'un million');
+    if (milliers) out += (out ? ' ' : '') + (milliers > 1 ? cent(milliers) + ' ' : '') + 'mille';
+    if (reste) out += (out ? ' ' : '') + cent(reste);
+    return out;
+  };
+
+  const F = (id) => (document.getElementById(id) || {}).value || '';
+  const N = (id) => parseFloat(String(F(id)).replace(',', '.')) || 0;
+  const money0 = n => Math.round(n).toLocaleString('fr-FR').replace(/[  ]/g, ' ');
+
+  window.s33ContratModal = function(devisId) {
+    const d = (db.devis || []).find(x => x.id === devisId) || {};
+    const nameLc = (d.clientName || '').trim().toLowerCase();
+    const cli = (db.clients || []).find(c => (c.name || '').trim().toLowerCase() === nameLc)
+      || (db.prospects || []).find(p => (p.name || '').trim().toLowerCase() === nameLc) || {};
+    const ttcDevis = Math.round((typeof s33DevisTTC === 'function' ? s33DevisTTC(d) : parseFloat(d.ttc)) || 0);
+    const old = document.getElementById('s33-ct-modal');
+    if (old) old.remove();
+    const inp = (id, label, val, ph, type) =>
+      '<div style="margin-bottom:9px;"><label style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px;">' + label + '</label>' +
+      '<input id="' + id + '" type="' + (type || 'text') + '" value="' + escHTML(val || '') + '" placeholder="' + (ph || '') + '" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface2);color:var(--text);"></div>';
+    const ov = document.createElement('div');
+    ov.id = 's33-ct-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto;';
+    ov.innerHTML = '<div style="background:var(--surface);border-radius:var(--radius);padding:22px;width:100%;max-width:640px;margin:10px 0 40px;" onclick="event.stopPropagation()">' +
+      '<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:2px;"><span class="mi" style="vertical-align:-3px;">gavel</span> Contrat Type Unifié — Ordre des Architectes (2024)</div>' +
+      '<div style="font-size:11.5px;color:var(--text-faint);margin-bottom:14px;">Pré-rempli depuis le devis ' + escHTML(d.num || '') + '. Tous les champs restent modifiables — notamment les honoraires.</div>' +
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 8px;">Contrat</div>' +
+      inp('ct-num', 'N° du contrat', '', 'ex : 12/2026') +
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 8px;">Maître de l\'ouvrage</div>' +
+      inp('ct-mo', 'Nom(s) complet(s)', (d.clientName || '').toUpperCase(), 'MR X ET MME Y') +
+      inp('ct-cin', 'C.I.N n°', '', 'FH15097 / JB285475') +
+      inp('ct-dom', 'Domicilié à', cli.address || '', '') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + inp('ct-tel', 'Téléphone', cli.phone || '') + inp('ct-email', 'Email', cli.email || '') + '</div>' +
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 8px;">Projet & terrain</div>' +
+      inp('ct-projet', 'Projet de', (d.projet || '').toUpperCase(), 'CONSTRUCTION D\'UN R+2') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+        inp('ct-tf', 'Titre Foncier n°', '', 'TF 269277/09') + inp('ct-supterrain', 'Superficie terrain (m²)', '', '88.00') +
+      '</div>' +
+      inp('ct-sis', 'Sis à', '', 'SHEMS TIKIOUINE N°532') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+        inp('ct-pref', 'Préfecture', 'AGADIR IDA OUTANANE') + inp('ct-commune', 'Commune', 'AGADIR') +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">' +
+        inp('ct-cat', 'Catégorie (R+…)', 'R+2') + inp('ct-hauteur', 'Hauteur moyenne (m)', '', '10.20') + inp('ct-delai', 'Délai travaux (mois)', '12') +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + inp('ct-cus', 'CUS', '') + inp('ct-cos', 'COS', '') + '</div>' +
+      '<div style="font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 8px;">Honoraires (libres — c\'est toi qui décides ce qui figure sur le papier)</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">' +
+        inp('ct-plancher', 'Surface plancher (m²)', '', '248.20', 'number') +
+        inp('ct-prixm2', 'Coût travaux (DH/m²)', '1200', '', 'number') +
+        inp('ct-taux', 'Taux honoraires (%)', '4', '', 'number') +
+      '</div>' +
+      '<div id="ct-calc" style="font-size:12px;color:var(--text-dim);background:var(--surface2);border-radius:8px;padding:10px 14px;margin-bottom:9px;">…</div>' +
+      inp('ct-ttc', 'Total honoraires TTC à inscrire au contrat (DHS)', ttcDevis || '', '', 'number') +
+      '<div style="font-size:10.5px;color:var(--text-faint);margin:-4px 0 12px;">Pré-rempli avec le TTC du devis. Modifie librement — le montant en lettres suivra.</div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px;">' +
+        '<button onclick="document.getElementById(\'s33-ct-modal\').remove()" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">Annuler</button>' +
+        '<button onclick="s33ContratGenerate()" style="flex:2;padding:12px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;"><span class="mi mi-sm">picture_as_pdf</span> Générer le contrat PDF</button>' +
+      '</div></div>';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    const recalc = () => {
+      const est = N('ct-plancher') * N('ct-prixm2');
+      const ht = est * N('ct-taux') / 100;
+      const el = document.getElementById('ct-calc');
+      if (el) el.innerHTML = 'Estimation travaux : <b>' + money0(est) + ' DH</b> · Honoraires calculés : ' + money0(ht) + ' HT + TVA 20 % = <b>' + money0(ht * 1.2) + ' DHS TTC</b>' +
+        ' <button onclick="document.getElementById(\'ct-ttc\').value=' + Math.round(ht * 1.2) + '" style="margin-left:8px;padding:2px 10px;border-radius:99px;border:1px solid var(--border);background:var(--surface);font-family:inherit;font-size:10.5px;cursor:pointer;color:var(--gold);font-weight:700;">Utiliser ce montant</button>';
+    };
+    ['ct-plancher', 'ct-prixm2', 'ct-taux'].forEach(id => document.getElementById(id).addEventListener('input', recalc));
+    recalc();
+  };
+
+  window.s33ContratGenerate = async function() {
+    toast('Préparation du contrat…');
+    try {
+      if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+      if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const W = 210, M = 16, BOT = 270;
+      let y = 16;
+      const footer = () => {
+        const n = doc.getNumberOfPages();
+        for (let i = 1; i <= n; i++) {
+          doc.setPage(i);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(60);
+          doc.text('CONTRAT TYPE UNIFIE D\'ARCHITECTE-CONSTRUCTION- (SECTEUR PRIVE) 2024', W / 2, 288, { align: 'center' });
+          doc.setFont('helvetica', 'normal');
+          doc.text(i + '/' + n, W - M, 284, { align: 'right' });
+        }
+      };
+      const need = h => { if (y + h > BOT) { doc.addPage(); y = 18; } };
+      const para = (txt, o) => {
+        o = o || {};
+        doc.setFont('helvetica', o.bold ? 'bold' : 'normal');
+        doc.setFontSize(o.size || 9.3);
+        doc.setTextColor(0);
+        const lines = doc.splitTextToSize(txt, W - 2 * M - (o.indent || 0));
+        const lh = (o.size || 9.3) * 0.42;
+        lines.forEach(l => {
+          need(lh + 1);
+          doc.text(l, M + (o.indent || 0), y, o.align === 'center' ? { align: 'center' } : undefined);
+          if (o.align === 'center') { doc.text(' ', M, y); }
+          y += lh;
+        });
+        y += (o.after != null ? o.after : 1.6);
+      };
+      const paraC = (txt, o) => {
+        o = o || {};
+        doc.setFont('helvetica', o.bold ? 'bold' : 'normal');
+        doc.setFontSize(o.size || 9.3);
+        const lines = doc.splitTextToSize(txt, W - 2 * M);
+        const lh = (o.size || 9.3) * 0.42;
+        lines.forEach(l => { need(lh + 1); doc.text(l, W / 2, y, { align: 'center' }); y += lh; });
+        y += (o.after != null ? o.after : 1.6);
+      };
+      const heading = t => para(t, { bold: true, size: 9.6, after: 1.2 });
+      const puce = t => para('- ' + t, { indent: 3 });
+
+      const v = {
+        num: F('ct-num'), mo: F('ct-mo'), cin: F('ct-cin'), dom: F('ct-dom'), tel: F('ct-tel'), email: F('ct-email'),
+        projet: F('ct-projet'), tf: F('ct-tf'), supT: F('ct-supterrain'), sis: F('ct-sis'), pref: F('ct-pref'), commune: F('ct-commune'),
+        cat: F('ct-cat'), hauteur: F('ct-hauteur'), delai: F('ct-delai') || '12', cus: F('ct-cus'), cos: F('ct-cos'),
+        plancher: N('ct-plancher'), prixm2: N('ct-prixm2'), taux: N('ct-taux') || 4, ttc: N('ct-ttc')
+      };
+      const est = v.plancher * v.prixm2;
+      const ttc = v.ttc > 0 ? v.ttc : est * v.taux / 100 * 1.2;
+      const ht = ttc / 1.2, tva = ttc - ht;
+      const tauxLettres = { 3: 'TROIS', 4: 'QUATRE', 5: 'CINQ', 6: 'SIX' }[Math.round(v.taux)] || String(v.taux);
+
+      // ── Page 1 : en-tête, parties ──
+      paraC('ORDRE NATIONAL DES ARCHITECTES', { bold: true, size: 11, after: 0.5 });
+      paraC('CONSEIL NATIONAL', { size: 9, after: 2 });
+      paraC('C5, Residence Moulay Ismaïl – Square Washington - RABAT', { size: 8, after: 0.4 });
+      paraC('Tél. 05.37.26.29.82 - Fax 05.37.26.29.83 / E-mail : conseilnationaldesarchitectes@gmail.com', { size: 8, after: 4 });
+      para('CR de : SUD', { bold: true, size: 10, after: 5 });
+      paraC('CONTRAT TYPE UNIFIE D\'ARCHITECTE', { bold: true, size: 13, after: 1 });
+      paraC('CONSTRUCTION (SECTEUR PRIVE)', { bold: true, size: 13, after: 2 });
+      paraC('N° ' + (v.num || '……………………'), { size: 10, after: 2 });
+      paraC('Version adoptée par le Conseil National de l\'Ordre des Architectes', { bold: true, size: 9.5, after: 0.4 });
+      paraC('Lors de la réunion statutaire du 28 Février 2024', { bold: true, size: 9.5, after: 5 });
+      para('Entre', { bold: true });
+      para(v.mo || '……………………', { bold: true });
+      para('agissant en qualité de : MAITRE D\'OUVRAGE');
+      para('C.I.N N° : ' + (v.cin || '……………………'));
+      para('Domicilié à : ' + (v.dom || '……………………'));
+      para('Tél : ' + (v.tel || '……………………'));
+      para('Email : ' + (v.email || '……………………'), { after: 3 });
+      para('Désigné ci-après par « le maître de l\'ouvrage » ;', { after: 1 });
+      para('D\'une part,', { bold: true, indent: 140, after: 3 });
+      para('Et,', { bold: true });
+      para('Société Studio 33 architects SARL.AU « Mme Zerkdi Chaima » architecte,', { bold: true });
+      para('Inscrit à l\'ordre national des architectes, et autorisé à exercer sous le n° 5245 du 26/04/2021.');
+      para('Domicilié à : N°01, RDC, Imm La Paternelle, Rue Madrid, AGADIR.');
+      para('Conseil régional du : Région SUD.');
+      para('Taxe professionnelle N° : 48303312 - Identifiant Fiscal N° 52549060 - Registre de Commerce N° 52055.', { after: 3 });
+      para('Désigné ci-après par « architecte - maître de l\'œuvre » ;', { after: 1 });
+      para('D\'autre Part.', { bold: true, indent: 140, after: 3 });
+      paraC('Il a été convenu d\'un commun accord ce qui suit :', { bold: true, after: 4 });
+
+      heading('TEXTES DE REFERENCE');
+      puce('Dahir formant code des obligations et contrats du 12 août 1913 ;');
+      puce('Loi n° 016/89 du 10 septembre 1993 relative à l\'exercice de la profession d\'architecte et à l\'institution de l\'Ordre national des architectes ;');
+      puce('Loi n° 25-90 du 17 juin 1992 relative aux lotissements, groupes d\'habitations et morcellements et la Loi n° 12-90 du 17 juin 1992 relative à l\'urbanisme, tel qu\'elles ont été amendées par la loi n° 66-12 du 19/09/2016 relative au contrôle et répression des infractions en matière d\'urbanisme et de construction ;');
+      puce('Loi n° 02-2000 relative aux droits d\'auteur et droits voisins, telle qu\'elle a été modifiée et complétée par la loi n° 34-05 du 14 février 2006 et la loi n° 79-12 du 20 mai 2014 ;');
+      puce('Le règlement intérieur en vigueur de l\'Ordre National des Architectes ;');
+      puce('Loi n° 104-12 sur la liberté des prix et de la concurrence telle que modifiée et complétée par la loi 40.21 ;');
+      puce('L\'accord d\'entente à l\'amiable signé entre le Conseil de la Concurrence et le Conseil National de l\'Ordre des Architectes en date du 22 février 2022 ;');
+      puce('Annexe n°1 au présent contrat d\'architecte détaillant les missions et les obligations des deux parties ;');
+
+      heading('Article 1 : Objet du contrat :');
+      para('Le maître d\'ouvrage, ' + (v.mo || '……') + ', confie à Mme CHAIMA ZERKDI architecte, la mission de concevoir et suivre l\'exécution jusqu\'à son terme du projet de : ' + (v.projet || '……') + '.');
+      para('Sur un terrain objet du Titre Foncier n° : ' + (v.tf || '……') + ' d\'une superficie de : ' + (v.supT || '……') + ' m².');
+      para('Sis à : ' + (v.sis || '……'));
+      para('Préfecture : ' + (v.pref || '……') + '        Commune : ' + (v.commune || '……'));
+      para('Selon les modalités détaillées ci-après.', { after: 3 });
+
+      heading('Article 2 : Mission Obligatoires de l\'architecte :');
+      para('L\'Architecte sert, en toute conscience les intérêts de son client, conformément aux dispositions légales en vigueur notamment la loi n° 16.89, et le règlement intérieur de l\'Ordre National des Architectes.');
+      para('- L\'architecte se doit disposer de moyens humains et matériels pour accomplir les missions prévues dans le contrat signé entre l\'architecte et le client.');
+      para('La mission de l\'Architecte, telle que détaillée dans les articles 1 et 3 en annexe n°1, comporte :');
+      puce('Concevoir ou modifier l\'œuvre architecturale.');
+      puce('Etablir tous documents architecturaux graphiques et écrits relatifs à la conception ou la modification de la construction, en particulier ceux à fournir à la commune pour l\'obtention du permis de construire conformément à la réglementation en vigueur.');
+      puce('Veiller à la conformité des études techniques réalisées par les ingénieurs spécialisés avec la conception architecturale et les plans autorisés « NE VARIETUR ».');
+      puce('Suivre les travaux de construction, et en contrôler la conformité avec les plans architecturaux et les indications de l\'autorisation de construire, et établir une attestation déclarant l\'achèvement des travaux et la conformité aux plans autorisés en vue d\'obtention du permis d\'habiter.');
+
+      heading('Article 3 : Obligations du maître d\'ouvrage :');
+      para((v.mo || '……') + ' en tant que maître d\'ouvrage, s\'engage avec l\'Architecte pour les missions définies dans l\'article 2 du présent contrat. Il lui notifie par écrit les éléments et phases de ces missions ; chaque phase est réceptionnée et approuvée par écrit par le maître d\'ouvrage, et vaut ordre de service pour la phase suivante. Le maître d\'ouvrage peut désigner une personne physique ayant qualité pour le représenter et donner toutes informations à l\'Architecte.');
+      para('Il appartient au seul maître de l\'ouvrage de justifier, à l\'égard des tiers, de son droit de construire sur le terrain support du projet. Sous son entière responsabilité, il communique à l\'architecte tous renseignements relatifs à la propriété, aux limites séparatives, mitoyennetés et servitudes, aux baux et règlements de copropriété, etc.');
+      para('3-1 Programme', { bold: true, after: 1 });
+      para('Le maître d\'ouvrage fournit à l\'Architecte le programme détaillé de l\'opération projetée, permettant de définir tous les éléments de la composition, leur importance, leurs relations et leurs exigences particulières.');
+      para('Le programme doit être compatible avec le terrain dont dispose le maître de l\'ouvrage. Si les constructions à réaliser sont assujetties à des normes ou prescriptions particulières, le programme doit comporter la référence précise des textes définissant ces sujétions. La validation de l\'esquisse le cas échéant vaut validation du programme.');
+      para('Le maître d\'ouvrage s\'engage à :');
+      puce('Fournir à l\'architecte tous les documents nécessaires à la conception et à l\'établissement des plans demandés (plans topographiques et parcellaires, études des sols, relevés, etc.) conformément à l\'article 4 en annexe n°1, ainsi que toute pièce administrative à verser au dossier de demande d\'autorisation de construire.');
+      puce('Il est tenu de faire dresser, ses frais, par des ingénieurs spécialisés, les études techniques imposées par les règlements en vigueur (plans coté, plans de béton armé, électricité, plomberie, chauffage, climatisation, notice de sécurité incendie, étude d\'impact etc.).');
+      puce('Il notifie à l\'architecte par écrit la date souhaitée pour l\'ouverture de chantier afin que ce dernier annonce la déclaration d\'ouverture de chantier et le commencement des travaux.');
+      puce('Il permettra aux agents de l\'administration et du Conseil Régional de l\'Ordre National des Architectes de procéder aux visites et contrôles qu\'ils jugent utiles, chacun dans la limite de ses prérogatives.');
+      para('Outre l\'obligation de l\'identification du chantier (Affichage), il est tenu de garder sur les lieux des travaux, une copie des plans autorisés « NE VARIETUR » et de réserver à l\'architecte un lieu sécurisé pour que ce dernier y tienne le cahier de chantier.');
+      para('3-2 Responsabilité, sécurité et assurance', { bold: true, after: 1 });
+      para('Le maître d\'ouvrage veille à ce que les intervenants (architecte et ingénieurs spécialisés) souscrivent à une assurance professionnelle couvrant leurs responsabilités professionnelles conformément aux lois et règlements en vigueur, l\'entreprise quant à elle devra obligatoirement souscrire à une assurance tout risque chantier « RC et travaux » et toute assurance prévue par la loi. L\'Architecte n\'assumera les responsabilités professionnelles définies par les lois et règlements en vigueur que dans la mesure de ses fautes professionnelles. Il ne pourra être tenu pour responsable des fautes commises par d\'autres intervenants.');
+
+      heading('Article 4 : Présentation du Projet et Estimation Provisoire des Travaux :');
+      para('Consistance du projet :', { bold: true, after: 1 });
+      para('a- Superficie totale du terrain : ' + (v.supT || '……') + ' m²');
+      para('b- Superficie de plancher y compris sous-sol : ' + (v.plancher ? v.plancher.toLocaleString('fr-FR') + ' m²' : '……'));
+      para('c- Coefficient d\'utilisation du sol (CUS) : ' + (v.cus || '……'));
+      para('d- Coefficient d\'occupation du sol (COS) : ' + (v.cos || '……'));
+      para('e- Hauteur moyenne des constructions : ' + (v.hauteur ? v.hauteur + ' m' : '……') + ', soit (' + (v.cat || 'R+…') + ')');
+      para('Estimation provisoire des travaux (valable jusqu\'à la connaissance du montant réel total des travaux) :', { bold: true });
+      para('Catégorie de bâtiment (' + (v.cat || '……') + ') au prix de ' + (v.prixm2 ? money0(v.prixm2) : '……') + ' DHS / m²');
+      para('Surfaces couvertes hors œuvre : ' + (v.plancher ? v.plancher.toLocaleString('fr-FR') : '……') + ' m² X ' + (v.prixm2 ? money0(v.prixm2) : '……') + ' DHS (/m²) = ' + (est ? money0(est) : '……') + ' DHS', { after: 3 });
+
+      heading('Article 5 : Honoraires de l\'Architecte - Avenant :');
+      para('Les honoraires de l\'architecte sont fixés librement et en commun accord avec le maître d\'ouvrage, en tenant compte de la mission de l\'architecte, de l\'importance des prestations demandées « missions complémentaires », et de la catégorie du projet.', { bold: true });
+      para('Les honoraires sont calculés sur la base d\'un taux de ' + tauxLettres + ' pour cent (' + v.taux + ' %) du montant des travaux toutes taxes comprises, la TVA sur les honoraires étant en sus.');
+      para('Tout avenant au projet, objet du présent contrat, modifiant en hausse ou en baisse le montant réel des travaux et les honoraires engendrés devra être soumis au visa et approbation des parties concernées (le maître d\'ouvrage, l\'architecte, Conseil Régional de l\'Ordre des Architectes).');
+      para('Calcul des honoraires :', { bold: true, after: 1 });
+      para('Jusqu\'à passation des marchés des travaux, le calcul des honoraires de l\'architecte sera établi sur la base de l\'estimation provisoire du projet, établie par l\'architecte et approuvée par le maître d\'ouvrage, conformément au barème des coûts de construction élaboré par l\'administration, et adopté par le Conseil National de l\'Ordre des Architectes.');
+      para('Superficie totale du plancher couvert en m² : ' + (v.plancher ? v.plancher.toLocaleString('fr-FR') + ' m²' : '……'));
+      para('Le coût moyen des travaux tout corps d\'état en DHS : ' + (v.prixm2 ? money0(v.prixm2) + ' DH' : '……'));
+      para('Estimation provisoire en dh : ' + (est ? money0(est) + ' DH' : '……'));
+      para('Montant des honoraires = ' + money0(ht) + ' DHS Hors TVA', { bold: true });
+      para('TVA en vigueur (20 %) = ' + money0(tva) + ' DHS', { bold: true });
+      para('Total honoraires TTC à percevoir : ' + money0(ttc) + ' DHS.', { bold: true });
+      para('NB : Le présent montant d\'honoraires peut être mis à jour en rapport avec le coût réel des travaux.', { after: 3 });
+
+      heading('Article 6 : Modification du projet');
+      para('Dans le cas où pendant le cours des travaux, le maître d\'ouvrage désirerait la modification, la diminution ou l\'augmentation des constructions, l\'architecte devra s\'y conformer. Toute modification devra se faire avec l\'accord de l\'architecte - maître d\'œuvre, et l\'autorisation des autorités compétentes. Les plans modificatifs correspondants se feront à la charge du maître de l\'ouvrage. Les frais relatifs à ces modifications demandées par le maître d\'ouvrage seront arrêtés en commun accord entre ce dernier et l\'architecte.', { after: 3 });
+
+      heading('Article 7 : Echelonnement des missions de l\'architecte - Modalités de règlement des Honoraires :');
+      para('Les modalités de règlement de l\'architecte sont établies librement et d\'un commun accord entre le maître d\'ouvrage et l\'architecte en fonction de l\'échelonnement des missions telles que figurées au tableau ci-dessous :', { after: 2 });
+      need(90);
+      doc.autoTable({
+        startY: y,
+        margin: { left: M, right: M },
+        styles: { font: 'helvetica', fontSize: 7.6, textColor: [0, 0, 0], lineColor: [40, 40, 40], lineWidth: 0.25, cellPadding: 1.6 },
+        headStyles: { fillColor: [235, 232, 225], fontStyle: 'bold' },
+        head: [['Phase', '', 'Contenu de la phase/Missions', 'Taux %', 'Cumul En %', 'Base de calcul des honoraires', 'Délai de remise', 'Exemplaires à fournir au MO']],
+        body: [
+          ['A', '1', 'Signature du Contrat', '5 %', '5 %', 'Estimation de L\'architecte', '3 jours', '2exp'],
+          ['', '2', 'Etudes préliminaires (esquisses)', '5 %', '10 %', 'Estimation de L\'architecte', '1 semaine', '2exp'],
+          ['', '3', 'Remise Avant-Projet Sommaire (APS)', '10 %', '20 %', 'Estimation de L\'architecte', '1 semaine', '2exp'],
+          ['', '4', 'Remise du dossier de demande d\'autorisation de construire', '5 %', '25 %', 'Estimation de L\'architecte', '1 semaine', 'Dépôt+1exp'],
+          ['', '5', 'Obtention de l\'avis conforme', '5 %', '30 %', 'Estimation de L\'architecte', '3 jours', '2exp'],
+          ['B', '1', 'Etablissement Avant-projet détaillé (APD)', '5 %', '35 %', 'Estimation de L\'architecte', '3 jours', '2exp'],
+          ['', '2', 'Remise des plans détails d\'exécution (PE)', '5 %', '40 %', 'Estimation de L\'architecte', '1 semaine', '2exp'],
+          ['', '3', 'Dossier de consultations entreprises (DCE)', '5 %', '45 %', 'Estimation de L\'architecte', '1 semaine', '2exp'],
+          ['', '4', 'Adjudication marchés des travaux', '5 %', '50 %', 'Montant du ou des marchés', '1 semaine', '2exp'],
+          ['C', '1', 'Direction et Suivi des travaux', '35 %', '85 %', 'Montant décompte/ travaux', '1 année', '2exp'],
+          ['', '2', 'A la réception provisoire (le cas échéant *) ou délivrance de l\'attestation de conformité et de fin des travaux', '5 %', '90 %', 'Montant décompte définitif', '3 jours', 'P.V. / 3exp'],
+          ['', '3', 'A la réception définitive (le cas échéant *)', '10 %', '100 %', 'Montant décompte définitif', '3 jours', 'P.V. / 3exp']
+        ],
+        columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 7 }, 2: { cellWidth: 62 }, 3: { cellWidth: 13 }, 4: { cellWidth: 14 }, 5: { cellWidth: 30 }, 6: { cellWidth: 20 }, 7: { cellWidth: 22 } }
+      });
+      y = doc.lastAutoTable.finalY + 4;
+      para('* Le projet, objet du contrat, peut faire l\'objet soit d\'une seule réception sanctionnée par une attestation de conformité ou de deux réceptions « à la demande du maître d\'ouvrage », un provisoire et l\'autre définitive avec une période entre les deux ne dépassant pas une année.', { size: 8, after: 3 });
+
+      heading('Article 8 : Délais :');
+      para('Les délais pour l\'établissement des études et ceux nécessaires à la réalisation des travaux seront fixés d\'un commun accord entre l\'architecte et le maître d\'ouvrage, et portés sur le tableau de l\'article 7 ci-dessus.');
+      para('L\'architecte effectuera personnellement ses visites de chantier, et pourra se faire représenter par une personne qualifiée de son cabinet.');
+      para('Les délais pour la réalisation des travaux sont fixés à : ' + (v.delai || '12') + ' (' + s33NombreEnLettres(parseInt(v.delai) || 12) + ') mois.');
+      para('Au-delà de ces délais, seraient appliquées les dispositions susmentionnées :', { after: 3 });
+
+      heading('Article 9 : Litiges :');
+      para('En cas de litige, les deux parties s\'engagent à recourir à l\'avis du Conseil Régional de l\'Ordre des Architectes dans une première tentative d\'arrangement à l\'amiable avant de soumettre, le cas échéant, le litige devant les tribunaux compétents.', { after: 5 });
+
+      need(80);
+      paraC('Objet de l\'Opération : Projet de ' + (v.projet || '……') + '.', { bold: true, size: 10.5, after: 3 });
+      para('Le présent contrat est convenu librement d\'un commun accord entre le maître d\'ouvrage et l\'Architecte pour un montant global d\'honoraires toutes taxes comprises de ' + money0(ttc) + ' DHS (en chiffres)');
+      para('et ' + s33NombreEnLettres(ttc) + ' dirhams (en lettres).', { bold: true, after: 3 });
+      para('NB : - Le présent montant d\'honoraires sera mis à jour en fonction du coût réel des travaux.');
+      para('- Le Maître d\'Ouvrage ayant pris connaissance des termes du contrat unifié, des annexes n°1 et 2, ainsi que les textes et lois auxquels il se réfère.', { after: 8 });
+
+      need(58);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      doc.text('(1) Signé : l\'Architecte - Maître de l\'œuvre (Lu et accepté)', M, y);
+      doc.text('(2) Signé : le Maître de l\'ouvrage (Lu et accepté)', W / 2 + 8, y);
+      y += 34;
+      doc.setFontSize(8.5);
+      doc.text('(3) Visa du Conseil Régional de l\'Ordre des Architectes du lieu du projet', W / 2, y, { align: 'center' });
+
+      footer();
+      const fname = 'Contrat-' + ((v.mo || 'client').split(' ').slice(0, 3).join('-')) + (v.num ? '-' + v.num.replace(/\W+/g, '-') : '') + '.pdf';
+      document.getElementById('s33-ct-modal') && document.getElementById('s33-ct-modal').remove();
+      s33DownloadPdf(doc, fname);
+      logActivity('gen_contrat', currentUser.name + ' a généré un contrat d\'architecte — ' + (v.mo || '') + ' (' + money0(ttc) + ' DHS TTC)', 'contrat', null, v.mo);
+      return doc;
+    } catch(e) {
+      console.error('contrat', e);
+      toast('Génération impossible — réessayez');
+    }
+  };
+
+  console.log('✓ Module contrat chargé');
 })();
 </script>
 

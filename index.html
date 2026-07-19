@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.22 — anti-doublons échéancier';
+const S33_BUILD = '2026-07-19.23 — rafraîchissement fiche projet';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -8115,6 +8115,10 @@ async function saveProject() {
     await loadDB();
     renderProjects();
     renderDashboard();
+    // Si on modifie depuis la fiche projet, rafraîchir la page ouverte (sinon l'ancien nom reste affiché)
+    if (editId && currentPage === 'project-detail' && typeof renderProjectDetailPage === 'function') {
+      try { renderProjectDetailPage(); } catch(_) {}
+    }
     document.getElementById('project-edit-id').value = '';
   } finally {
     setLoading(false);

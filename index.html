@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.26 — signature lissée partout';
+const S33_BUILD = '2026-07-19.27 — la signature devient visible';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11381,6 +11381,7 @@ function renderDevisList() {
     // Couleur du statut appliquée directement sur le menu déroulant
     const statusStyles = {
       'Accepté':   'background:rgba(61,214,140,.14);border:1px solid rgba(61,214,140,.55);color:#1a9a5c;font-weight:700;',
+      'Signé':     'background:rgba(124,92,191,.12);border:1px solid rgba(124,92,191,.5);color:#7c5cbf;font-weight:700;',
       'Refusé':    'background:rgba(240,112,112,.12);border:1px solid rgba(240,112,112,.55);color:#c0392b;font-weight:700;',
       'Envoyé':    'background:rgba(59,130,246,.10);border:1px solid rgba(59,130,246,.45);color:#2563eb;font-weight:700;',
       'Brouillon': 'background:var(--surface2);border:1px solid var(--border);color:var(--text);'
@@ -11401,6 +11402,7 @@ function renderDevisList() {
           <option value="Accepté" ${d.status==='Accepté'?'selected':''}>Accepté</option>
           <option value="Refusé" ${d.status==='Refusé'?'selected':''}>Refusé</option>
         </select>
+        ${(d.signatures && d.signatures.client && d.signatures.client.image) ? `<div onclick="s33VoirSignature(${d.id})" style="font-size:9.5px;color:#7c5cbf;font-weight:700;cursor:pointer;margin-top:4px;white-space:nowrap;" title="Signée par ${escHTML(d.signatures.client.signer_name || '')}"><span class="mi" style="font-size:11px;vertical-align:-2px;">draw</span> Voir la signature</div>` : ''}
       </td>
       <td style="display:flex;gap:6px;align-items:center;">
         <button class="btn btn-ghost" onclick="loadDevis(${d.id})" style="font-size:10px;">Ouvrir</button>
@@ -11881,20 +11883,33 @@ async function s33DevisPdf() {
     bullet('Virement bancaire : sur le compte Studio 33 Architects — IBAN : 022010000008003079157925');
 
     // Signatures : ancrées vers le bas de page (nouvelle page si nécessaire)
+    // Les vraies signatures enregistrées (sur place ou à distance) sont dessinées dans les cadres
+    const _dSig = (typeof currentDevisId !== 'undefined' && currentDevisId)
+      ? ((db.devis || []).find(x => x.id === currentDevisId) || {}) : {};
+    const _sigs = _dSig.signatures || {};
     let ySig = Math.max(y + 6, 232);
     if (ySig > 250) { doc.addPage(); ySig = 232; }
-    const sig = (x, title, name, label) => {
+    const sig = (x, title, name, label, sd) => {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, INK);
       doc.text(title, x + 31, ySig, { align: 'center' });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
       doc.text(name, x + 31, ySig + 4.2, { align: 'center' });
       doc.setDrawColor(200); doc.setFillColor(249, 249, 246); doc.setLineWidth(0.2);
       doc.roundedRect(x, ySig + 7, 62, 20, 1.5, 1.5, 'FD');
-      doc.setFontSize(7.2); doc.setTextColor.apply(doc, FAINT);
-      doc.text(label, x + 31, ySig + 17.5, { align: 'center' });
+      if (sd && sd.image) {
+        try {
+          doc.addImage(sd.image, 'PNG', x + 13, ySig + 8.2, 36, 17);
+        } catch(_) {}
+        doc.setFontSize(6.4); doc.setTextColor.apply(doc, FAINT);
+        const dt = sd.signed_at ? new Date(sd.signed_at) : null;
+        doc.text('Signé' + (dt ? ' le ' + dt.toLocaleDateString('fr-FR') + ' à ' + dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '') + (sd.via === 'lien_distant' ? ' — à distance' : ''), x + 31, ySig + 30.5, { align: 'center' });
+      } else {
+        doc.setFontSize(7.2); doc.setTextColor.apply(doc, FAINT);
+        doc.text(label, x + 31, ySig + 17.5, { align: 'center' });
+      }
     };
-    sig(M, "Maître d'œuvre :", 'STUDIO 33 ARCHITECTS', 'Cachet & Signature');
-    sig(W - M - 62, "Maître d'ouvrage :", (clientName || '').toUpperCase(), 'Signature');
+    sig(M, "Maître d'œuvre :", 'STUDIO 33 ARCHITECTS', 'Cachet & Signature', _sigs.studio);
+    sig(W - M - 62, "Maître d'ouvrage :", (clientName || '').toUpperCase(), 'Signature', _sigs.client);
 
     // Bande de contacts : bas de page fixe
     const yB = 276;
@@ -32666,6 +32681,25 @@ window.addEventListener('appinstalled', () => {
       window.open('https://wa.me/' + (intl ? intl : '') + '?text=' + msg, '_blank');
       toast('Lien de signature copié et prêt à envoyer');
     } catch(e) { console.error('sign share', e); toast('Lien impossible — réessayez'); }
+  };
+
+  // Visionneuse de signature : qui a signé, quand, et la signature elle-même
+  window.s33VoirSignature = function(id) {
+    const d = (db.devis || []).find(x => x.id === id);
+    const sc = d && d.signatures && d.signatures.client;
+    if (!sc || !sc.image) { toast('Pas encore de signature client sur ce devis'); return; }
+    const dt = sc.signed_at ? new Date(sc.signed_at) : null;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer;';
+    ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:100%;text-align:center;cursor:default;" onclick="event.stopPropagation()">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#a58a3c;margin-bottom:4px;">Signature du client — ' + escHTML(d.num || '') + '</div>' +
+      '<div style="font-size:16px;font-weight:800;color:#1a1a1a;">' + escHTML(sc.signer_name || d.clientName || '') + '</div>' +
+      (dt ? '<div style="font-size:12px;color:#888;margin-top:2px;">Signé le ' + dt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) + ' à ' + dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + (sc.via === 'lien_distant' ? ' · à distance' : '') + '</div>' : '') +
+      '<img src="' + sc.image + '" alt="signature" style="width:100%;max-height:180px;object-fit:contain;background:#faf8f3;border:1px solid #eee;border-radius:10px;margin-top:14px;">' +
+      '<button onclick="this.closest(\'div\').parentElement.remove()" style="margin-top:16px;padding:9px 24px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">Fermer</button>' +
+    '</div>';
+    ov.onclick = () => ov.remove();
+    document.body.appendChild(ov);
   };
 
   // Côté client : page de signature (?sign=<token>)

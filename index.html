@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.15 — facturation en bas d\'écran';
+const S33_BUILD = '2026-07-19.16 — rappels auto, partiels, chèques, brief';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10022,10 +10022,16 @@ function s33SyncDueDate(force) {
   dueEl.value = d.toISOString().slice(0, 10);
 }
 
+function s33InvRest(inv) {
+  // Reste dû d'une facture : montant TTC moins les paiements partiels enregistrés
+  if (inv.status === 'Payée') return 0;
+  return Math.max(0, (parseFloat(inv.amount) || 0) - (parseFloat(inv.paid_amount) || 0));
+}
+
 function renderInvoices() {
   const pending = db.invoices.filter(i => i.status === 'En attente');
   const paid = db.invoices.filter(i => i.status === 'Payée');
-  const pendingTotal = pending.reduce((s, i) => s + i.amount, 0);
+  const pendingTotal = pending.reduce((s, i) => s + s33InvRest(i), 0);
 
   const statsEl = document.getElementById('invoice-stats');
   if (statsEl) {
@@ -10135,6 +10141,8 @@ function renderInvoices() {
         <td style="font-size:13px;color:var(--gold);font-weight:600;">${formatNum(ttc)} MAD</td>
         <td>
           <span class="badge ${inv.status === 'Payée' ? 'badge-green' : 'badge-red'}" style="cursor:pointer;font-size:10px;" onclick="toggleInvoiceStatus(${inv.id})">${inv.status}</span>
+          ${(inv.status !== 'Payée' && (parseFloat(inv.paid_amount) || 0) > 0) ? `<div style="font-size:10px;color:#b7600a;font-weight:800;margin-top:4px;">Partiel : ${formatNum(parseFloat(inv.paid_amount))} reçu · reste ${formatNum(s33InvRest(inv))}</div>` : ''}
+          ${inv.payment_method === 'Chèque' ? `<div style="margin-top:4px;"><span onclick="s33ChequeCycle(${inv.id})" title="Toucher pour faire avancer le chèque" style="cursor:pointer;font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px;${(inv.cheque_status || 'Reçu') === 'Encaissé' ? 'background:rgba(61,214,140,.15);color:#1a9a5c;' : ((inv.cheque_status === 'Déposé') ? 'background:rgba(59,130,246,.12);color:#2563eb;' : 'background:rgba(217,119,6,.12);color:#b7600a;')}">Chèque : ${inv.cheque_status || 'Reçu'}</span></div>` : ''}
           ${isLate ? `<div style="font-size:10px;color:#c0392b;font-weight:800;margin-top:4px;"><span class="mi" style="font-size:11px;vertical-align:-2px;">warning</span> En retard de ${lateDays} j</div>`
             : (inv.status === 'En attente' && inv.due_date ? `<div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Échéance le ${new Date(inv.due_date + 'T00:00').toLocaleDateString('fr-MA',{day:'numeric',month:'short'})}</div>` : '')}
           ${inv.paid_date ? `<div style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap;">
@@ -10145,6 +10153,8 @@ function renderInvoices() {
         <td>
           <div style="display:flex;gap:6px;">
             ${isLate ? `<button class="btn btn-ghost" onclick="s33RelancerFacture(${inv.id})" style="font-size:10px;padding:4px 10px;color:#1da851;border:1px solid rgba(37,211,102,.4);background:rgba(37,211,102,.08);" title="Relancer le client par WhatsApp"><span class="mi mi-sm">send</span> Relancer</button>` : ''}
+            ${inv.status === 'En attente' ? `<button class="btn btn-ghost" onclick="s33PartialPayment(${inv.id})" style="font-size:10px;padding:4px 10px;color:#b7600a;border:1px solid rgba(217,119,6,.35);background:rgba(217,119,6,.06);" title="Enregistrer un paiement partiel">Partiel</button>` : ''}
+            ${(inv.status === 'Payée' || (parseFloat(inv.paid_amount) || 0) > 0) ? `<button class="btn btn-ghost" onclick="s33AttestationPdf(${inv.id})" style="font-size:10px;padding:4px 10px;" title="Attestation de paiement (sans facture)">Attest.</button>` : ''}
             <button class="btn btn-ghost" onclick="editInvoice(${inv.id})" style="font-size:10px;padding:4px 10px;"><span class="mi mi-sm">edit</span></button>
             <button class="btn btn-ghost" onclick="s33InvoicePdf(${inv.id})" style="font-size:10px;padding:4px 10px;">PDF</button>
             <button class="btn btn-danger" onclick="deleteInvoice(${inv.id})" style="font-size:10px;padding:4px 10px;"><span class="mi mi-sm">delete</span></button>
@@ -32095,13 +32105,15 @@ window.addEventListener('appinstalled', () => {
     }
     const late = lateInvoices();
     if (!late.length) { box.innerHTML = ''; return; }
-    const total = late.reduce((s, x) => s + (Number(x.inv.amount) || 0), 0);
+    const restOf = i => (typeof s33InvRest === 'function') ? s33InvRest(i) : (Number(i.amount) || 0);
+    const total = late.reduce((s, x) => s + restOf(x.inv), 0);
     const rows = late.map(x => {
       const cli = (db.clients || []).find(c => c.id === x.inv.clientId);
+      const partial = (parseFloat(x.inv.paid_amount) || 0) > 0;
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(220,50,50,.12);flex-wrap:wrap;">' +
         '<span style="font-family:\'DM Mono\',monospace;font-size:11px;color:var(--text-dim);">' + escHTML(x.inv.num || '') + '</span>' +
         '<span style="font-size:12px;color:var(--text);flex:1;min-width:110px;">' + escHTML(cli ? cli.name : 'Client inconnu') + '</span>' +
-        '<span style="font-size:12px;font-weight:700;color:var(--text);">' + formatNum(x.inv.amount) + ' MAD</span>' +
+        '<span style="font-size:12px;font-weight:700;color:var(--text);">' + formatNum(restOf(x.inv)) + ' MAD' + (partial ? ' <span style="font-size:9px;color:#b7600a;">(reste)</span>' : '') + '</span>' +
         '<span style="font-size:10px;font-weight:800;color:#c0392b;background:rgba(220,50,50,.1);padding:2px 8px;border-radius:99px;">' + x.days + ' j de retard</span>' +
         '<button onclick="s33RelancerFacture(' + x.inv.id + ')" style="padding:5px 12px;background:rgba(37,211,102,.1);border:1px solid rgba(37,211,102,.4);border-radius:99px;color:#1da851;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;"><span class="mi" style="font-size:12px;vertical-align:-2px;">send</span> Relancer</button>' +
       '</div>';
@@ -32229,9 +32241,10 @@ window.addEventListener('appinstalled', () => {
     }
 
     const pending = (db.invoices || []).filter(i => i.status === 'En attente');
-    const pendingTotal = pending.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+    const restOf2 = i => (typeof s33InvRest === 'function') ? s33InvRest(i) : (Number(i.amount) || 0);
+    const pendingTotal = pending.reduce((s, i) => s + restOf2(i), 0);
     const late = lateInvoices();
-    const lateTotal = late.reduce((s, x) => s + (Number(x.inv.amount) || 0), 0);
+    const lateTotal = late.reduce((s, x) => s + restOf2(x.inv), 0);
 
     // Rentabilité par projet — les moins rentables d'abord
     let rentabHTML = '';
@@ -32340,6 +32353,225 @@ window.addEventListener('appinstalled', () => {
   }
 
   console.log('✓ Module pilotage chargé');
+})();
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  MODULE ARGENT+ — paiements partiels, suivi des chèques,
+//  attestation de paiement, brief du matin sur le dashboard
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+  'use strict';
+
+  // ── Paiement partiel ──
+  window.s33PartialPayment = async function(id) {
+    const inv = db.invoices.find(x => x.id === id);
+    if (!inv) return;
+    const already = parseFloat(inv.paid_amount) || 0;
+    const rest = Math.max(0, (parseFloat(inv.amount) || 0) - already);
+    const v = prompt('Montant reçu (MAD) — reste dû : ' + formatNum(rest) + ' MAD' + (already ? '\nDéjà reçu : ' + formatNum(already) + ' MAD' : ''), '');
+    if (v === null) return;
+    const amt = parseFloat(String(v).replace(/[^\d.,]/g, '').replace(',', '.'));
+    if (!(amt > 0)) { toast('Montant invalide'); return; }
+    const newPaid = Math.min(already + amt, parseFloat(inv.amount) || 0);
+    try {
+      if (newPaid >= (parseFloat(inv.amount) || 0) - 0.5) {
+        // Solde complet → circuit normal « marquer payée » (date + mode)
+        await sbUpdate('invoices', id, { paid_amount: parseFloat(inv.amount) || 0 });
+        inv.paid_amount = parseFloat(inv.amount) || 0;
+        showPaymentDateModal(id);
+        return;
+      }
+      const isCheque = confirm('Ce paiement est-il un chèque ?\n\nOK = chèque · Annuler = espèces / virement');
+      const patch = { paid_amount: newPaid };
+      if (isCheque) { patch.payment_method = 'Chèque'; patch.cheque_status = inv.cheque_status || 'Reçu'; }
+      await sbUpdate('invoices', id, patch);
+      Object.assign(inv, patch);
+      renderInvoices();
+      toast('Paiement partiel enregistré — reste ' + formatNum((parseFloat(inv.amount) || 0) - newPaid) + ' MAD');
+    } catch(e) { console.error('partiel', e); toast('Enregistrement impossible — réessayez'); }
+  };
+
+  // ── Suivi des chèques : Reçu → Déposé → Encaissé ──
+  window.s33ChequeCycle = async function(id) {
+    const inv = db.invoices.find(x => x.id === id);
+    if (!inv) return;
+    const order = ['Reçu', 'Déposé', 'Encaissé'];
+    const next = order[(order.indexOf(inv.cheque_status || 'Reçu') + 1) % order.length];
+    try {
+      await sbUpdate('invoices', id, { cheque_status: next });
+      inv.cheque_status = next;
+      renderInvoices();
+      toast('Chèque : ' + next);
+    } catch(e) { console.error('chèque', e); }
+  };
+
+  // ── Attestation de paiement (quand le client ne veut pas de facture) ──
+  window.s33AttestationPdf = async function(id) {
+    const inv = db.invoices.find(x => x.id === id);
+    if (!inv) return;
+    const client = db.clients.find(c => c.id === inv.clientId);
+    const project = db.projects.find(pr => pr.id === inv.projectId);
+    const amount = inv.status === 'Payée' ? (parseFloat(inv.amount) || 0) : (parseFloat(inv.paid_amount) || 0);
+    if (!(amount > 0)) { toast('Aucun paiement enregistré sur cette facture'); return; }
+    toast('Préparation de l\'attestation…');
+    try {
+      if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const W = 210, M = 22;
+      const INK = [26, 26, 26], DIM = [102, 102, 102];
+      const money = n => Math.round(n).toLocaleString('fr-FR').replace(/[  ]/g, ' ');
+      const todayTxt = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      let y = 20;
+      try {
+        const lw = 46, lh = lw * 0.384;
+        doc.addImage(S33_LOGO_BW, 'JPEG', (W - lw) / 2, y - 6, lw, lh);
+        y += lh + 4;
+      } catch(_) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor.apply(doc, INK);
+        doc.text('STUDIO 33 ARCHITECTS', W / 2, y, { align: 'center' }); y += 10;
+      }
+      doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.5);
+      doc.line(M, y, W - M, y); y += 16;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor.apply(doc, INK);
+      doc.text('ATTESTATION DE PAIEMENT', W / 2, y, { align: 'center' }); y += 16;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor.apply(doc, INK);
+      const paidDateTxt = inv.paid_date ? new Date(String(inv.paid_date).slice(0, 10) + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : todayTxt;
+      const lines = doc.splitTextToSize(
+        'Nous soussignés, STUDIO 33 ARCHITECTS, attestons avoir reçu de ' +
+        (client ? client.name : 'notre client') + ' la somme de ' + money(amount) + ' dirhams (' + money(amount) + ' MAD)' +
+        (project ? ', au titre des honoraires relatifs au projet « ' + project.name + ' »' : ', au titre de nos honoraires') +
+        (inv.payment_method ? ', réglée par ' + inv.payment_method.toLowerCase() : '') +
+        ', en date du ' + paidDateTxt + '.',
+        W - 2 * M);
+      doc.text(lines, M, y); y += lines.length * 6.4 + 8;
+      const lines2 = doc.splitTextToSize('La présente attestation est délivrée à la demande de l\'intéressé(e) pour servir et valoir ce que de droit.', W - 2 * M);
+      doc.text(lines2, M, y); y += lines2.length * 6.4 + 18;
+      doc.setFontSize(10.5);
+      doc.text('Fait à Agadir, le ' + todayTxt, W - M, y, { align: 'right' }); y += 22;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Studio 33 Architects', W - M, y, { align: 'right' }); y += 5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
+      doc.text('Cachet et signature', W - M, y, { align: 'right' });
+      const yB = 276;
+      doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.4);
+      doc.line(M, yB - 6, W - M, yB - 6);
+      doc.setFontSize(8); doc.setTextColor.apply(doc, DIM);
+      doc.text('IF : 52549060 · RC : 52055 · TP : 48303312', M, yB);
+      doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
+      doc.text('ICE : 003100569000002', W - M, yB, { align: 'right' });
+      s33DownloadPdf(doc, 'Attestation-paiement-' + (client ? client.name.replace(/\s+/g, '-') : inv.num) + '.pdf');
+    } catch(e) { console.error('attestation', e); toast('Attestation impossible — réessayez'); }
+  };
+
+  // ── Brief du matin sur le dashboard ──
+  function renderBrief() {
+    const anchor = document.getElementById('dash-shortcuts');
+    if (!anchor || !currentUser) return;
+    let box = document.getElementById('s33-brief');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 's33-brief';
+      anchor.parentNode.insertBefore(box, anchor);
+    }
+    const isAdmin = currentUser.role === 'admin';
+    const today = new Date().toISOString().slice(0, 10);
+    const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
+    const rows = [];
+    const row = (icon, color, text, btnLabel, action) =>
+      rows.push('<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface2);flex-wrap:wrap;">' +
+        '<span class="mi" style="font-size:18px;color:' + color + ';flex-shrink:0;">' + icon + '</span>' +
+        '<span style="flex:1;font-size:12.5px;color:var(--text);min-width:150px;">' + text + '</span>' +
+        (btnLabel ? '<button onclick="' + action + '" style="padding:5px 14px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;">' + btnLabel + '</button>' : '') +
+      '</div>');
+
+    if (isAdmin) {
+      // Factures en retard
+      const restOf = i => (typeof s33InvRest === 'function') ? s33InvRest(i) : (Number(i.amount) || 0);
+      const late = (db.invoices || []).filter(i => {
+        if (i.status !== 'En attente') return false;
+        const d = (typeof s33InvDueEff === 'function') ? s33InvDueEff(i) : i.due_date;
+        return d && d < today;
+      });
+      if (late.length) {
+        const t = late.reduce((s, i) => s + restOf(i), 0);
+        row('warning', '#c0392b', '<b>' + late.length + ' facture' + (late.length > 1 ? 's' : '') + ' en retard</b> — ' + formatNum(t) + ' MAD à récupérer, relances prêtes',
+          'Relancer', "window._invFilter='retard';navigate('invoices')");
+      }
+      // Devis sans réponse depuis 7 jours
+      const staleDevis = (db.devis || []).filter(d => {
+        if (d.status !== 'Envoyé' || !d.dateVal) return false;
+        return (todayD - new Date(String(d.dateVal).slice(0, 10))) / 86400000 >= 7;
+      });
+      if (staleDevis.length) {
+        row('schedule_send', '#d97706', '<b>' + staleDevis.length + ' devis</b> sans réponse depuis plus de 7 jours', 'Voir', "navigate('devis')");
+      }
+      // Rapports d'hier manquants
+      const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const yestDow = new Date(yest + 'T12:00').getDay();
+      if (yestDow !== 0) {
+        const team = (db.teamMembers || []).filter(m => m.active !== false && m.role !== 'admin');
+        const filled = new Set((db.dailyReports || []).filter(r => r.date === yest).map(r => String(r.user_id)));
+        const missing = team.filter(m => !filled.has(String(m.user_id))).map(m => m.display_name || m.username);
+        if (missing.length) {
+          row('assignment_late', '#7c5cbf', 'Rapport d\'hier manquant : <b>' + missing.map(escHTML).join(', ') + '</b> (rappel automatique envoyé)', '', '');
+        }
+      }
+    }
+    // Tâches en retard (les siennes, ou toutes pour l'admin)
+    let lateTasks = 0;
+    (db.projects || []).forEach(p => {
+      if (p.archived) return;
+      (p.tasks || []).forEach(t => {
+        if (isTaskDone(t) || !t.deadline) return;
+        if (!isAdmin && !(String(t.assignedUserId || '') === String(currentUser.id) || (t.assignedTo || '').toLowerCase() === currentUser.name.toLowerCase())) return;
+        if (new Date(t.deadline) < todayD) lateTasks++;
+      });
+    });
+    if (lateTasks) {
+      row('assignment', '#2563eb', '<b>' + lateTasks + ' tâche' + (lateTasks > 1 ? 's' : '') + ' en retard</b>' + (isAdmin ? ' dans l\'équipe' : ''), 'Voir', "window._tQuick='retard';localStorage.setItem('s33_taches_view','jour');navigate('taches')");
+    }
+    // Événements du jour
+    const evToday = (db.calEvents || []).filter(e => e && e.date === today);
+    if (evToday.length) {
+      const txt = evToday.slice(0, 3).map(e => escHTML((e.time_start ? e.time_start + ' — ' : '') + (e.title || 'Événement'))).join(' · ');
+      row('event', '#10b981', '<b>Aujourd\'hui :</b> ' + txt + (evToday.length > 3 ? ' +' + (evToday.length - 3) : ''), 'Agenda', "navigate('calendar')");
+    }
+    // PV chantier en attente de validation (asynchrone)
+    if (isAdmin) {
+      sbGet('pv_chantier', '?statut=eq.attente&select=id').then(pvs => {
+        if (!Array.isArray(pvs) || !pvs.length) return;
+        const holder = document.getElementById('s33-brief-pv');
+        if (holder) holder.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface2);flex-wrap:wrap;">' +
+          '<span class="mi" style="font-size:18px;color:#f59e0b;flex-shrink:0;">fact_check</span>' +
+          '<span style="flex:1;font-size:12.5px;color:var(--text);"><b>' + pvs.length + ' PV de chantier</b> attend' + (pvs.length > 1 ? 'ent' : '') + ' ta validation</span>' +
+          '<button onclick="navigate(\'pvchantier\')" style="padding:5px 14px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;">Valider</button></div>';
+      }).catch(() => {});
+    }
+
+    const dayTxt = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    box.innerHTML =
+      '<div class="card" style="margin-bottom:18px;padding:16px 20px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:' + (rows.length ? '6px' : '0') + ';">' +
+          '<span class="mi" style="color:var(--gold);font-size:18px;">wb_sunny</span>' +
+          '<span style="font-size:13px;font-weight:800;color:var(--text);">Ton brief — ' + dayTxt + '</span>' +
+        '</div>' +
+        (rows.length ? rows.join('') : '<div style="font-size:12.5px;color:var(--text-dim);padding:4px 0;">Rien d\'urgent aujourd\'hui. Tout est sous contrôle ✓</div>') +
+        '<div id="s33-brief-pv"></div>' +
+      '</div>';
+  }
+
+  if (typeof window.renderDashboard === 'function') {
+    const _rd = window.renderDashboard;
+    window.renderDashboard = function() {
+      _rd.apply(this, arguments);
+      try { renderBrief(); } catch(e) { console.error('brief', e); }
+    };
+  }
+
+  console.log('✓ Module argent+ chargé');
 })();
 </script>
 

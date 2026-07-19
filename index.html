@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.30 — revue complète 125 vues';
+const S33_BUILD = '2026-07-20.1 — OS, courriers, conformité';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -17075,7 +17075,10 @@ let _genState = {
 const GEN_TYPES = {
   cps:           { label: 'CPS',                src: 'generators/cps.html',      icon: 'description', newLabel: 'Nouveau CPS' },
   questionnaire: { label: 'Questionnaire client', src: 'brief.html',             icon: 'quiz',        newLabel: 'Nouveau brief' },
-  planning:      { label: 'Planning chantier',  src: 'generators/planning.html', icon: 'event_note',  newLabel: 'Nouveau planning' }
+  planning:      { label: 'Planning chantier',  src: 'generators/planning.html', icon: 'event_note',  newLabel: 'Nouveau planning' },
+  os:            { label: 'Ordre de service',   src: null, icon: 'engineering', newLabel: 'Nouvel ordre de service' },
+  courrier:      { label: 'Courrier administratif', src: null, icon: 'mail',    newLabel: 'Nouveau courrier' },
+  conformite:    { label: 'Attestation de conformité', src: null, icon: 'verified', newLabel: 'Nouvelle attestation' }
 };
 function _genTypeInfo(t) { return GEN_TYPES[t] || GEN_TYPES.cps; }
 
@@ -17126,7 +17129,10 @@ function renderGenerateurs() {
   const tabs = [
     { key: 'cps',           label: 'CPS',                 icon: 'description', enabled: true },
     { key: 'questionnaire', label: 'Questionnaire client', icon: 'quiz',       enabled: true },
-    { key: 'planning',      label: 'Planning chantier',   icon: 'event_note',  enabled: true }
+    { key: 'planning',      label: 'Planning chantier',   icon: 'event_note',  enabled: true },
+    { key: 'os',            label: 'Ordre de service',    icon: 'engineering', enabled: true },
+    { key: 'courrier',      label: 'Courrier admin.',     icon: 'mail',        enabled: true },
+    { key: 'conformite',    label: 'Attestation conformité', icon: 'verified', enabled: true }
   ];
   const tabsHTML = '<div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:24px;">' +
     tabs.map(function(t) {
@@ -33430,6 +33436,369 @@ window.addEventListener('appinstalled', () => {
   };
 
   console.log('✓ Module contrat chargé');
+})();
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  GÉNÉRATEURS+ — Ordre de service, Courrier administratif,
+//  Attestation de conformité (onglet Générateurs, versions par projet)
+// ═══════════════════════════════════════════════════════════════════
+(function() {
+  'use strict';
+  const MES_TYPES = ['os', 'courrier', 'conformite'];
+  const F = id => (document.getElementById(id) || {}).value || '';
+
+  // ── Compteur persistant (app_config), ex : OS-001, OS-002… ──
+  async function nextNum(key, prefix) {
+    let n = 1;
+    try {
+      const rows = await sbGet('app_config', '?key=eq.' + key);
+      if (rows && rows[0]) {
+        n = parseInt(rows[0].value) || 1;
+        await sbFetch('app_config', 'PATCH', { value: String(n + 1) }, '?key=eq.' + key);
+      } else {
+        await sbInsert('app_config', { key: key, value: '2' });
+      }
+    } catch(e) { console.warn('compteur', e); }
+    return prefix + String(n).padStart(3, '0');
+  }
+
+  // ── Papier à en-tête commun (logo N&B + filet + pied légal) ──
+  function letterhead(doc, titre) {
+    const W = 210, M = 20;
+    let y = 16;
+    try {
+      const lw = 46, lh = lw * 0.384;
+      doc.addImage(S33_LOGO_BW, 'JPEG', M, y - 4, lw, lh);
+    } catch(_) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(26);
+      doc.text('STUDIO 33 ARCHITECTS', M, y + 4);
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(102);
+    doc.text('N°01, RDC, Imm La Paternelle, Rue Madrid, Agadir', W - M, y, { align: 'right' });
+    doc.text('05 28 84 33 30 · studio33.architecture@gmail.com', W - M, y + 4, { align: 'right' });
+    y += 18;
+    doc.setDrawColor(26); doc.setLineWidth(0.5);
+    doc.line(M, y, W - M, y);
+    y += 12;
+    if (titre) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13.5); doc.setTextColor(26);
+      doc.text(titre, W / 2, y, { align: 'center' });
+      y += 12;
+    }
+    return y;
+  }
+  function footerLegal(doc) {
+    const W = 210, M = 20, yB = 282;
+    doc.setDrawColor(26); doc.setLineWidth(0.4);
+    doc.line(M, yB - 5, W - M, yB - 5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(102);
+    doc.text('IF : 52549060 · RC : 52055 · TP : 48303312', M, yB);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(26);
+    doc.text('ICE : 003100569000002', W - M, yB, { align: 'right' });
+  }
+  const todayFR = () => new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  async function jspdfReady() {
+    if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    return window.jspdf.jsPDF;
+  }
+  function para(doc, txt, x, y, w, opts) {
+    opts = opts || {};
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    doc.setFontSize(opts.size || 10.5);
+    doc.setTextColor(26);
+    const lines = doc.splitTextToSize(txt, w);
+    doc.text(lines, x, y);
+    return y + lines.length * (opts.size || 10.5) * 0.46 + (opts.after != null ? opts.after : 3);
+  }
+
+  // ── Modèles de courriers administratifs ──
+  const DESTS = {
+    commune: { label: 'Président de la Commune', titre: 'Monsieur le Président de la Commune de {ville}', appel: 'Monsieur le Président,' },
+    agence:  { label: 'Agence Urbaine', titre: 'Monsieur le Directeur de l\'Agence Urbaine d\'Agadir', appel: 'Monsieur le Directeur,' },
+    onee:    { label: 'ONEE (électricité)', titre: 'Monsieur le Directeur de l\'ONEE — Direction Régionale d\'Agadir', appel: 'Monsieur le Directeur,' },
+    ramsa:   { label: 'RAMSA (eau)', titre: 'Monsieur le Directeur de la RAMSA — Agadir', appel: 'Monsieur le Directeur,' },
+    libre:   { label: 'Autre (libre)', titre: '', appel: 'Madame, Monsieur,' }
+  };
+  const MODELES = {
+    relance: { label: 'Relance d\'un dossier déposé', objet: 'Relance — dossier de demande d\'autorisation de construire n° {ref}',
+      corps: 'Nous nous permettons de revenir vers vous au sujet du dossier de demande d\'autorisation de construire cité en objet, déposé auprès de vos services en date du {date_depot}, concernant le projet {projet}, pour le compte de {mo}.\n\nÀ ce jour, ce dossier demeure sans suite malgré le délai écoulé. Nous vous saurions gré de bien vouloir nous informer de l\'état d\'avancement de son instruction et, le cas échéant, des observations éventuelles de la commission.\n\nNous restons à votre entière disposition pour tout complément d\'information.' },
+    transmission: { label: 'Transmission de pièces', objet: 'Transmission de pièces complémentaires — dossier n° {ref}',
+      corps: 'Suite aux observations formulées par vos services concernant le dossier cité en objet, relatif au projet {projet} pour le compte de {mo}, nous avons l\'honneur de vous transmettre ci-joint les pièces complémentaires demandées.\n\nNous vous prions de bien vouloir poursuivre l\'instruction du dossier et demeurons à votre disposition pour toute information complémentaire.' },
+    information: { label: 'Demande d\'information', objet: 'Demande d\'information — projet {projet}',
+      corps: 'Dans le cadre de l\'étude du projet {projet}, que notre cabinet conçoit pour le compte de {mo}, nous souhaiterions obtenir de vos services les informations et prescriptions applicables à la parcelle concernée (zonage, servitudes, alignements, prescriptions particulières).\n\nNous vous remercions par avance de votre collaboration.' },
+    raccordement: { label: 'Demande de raccordement', objet: 'Demande de raccordement — projet {projet}',
+      corps: 'Nous avons l\'honneur de solliciter le raccordement au réseau de l\'immeuble objet du projet {projet}, édifié pour le compte de {mo}, sis à {adresse}.\n\nNous vous prions de bien vouloir nous communiquer les modalités techniques et administratives de ce raccordement, ainsi que le devis correspondant.' },
+    libre: { label: 'Courrier libre', objet: '', corps: '' }
+  };
+
+  // ── Ouverture des éditeurs (neuf ou depuis une version enregistrée) ──
+  window.s33GenPlusOpen = async function(type, docId) {
+    _genState.type = type;
+    let mem = {};
+    if (docId) {
+      try {
+        const full = await sbGet('generated_documents', '?id=eq.' + docId);
+        if (full && full[0] && full[0].form_data) mem = full[0].form_data;
+      } catch(_) {}
+    }
+    const projects = (db.projects || []).filter(p => !p.archived).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const selProj = mem.projId || _genState.selectedProjectId || '';
+    const projOpts = '<option value="">— Sans projet —</option>' + projects.map(p =>
+      '<option value="' + p.id + '"' + (String(selProj) === String(p.id) ? ' selected' : '') + '>' + escHTML(p.name) + '</option>').join('');
+    const inp = (id, label, val, ph) =>
+      '<div style="margin-bottom:9px;"><label style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px;">' + label + '</label>' +
+      '<input id="' + id + '" type="text" value="' + escHTML(val || '') + '" placeholder="' + (ph || '') + '" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface2);color:var(--text);"></div>';
+    const selHtml = (id, label, opts) =>
+      '<div style="margin-bottom:9px;"><label style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px;">' + label + '</label>' +
+      '<select id="' + id + '" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface2);color:var(--text);">' + opts + '</select></div>';
+    const ta = (id, label, val, rows) =>
+      '<div style="margin-bottom:9px;"><label style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px;">' + label + '</label>' +
+      '<textarea id="' + id + '" rows="' + (rows || 4) + '" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface2);color:var(--text);resize:vertical;">' + escHTML(val || '') + '</textarea></div>';
+
+    let inner = '', titre = '';
+    if (type === 'os') {
+      titre = 'Ordre de service';
+      const types = [['commencement', 'Commencement des travaux'], ['arret', 'Arrêt des travaux'], ['reprise', 'Reprise des travaux'], ['prescriptions', 'Prescriptions particulières']];
+      inner =
+        selHtml('gp-proj', 'Projet', projOpts) +
+        selHtml('gp-ostype', 'Type d\'ordre de service', types.map(t => '<option value="' + t[0] + '"' + (mem.ostype === t[0] ? ' selected' : '') + '>' + t[1] + '</option>').join('')) +
+        inp('gp-entreprise', 'Entreprise destinataire', mem.entreprise, 'ex : STE ATLAS BÂTIMENT SARL') +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+          inp('gp-lot', 'Lot', mem.lot, 'ex : Gros œuvre') +
+          inp('gp-dateeffet', 'Date d\'effet', mem.dateeffet || new Date().toISOString().slice(0, 10), 'AAAA-MM-JJ') +
+        '</div>' +
+        inp('gp-delai', 'Délai contractuel (si commencement)', mem.delai, 'ex : 8 mois') +
+        ta('gp-texte', 'Motif / prescriptions / observations', mem.texte, 4);
+    } else if (type === 'conformite') {
+      titre = 'Attestation d\'achèvement et de conformité';
+      const p0 = projects.find(p => String(p.id) === String(selProj));
+      const cli0 = p0 ? (db.clients || []).find(c => c.id === (p0.clientId != null ? p0.clientId : p0.client_id)) : null;
+      inner =
+        selHtml('gp-proj', 'Projet', projOpts) +
+        inp('gp-mo', 'Maître d\'ouvrage', mem.mo || (cli0 ? cli0.name.toUpperCase() : ''), 'MR X') +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+          inp('gp-autor', 'Autorisation de construire n°', mem.autor || (p0 && p0.num_rokhass) || '', '') +
+          inp('gp-dateautor', 'Délivrée le', mem.dateautor, 'JJ/MM/AAAA') +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+          inp('gp-tf', 'Titre foncier n°', mem.tf, '') +
+          inp('gp-commune', 'Commune', mem.commune || (p0 && p0.ville) || 'Agadir', '') +
+        '</div>' +
+        inp('gp-adresse', 'Adresse du chantier (sis à)', mem.adresse, '') +
+        inp('gp-dateachev', 'Date d\'achèvement des travaux', mem.dateachev, 'JJ/MM/AAAA');
+    } else {
+      titre = 'Courrier administratif';
+      inner =
+        selHtml('gp-proj', 'Projet (pré-remplit le courrier)', projOpts) +
+        selHtml('gp-dest', 'Destinataire', Object.keys(DESTS).map(k => '<option value="' + k + '"' + (mem.dest === k ? ' selected' : '') + '>' + DESTS[k].label + '</option>').join('')) +
+        inp('gp-ville', 'Ville / précision du destinataire', mem.ville || 'Agadir', '') +
+        selHtml('gp-modele', 'Modèle de courrier', Object.keys(MODELES).map(k => '<option value="' + k + '"' + (mem.modele === k ? ' selected' : '') + '>' + MODELES[k].label + '</option>').join('')) +
+        inp('gp-ref', 'Référence du dossier (n°)', mem.ref, 'ex : 4521/2026') +
+        inp('gp-datedepot', 'Date de dépôt (si relance)', mem.datedepot, 'JJ/MM/AAAA') +
+        inp('gp-objet', 'Objet', mem.objet, 'rempli automatiquement par le modèle') +
+        ta('gp-corps', 'Corps du courrier (modifiable)', mem.corps, 8) +
+        '<div style="font-size:10.5px;color:var(--text-faint);margin:-4px 0 8px;">Choisis un modèle : l\'objet et le corps se remplissent avec les infos du projet, puis modifie librement.</div>';
+    }
+
+    const old = document.getElementById('s33-gp-modal');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 's33-gp-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto;';
+    ov.innerHTML = '<div style="background:var(--surface);border-radius:var(--radius);padding:22px;width:100%;max-width:600px;margin:10px 0 40px;" onclick="event.stopPropagation()">' +
+      '<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:12px;"><span class="mi" style="vertical-align:-3px;">' + _genTypeInfo(type).icon + '</span> ' + titre + '</div>' +
+      inner +
+      '<div style="display:flex;gap:10px;margin-top:14px;">' +
+        '<button onclick="document.getElementById(\'s33-gp-modal\').remove()" style="flex:1;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">Annuler</button>' +
+        '<button onclick="s33GenPlusGenerate(\'' + type + '\')" style="flex:2;padding:12px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;"><span class="mi mi-sm">picture_as_pdf</span> Générer le PDF</button>' +
+      '</div></div>';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+
+    // Pré-remplissage dynamique du courrier selon modèle + projet
+    if (type === 'courrier') {
+      const fill = () => {
+        const k = F('gp-modele');
+        const m = MODELES[k] || MODELES.libre;
+        const p = projects.find(pp => String(pp.id) === String(F('gp-proj')));
+        const cli = p ? (db.clients || []).find(c => c.id === (p.clientId != null ? p.clientId : p.client_id)) : null;
+        const rep = s => (s || '')
+          .replace(/\{projet\}/g, p ? '« ' + p.name + ' »' : '{projet}')
+          .replace(/\{mo\}/g, cli ? cli.name : '{maître d\'ouvrage}')
+          .replace(/\{ref\}/g, F('gp-ref') || (p && p.num_rokhass) || '…')
+          .replace(/\{date_depot\}/g, F('gp-datedepot') || '…')
+          .replace(/\{adresse\}/g, (p && p.ville) ? p.ville : '…')
+          .replace(/\{ville\}/g, F('gp-ville') || 'Agadir');
+        if (k !== 'libre') {
+          document.getElementById('gp-objet').value = rep(m.objet);
+          document.getElementById('gp-corps').value = rep(m.corps);
+        }
+      };
+      ['gp-modele', 'gp-proj', 'gp-ref', 'gp-datedepot', 'gp-ville'].forEach(id => document.getElementById(id).addEventListener('change', fill));
+      if (!mem.corps) fill();
+    }
+    if (type === 'conformite' || type === 'os') {
+      document.getElementById('gp-proj').addEventListener('change', () => {
+        const p = projects.find(pp => String(pp.id) === String(F('gp-proj')));
+        if (!p) return;
+        if (type === 'conformite') {
+          const cli = (db.clients || []).find(c => c.id === (p.clientId != null ? p.clientId : p.client_id));
+          if (cli && !F('gp-mo')) document.getElementById('gp-mo').value = cli.name.toUpperCase();
+          if (p.num_rokhass && !F('gp-autor')) document.getElementById('gp-autor').value = p.num_rokhass;
+          if (p.ville && !F('gp-commune')) document.getElementById('gp-commune').value = p.ville;
+        }
+      });
+    }
+  };
+
+  // ── Génération PDF + enregistrement en version ──
+  window.s33GenPlusGenerate = async function(type) {
+    toast('Préparation du PDF…');
+    try {
+      const jsPDF = await jspdfReady();
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const W = 210, M = 20, CW = W - 2 * M;
+      const projects = (db.projects || []);
+      const p = projects.find(pp => String(pp.id) === String(F('gp-proj')));
+      const cli = p ? (db.clients || []).find(c => c.id === (p.clientId != null ? p.clientId : p.client_id)) : null;
+      let v = {}, title = '', fname = '';
+
+      if (type === 'os') {
+        v = { projId: F('gp-proj'), ostype: F('gp-ostype'), entreprise: F('gp-entreprise'), lot: F('gp-lot'), dateeffet: F('gp-dateeffet'), delai: F('gp-delai'), texte: F('gp-texte') };
+        if (!v.entreprise.trim()) { toast('Indique l\'entreprise destinataire'); return; }
+        const num = await nextNum('os_counter', 'OS-');
+        v.num = num;
+        const effetFR = v.dateeffet ? new Date(String(v.dateeffet).slice(0, 10) + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : todayFR();
+        let y = letterhead(doc, 'ORDRE DE SERVICE N° ' + num);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(102);
+        doc.text('Agadir, le ' + todayFR(), W - M, y, { align: 'right' }); y += 10;
+        const refs = [
+          ['Projet', p ? p.name : '—'],
+          ['Maître d\'ouvrage', cli ? cli.name : '—'],
+          ['Entreprise', v.entreprise + (v.lot ? ' — Lot : ' + v.lot : '')],
+          ['Autorisation de construire n°', (p && p.num_rokhass) || '—']
+        ];
+        refs.forEach(r => {
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(26);
+          doc.text(r[0] + ' :', M, y);
+          doc.setFont('helvetica', 'normal');
+          const lines = doc.splitTextToSize(String(r[1]), CW - 62);
+          doc.text(lines, M + 62, y);
+          y += lines.length * 4.6 + 1.6;
+        });
+        y += 6;
+        const corps = {
+          commencement: 'Par le présent ordre de service, il est prescrit à l\'entreprise ' + v.entreprise + ' de COMMENCER les travaux' + (v.lot ? ' du lot « ' + v.lot + ' »' : '') + ' du projet cité en référence, à compter du ' + effetFR + '.' + (v.delai ? '\n\nLe délai contractuel d\'exécution, fixé à ' + v.delai + ', court à compter de cette date.' : ''),
+          arret: 'Par le présent ordre de service, il est prescrit à l\'entreprise ' + v.entreprise + ' de SUSPENDRE les travaux' + (v.lot ? ' du lot « ' + v.lot + ' »' : '') + ' du projet cité en référence, à compter du ' + effetFR + '.' + (v.texte ? '\n\nMotif : ' + v.texte : '') + '\n\nLe délai contractuel est suspendu jusqu\'à notification de l\'ordre de service de reprise.',
+          reprise: 'Par le présent ordre de service, il est prescrit à l\'entreprise ' + v.entreprise + ' de REPRENDRE les travaux' + (v.lot ? ' du lot « ' + v.lot + ' »' : '') + ' du projet cité en référence, à compter du ' + effetFR + '.\n\nLe délai contractuel reprend son cours à cette date.',
+          prescriptions: 'Par le présent ordre de service, il est prescrit à l\'entreprise ' + v.entreprise + ' d\'exécuter les prescriptions suivantes :\n\n' + (v.texte || '—')
+        };
+        y = para(doc, corps[v.ostype] || corps.commencement, M, y, CW, { size: 10.8, after: 6 });
+        if (v.ostype !== 'arret' && v.ostype !== 'prescriptions' && v.texte) {
+          y = para(doc, 'Observations : ' + v.texte, M, y, CW, { size: 10, after: 6 });
+        }
+        y = para(doc, 'L\'entreprise est tenue d\'accuser réception du présent ordre de service en le retournant signé au cabinet.', M, y, CW, { size: 9.5, after: 10 });
+        const ySig = Math.max(y + 4, 215);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+        doc.text('L\'Architecte — Maître de l\'œuvre', M + 2, ySig);
+        doc.text('L\'Entreprise (accusé de réception)', W - M - 70, ySig);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.4); doc.setTextColor(102);
+        doc.text('Studio 33 Architects', M + 2, ySig + 5);
+        doc.text('Nom, date, cachet et signature :', W - M - 70, ySig + 5);
+        doc.setDrawColor(150); doc.setLineWidth(0.25);
+        doc.roundedRect(M, ySig + 9, 70, 26, 1.5, 1.5);
+        doc.roundedRect(W - M - 72, ySig + 9, 72, 26, 1.5, 1.5);
+        footerLegal(doc);
+        title = num + (p ? ' — ' + p.name : '') + ' (' + (v.ostype || '') + ')';
+        fname = num + (v.entreprise ? '-' + v.entreprise.split(' ').slice(0, 2).join('-') : '') + '.pdf';
+      }
+
+      else if (type === 'conformite') {
+        v = { projId: F('gp-proj'), mo: F('gp-mo'), autor: F('gp-autor'), dateautor: F('gp-dateautor'), tf: F('gp-tf'), commune: F('gp-commune'), adresse: F('gp-adresse'), dateachev: F('gp-dateachev') };
+        let y = letterhead(doc, 'ATTESTATION D\'ACHÈVEMENT ET DE CONFORMITÉ DES TRAVAUX');
+        y += 6;
+        y = para(doc,
+          'Nous soussignés, Société Studio 33 Architects SARL AU, représentée par Mme Chaima ZERKDI, Architecte inscrite à l\'Ordre National des Architectes et autorisée à exercer sous le n° 5245, attestons par la présente que :', M, y, CW, { size: 11, after: 6 });
+        y = para(doc,
+          'Les travaux de construction du projet ' + (p ? '« ' + p.name + ' »' : '…') +
+          ', édifié pour le compte de ' + (v.mo || '…') +
+          ', sur le terrain objet du titre foncier n° ' + (v.tf || '…') +
+          (v.adresse ? ', sis à ' + v.adresse : '') +
+          ', commune de ' + (v.commune || 'Agadir') +
+          ', autorisés par l\'autorisation de construire n° ' + (v.autor || '…') +
+          (v.dateautor ? ' délivrée le ' + v.dateautor : '') + ',', M, y, CW, { size: 11, after: 4 });
+        y = para(doc,
+          'sont ACHEVÉS' + (v.dateachev ? ' en date du ' + v.dateachev : '') + ' et CONFORMES aux plans autorisés « NE VARIETUR » ainsi qu\'aux indications de l\'autorisation de construire.', M, y, CW, { size: 11, bold: true, after: 8 });
+        y = para(doc,
+          'La présente attestation est délivrée pour servir et valoir ce que de droit, notamment en vue de l\'obtention du permis d\'habiter / certificat de conformité.', M, y, CW, { size: 11, after: 16 });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5);
+        doc.text('Fait à Agadir, le ' + todayFR(), W - M, Math.max(y, 195), { align: 'right' });
+        doc.setFont('helvetica', 'bold');
+        doc.text('L\'Architecte', W - M - 25, Math.max(y, 195) + 14, { align: 'center' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor(102);
+        doc.text('Cachet et signature', W - M - 25, Math.max(y, 195) + 19, { align: 'center' });
+        footerLegal(doc);
+        title = 'Conformité — ' + (p ? p.name : (v.mo || 'sans projet'));
+        fname = 'Attestation-conformite-' + (p ? p.name.split(' ').slice(0, 3).join('-') : 'projet') + '.pdf';
+      }
+
+      else { // courrier
+        v = { projId: F('gp-proj'), dest: F('gp-dest'), ville: F('gp-ville'), modele: F('gp-modele'), ref: F('gp-ref'), datedepot: F('gp-datedepot'), objet: F('gp-objet'), corps: F('gp-corps') };
+        if (!v.corps.trim()) { toast('Le corps du courrier est vide'); return; }
+        const d0 = DESTS[v.dest] || DESTS.libre;
+        const destTitre = (d0.titre || v.ville || '').replace('{ville}', v.ville || 'Agadir') || v.ville;
+        let y = letterhead(doc, null);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(26);
+        doc.text('Agadir, le ' + todayFR(), W - M, y, { align: 'right' }); y += 12;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5);
+        const dl = doc.splitTextToSize('À l\'attention de : ' + destTitre, CW * 0.7);
+        doc.text(dl, W - M, y, { align: 'right' }); y += dl.length * 5 + 10;
+        if (v.objet) { y = para(doc, 'Objet : ' + v.objet, M, y, CW, { bold: true, size: 10.5, after: 8 }); }
+        y = para(doc, d0.appel, M, y, CW, { size: 11, after: 5 });
+        y = para(doc, v.corps, M, y, CW, { size: 11, after: 8 });
+        y = para(doc, 'Veuillez agréer, ' + d0.appel.replace(',', '') + ', l\'expression de nos salutations distinguées.', M, y, CW, { size: 11, after: 14 });
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(26);
+        doc.text('Mme Chaima ZERKDI', W - M - 28, Math.min(y + 6, 250), { align: 'center' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor(102);
+        doc.text('Architecte — Studio 33 Architects', W - M - 28, Math.min(y + 11, 255), { align: 'center' });
+        footerLegal(doc);
+        title = (v.objet || 'Courrier').slice(0, 60);
+        fname = 'Courrier-' + (v.dest || 'admin') + '-' + new Date().toISOString().slice(0, 10) + '.pdf';
+      }
+
+      // Enregistrer la version dans l'onglet Générateurs (rouvrable et duplicable)
+      _genState.type = type;
+      _genState.selectedProjectId = v.projId || '';
+      try { await _genSaveDoc({ title: title, form_data: v, html_content: '', metadata: {} }); } catch(_) {}
+      const m0 = document.getElementById('s33-gp-modal'); if (m0) m0.remove();
+      s33DownloadPdf(doc, fname);
+      logActivity('gen_doc', currentUser.name + ' a généré : ' + title, 'generateur', null, title);
+    } catch(e) {
+      console.error('gen+', e);
+      toast('Génération impossible — réessayez');
+    }
+  };
+
+  // ── Branchements sur la page Générateurs existante ──
+  if (typeof window.openGenEditor === 'function') {
+    const _oge = window.openGenEditor;
+    window.openGenEditor = function(type, docId) {
+      if (MES_TYPES.indexOf(type) >= 0) return window.s33GenPlusOpen(type, docId);
+      return _oge.apply(this, arguments);
+    };
+  }
+  if (typeof window.downloadGenDocHTML === 'function') {
+    const _dl = window.downloadGenDocHTML;
+    window.downloadGenDocHTML = function(id) {
+      const d = (db.generatedDocs || []).find(x => String(x.id) === String(id));
+      if (d && MES_TYPES.indexOf(d.doc_type) >= 0) return window.s33GenPlusOpen(d.doc_type, id);
+      return _dl.apply(this, arguments);
+    };
+  }
+
+  console.log('✓ Générateurs+ chargés');
 })();
 </script>
 

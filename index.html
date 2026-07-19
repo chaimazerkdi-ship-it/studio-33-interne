@@ -2897,7 +2897,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-19.20 — contrat qui se souvient';
+const S33_BUILD = '2026-07-19.21 — lien de signature réparé';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -32597,7 +32597,7 @@ window.addEventListener('appinstalled', () => {
     try {
       let token = d.sign_token;
       if (!token) {
-        token = Array.from(crypto.getRandomValues(new Uint8Array(18))).map(b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
+        token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
         const patch = { sign_token: token };
         if (d.status === 'Brouillon' || !d.status) patch.status = 'Envoyé';
         await sbUpdate('devis', id, patch);

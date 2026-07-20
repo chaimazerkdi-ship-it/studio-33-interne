@@ -1,5 +1,7 @@
 // Studio 33 — Service Worker (offline cache + Web Push)
-const CACHE = 'studio33-v3';
+// v4 : purge les anciens caches et revalide toujours via le réseau
+// (cache:'no-cache') pour que les mises à jour arrivent vraiment.
+const CACHE = 'studio33-v4';
 const ASSETS = ['/', '/index.html', '/logo S33.png'];
 const APP_NAME = 'Studio 33';
 const APP_ICON = '/logo S33.png';
@@ -26,12 +28,15 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   // Skip Supabase API calls — never cache
   const url = e.request.url;
-  if (url.includes('supabase.co') || url.includes('/auth/v1/') || url.includes('/rest/v1/') || url.includes('/storage/v1/')) {
-    return; // let the network handle it normally
+  if (url.includes('supabase.co') || url.includes('/auth/v1/') || url.includes('/rest/v1/') || url.includes('/storage/v1/') || url.includes('s33up=')) {
+    return; // let the network handle it normally (s33up = sonde de mise à jour, jamais mise en cache)
   }
   e.respondWith((async () => {
     const cached = await caches.match(e.request);
-    const network = fetch(e.request)
+    // cache:'no-cache' : la revalidation interroge le serveur (ETag) au lieu
+    // d'être servie par le cache HTTP du navigateur — sinon une vieille
+    // version peut « se revalider » contre elle-même pendant des jours.
+    const network = fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         if (res && res.ok) {
           const clone = res.clone();

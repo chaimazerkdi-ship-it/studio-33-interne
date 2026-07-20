@@ -2932,30 +2932,47 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-20.3 — actualiser, notifs, messagerie+, arabe PDF';
+const S33_BUILD = '2026-07-20.4 — mise à jour fiable';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
 
-  let _etag = null;
+  // Recharge « propre » : vide les caches de l'app puis recharge depuis le réseau
+  window.s33ForceReload = async function() {
+    try {
+      const ks = await caches.keys();
+      await Promise.all(ks.map(k => caches.delete(k)));
+    } catch(_) {}
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+    } catch(_) {}
+    location.reload();
+  };
+
+  // Détection de mise à jour : on télécharge le début du fichier en ligne
+  // (jamais depuis un cache) et on compare sa version à CELLE QUI TOURNE.
+  // L'ancienne méthode (ETag mémorisé au chargement) ne voyait jamais une
+  // mise à jour déjà publiée AVANT l'ouverture de l'app.
   let _notified = false;
   async function checkUpdate() {
     if (_notified) return;
     try {
-      const r = await fetch('index.html', { method: 'HEAD', cache: 'no-store' });
-      if (!r.ok) return;
-      const e = r.headers.get('etag') || r.headers.get('last-modified') || '';
-      if (!e) return;
-      if (_etag === null) { _etag = e; return; }
-      if (e !== _etag) {
-        _notified = true;
-        const bar = document.createElement('div');
-        bar.id = 's33-update-bar';
-        bar.setAttribute('style', 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(70px + env(safe-area-inset-bottom));z-index:2147483000;background:#1a1a1a;color:#fff;border-radius:99px;padding:10px 18px;font-size:13px;font-weight:600;display:flex;gap:12px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.35);font-family:Inter,system-ui,sans-serif;');
-        bar.innerHTML = 'Nouvelle version disponible' +
-          '<button onclick="location.reload()" style="background:#F97316;color:#fff;border:none;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Recharger</button>';
-        document.body.appendChild(bar);
-      }
+      const r = await fetch('index.html?s33up=' + Date.now(), {
+        cache: 'no-store',
+        headers: { 'Range': 'bytes=0-262143' }
+      });
+      if (!r.ok && r.status !== 206) return;
+      const txt = await r.text();
+      const m = txt.match(/S33_BUILD = '([^']+)'/);
+      if (!m || m[1] === S33_BUILD) return;
+      _notified = true;
+      const bar = document.createElement('div');
+      bar.id = 's33-update-bar';
+      bar.setAttribute('style', 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(70px + env(safe-area-inset-bottom));z-index:2147483000;background:#1a1a1a;color:#fff;border-radius:99px;padding:10px 18px;font-size:13px;font-weight:600;display:flex;gap:12px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.35);font-family:Inter,system-ui,sans-serif;white-space:nowrap;');
+      bar.innerHTML = 'Nouvelle version disponible' +
+        '<button onclick="s33ForceReload()" style="background:#F97316;color:#fff;border:none;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Recharger</button>';
+      document.body.appendChild(bar);
     } catch(_) {}
   }
   setTimeout(checkUpdate, 4000);

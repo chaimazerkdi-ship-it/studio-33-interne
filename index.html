@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-20.2 — pièces, bordereau, WhatsApp';
+const S33_BUILD = '2026-07-20.3 — actualiser, notifs, messagerie+, arabe PDF';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10472,6 +10472,43 @@ async function s33DownloadPdf(doc, fname) {
   toast('PDF téléchargé : ' + fname);
 }
 
+// ── Texte mixte français/arabe dans les PDF ──────────────────────────
+// La police Helvetica de jsPDF ne sait pas écrire l'arabe (lettres
+// détachées, sens inversé). Dès qu'un texte contient de l'arabe, on le
+// dessine dans un canvas (le navigateur gère ligatures et droite-gauche)
+// et on insère l'image au même endroit, à la même taille.
+function s33PdfMixed(doc, text, x, y, opts) {
+  opts = opts || {};
+  const s = String(text == null ? '' : text);
+  if (!/[؀-ۿݐ-ݿ]/.test(s)) { doc.text(s, x, y, opts); return; }
+  try {
+    const pt = doc.getFontSize();
+    let bold = false, color = '#1a1a1a';
+    try { bold = ((doc.getFont() || {}).fontStyle || '').indexOf('bold') !== -1; } catch(_) {}
+    try { const c = doc.getTextColor(); if (c && /^#/.test(String(c))) color = c; } catch(_) {}
+    const K = 5; // sur-échantillonnage pour un rendu net à l'impression
+    const px = pt * (96 / 72) * K;
+    const font = (bold ? '700 ' : '400 ') + px + 'px "Segoe UI", Tahoma, "Geeza Pro", Arial, sans-serif';
+    const meas = document.createElement('canvas').getContext('2d');
+    meas.font = font;
+    const wpx = Math.ceil(meas.measureText(s).width) + 8;
+    const hpx = Math.ceil(px * 1.55);
+    const cv = document.createElement('canvas');
+    cv.width = wpx; cv.height = hpx;
+    const cx = cv.getContext('2d');
+    cx.font = font;
+    cx.fillStyle = color;
+    cx.textBaseline = 'alphabetic';
+    cx.fillText(s, 4, Math.round(px * 1.15));
+    const mmPerPx = 25.4 / (96 * K);
+    const wMm = wpx * mmPerPx, hMm = hpx * mmPerPx;
+    let xd = x;
+    if (opts.align === 'center') xd = x - wMm / 2;
+    else if (opts.align === 'right') xd = x - wMm;
+    doc.addImage(cv.toDataURL('image/png'), 'PNG', xd, y - (px * 1.15) * mmPerPx, wMm, hMm);
+  } catch(e) { try { doc.text(s, x, y, opts); } catch(_) {} }
+}
+
 // ── Vrai PDF de facture (même style que le devis ; montants TTC) ──
 async function s33InvoicePdf(id) {
   const inv = db.invoices.find(x => x.id === id);
@@ -10500,7 +10537,7 @@ async function s33InvoicePdf(id) {
       doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
       doc.text(r[0], M, y + i * 5.4);
       doc.setFont('helvetica', 'normal');
-      doc.text(String(r[1] || ''), M + 26, y + i * 5.4);
+      s33PdfMixed(doc, String(r[1] || ''), M + 26, y + i * 5.4);
     });
     // Logo noir et blanc (rogné, positionné au-dessus de la ligne de titre)
     try {
@@ -10529,7 +10566,7 @@ async function s33InvoicePdf(id) {
     doc.text('ÉMETTEUR', M, y); doc.text('CLIENT', W / 2 + 6, y); y += 5;
     doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
     doc.text('Studio 33 Architects', M, y);
-    doc.text(client ? client.name : '—', W / 2 + 6, y); y += 4.6;
+    s33PdfMixed(doc, client ? client.name : '—', W / 2 + 6, y); y += 4.6;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, DIM);
     doc.text('01 Imm paternelle, Rue de Madrid, Agadir', M, y);
     if (client && client.phone) doc.text(String(client.phone), W / 2 + 6, y);
@@ -11530,9 +11567,12 @@ function s33RelancerDevis(devisId) {
     'Nous espérons que vous allez bien. Nous revenons vers vous au sujet de notre devis ' + (d.num || d.ref || '') +
     (d.projet ? ' pour « ' + d.projet + ' »' : '') +
     ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' MAD TTC)' +
-    (sentTxt ? ', transmis le ' + sentTxt : '') + '.\n\n' +
+    (sentTxt ? ', transmis le ' + sentTxt : '') + '.\n' +
     'Avez-vous eu le temps de l\'examiner ? Nous restons à votre disposition pour en discuter ou l\'ajuster.\n\n' +
-    'Bien cordialement,\nStudio 33 Architects');
+    'مرحباً،\n' +
+    'نعود إليكم بخصوص عرض الأتعاب رقم ' + (d.num || d.ref || '') + (d.projet ? ' الخاص بمشروع « ' + d.projet + ' »' : '') + '.\n' +
+    'هل تمكنتم من الاطلاع عليه؟ نبقى رهن إشارتكم لأي توضيح أو تعديل.\n\n' +
+    'Studio 33 Architects');
   window.open('https://wa.me/' + intl + '?text=' + txt, '_blank');
 }
 
@@ -11821,7 +11861,7 @@ async function s33DevisPdf() {
       doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
       doc.text(r[0], M, y + i * 5.4);
       doc.setFont('helvetica', 'normal');
-      doc.text(String(r[1] || ''), M + 26, y + i * 5.4);
+      s33PdfMixed(doc, String(r[1] || ''), M + 26, y + i * 5.4);
     });
     // Logo depuis l'aperçu (déjà en base64 dans la page)
     try {
@@ -11845,7 +11885,7 @@ async function s33DevisPdf() {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor.apply(doc, INK);
     doc.text("NOTE D'HONORAIRES & ÉCHÉANCIER DE PAIEMENT", M, y); y += 5;
     doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
-    doc.text('/ ' + projet, M, y); y += 3.5;
+    s33PdfMixed(doc, '/ ' + projet, M, y); y += 3.5;
     doc.setDrawColor(221); doc.setLineWidth(0.2);
     doc.line(M, y, W - M, y); y += 9;
 
@@ -11933,7 +11973,7 @@ async function s33DevisPdf() {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, INK);
       doc.text(title, x + 31, ySig, { align: 'center' });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-      doc.text(name, x + 31, ySig + 4.2, { align: 'center' });
+      s33PdfMixed(doc, name, x + 31, ySig + 4.2, { align: 'center' });
       doc.setDrawColor(200); doc.setFillColor(249, 249, 246); doc.setLineWidth(0.2);
       doc.roundedRect(x, ySig + 7, 62, 20, 1.5, 1.5, 'FD');
       if (sd && sd.image) {
@@ -12794,7 +12834,10 @@ function s33PortalNotifyWA(projectId) {
   if (!digits) { toast('Ajoutez le numéro de téléphone dans la fiche client'); return; }
   const intl = digits.startsWith('0') ? '212' + digits.slice(1) : digits;
   const link = p.portal_token ? _s33PortalLink(p.portal_token) : '';
-  const txt = encodeURIComponent('Bonjour, du nouveau sur votre projet « ' + p.name + ' » — consultez votre espace client : ' + link);
+  const txt = encodeURIComponent(
+    'Bonjour, du nouveau sur votre projet « ' + p.name + ' » — consultez votre espace client :\n' + link + '\n\n' +
+    'مرحباً، هناك جديد في مشروعكم « ' + p.name + ' » — تفضلوا بزيارة فضائكم الخاص عبر الرابط أعلاه.\n\n' +
+    'Studio 33 Architects');
   window.open('https://wa.me/' + intl + '?text=' + txt, '_blank');
 }
 
@@ -29530,6 +29573,10 @@ window.addEventListener('appinstalled', () => {
   let _msgCache = [];        // derniers messages de mes canaux (liste + non-lus)
   let _msgSending = false;
   let _msgPoll = null;
+  let _reads = [];           // accusés de lecture (affichés à l'admin uniquement)
+  let _presence = [];        // présence en ligne (affichée à l'admin uniquement)
+  const _thumbs = {};        // miniatures d'images chargées à la demande
+  const isAdm = () => ((window.currentUser || {}).role === 'admin');
 
   const myId   = () => String((window.currentUser || {}).id || '');
   const myName = () => (window.currentUser || {}).name || 'Moi';
@@ -29555,6 +29602,51 @@ window.addEventListener('appinstalled', () => {
   }
   function channelOther(ch) { return ch.replace('dm_', '').split('__').find(u => u !== myId()); }
 
+  // ── présence & accusés de lecture ──
+  function readAt(ch, uid) {
+    const r = _reads.find(x => x.channel === ch && String(x.user_id) === String(uid));
+    return r ? r.last_read_at : null;
+  }
+  function isOnline(uid) {
+    const p = _presence.find(x => String(x.user_id) === String(uid));
+    return !!p && (Date.now() - new Date(p.last_seen_at).getTime()) < 150000;
+  }
+  function lastSeenTxt(uid) {
+    const p = _presence.find(x => String(x.user_id) === String(uid));
+    if (!p) return '';
+    const d = new Date(p.last_seen_at), now = new Date();
+    const t = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return 'Vu aujourd\'hui à ' + t;
+    return 'Vu le ' + d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' à ' + t;
+  }
+  // Chaque membre publie « je suis là » toutes les ~60 s tant que l'app est ouverte
+  let _hbLast = 0;
+  async function _heartbeat() {
+    if (!window.currentUser || !myId()) return;
+    if (Date.now() - _hbLast < 55000) return;
+    _hbLast = Date.now();
+    try {
+      const q = '?user_id=eq.' + encodeURIComponent(myId());
+      const ex = await sbGet('presence', q + '&select=user_id');
+      const row = { last_seen_at: new Date().toISOString(), user_name: myName() };
+      if (ex && ex.length) await sbFetch('presence', 'PATCH', row, q);
+      else await sbInsert('presence', Object.assign({ user_id: myId() }, row));
+    } catch(_) {}
+  }
+  setInterval(_heartbeat, 60000);
+  setTimeout(_heartbeat, 4000);
+  const _pushedReads = {};
+  async function _pushRead(ch, last) {
+    if (!myId() || _pushedReads[ch] === last) return;
+    _pushedReads[ch] = last;
+    try {
+      const q = '?channel=eq.' + encodeURIComponent(ch) + '&user_id=eq.' + encodeURIComponent(myId());
+      const ex = await sbGet('message_reads', q + '&select=user_id');
+      if (ex && ex.length) await sbFetch('message_reads', 'PATCH', { last_read_at: last }, q);
+      else await sbInsert('message_reads', { channel: ch, user_id: myId(), last_read_at: last });
+    } catch(_) {}
+  }
+
   // ── non-lus (par canal, en local) ──
   const readKey = ch => 's33_msgread_' + myId() + '_' + ch;
   const getLastRead = ch => localStorage.getItem(readKey(ch)) || '1970-01-01T00:00:00Z';
@@ -29563,6 +29655,7 @@ window.addEventListener('appinstalled', () => {
     if (!msgs.length) return;
     const last = msgs.reduce((a, m) => (m.created_at > a ? m.created_at : a), getLastRead(ch));
     localStorage.setItem(readKey(ch), last);
+    _pushRead(ch, last);
   }
   function unread(ch) {
     const lr = getLastRead(ch);
@@ -29574,10 +29667,32 @@ window.addEventListener('appinstalled', () => {
   }
 
   async function fetchMessages() {
-    // RLS restreint déjà aux canaux autorisés (équipe + mes DM)
-    const rows = await sbGet('messages', '?order=created_at.desc&limit=400');
+    // RLS restreint déjà aux canaux autorisés (équipe + mes DM).
+    // Les données lourdes (att_data, miniatures) sont chargées à part, à la demande.
+    const rows = await sbGet('messages', '?select=id,channel,sender_id,sender_name,body,created_at,att_mime,att_name&order=created_at.desc&limit=300');
     _msgCache = Array.isArray(rows) ? rows.slice().reverse() : [];
+    if (isAdm()) {
+      try {
+        const [rd, pr] = await Promise.all([sbGet('message_reads', ''), sbGet('presence', '')]);
+        if (Array.isArray(rd)) _reads = rd;
+        if (Array.isArray(pr)) _presence = pr;
+      } catch(_) {}
+    }
     return _msgCache;
+  }
+  // Miniatures des photos du fil ouvert (cache local, un seul aller-retour)
+  let _thumbLoading = false;
+  async function ensureThumbs(ids) {
+    const missing = ids.filter(id => !(id in _thumbs) && String(id).indexOf('_tmp_') !== 0);
+    if (!missing.length || _thumbLoading) return false;
+    _thumbLoading = true;
+    try {
+      const rows = await sbGet('messages', '?id=in.(' + missing.join(',') + ')&select=id,att_thumb');
+      (rows || []).forEach(r => { _thumbs[r.id] = r.att_thumb || ''; });
+      missing.forEach(id => { if (!(id in _thumbs)) _thumbs[id] = ''; });
+    } catch(_) {}
+    _thumbLoading = false;
+    return true;
   }
 
   function lastMsgOf(ch) {
@@ -29614,6 +29729,10 @@ window.addEventListener('appinstalled', () => {
       '.msg-compose{display:flex;gap:8px;padding:12px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;align-items:flex-end;}' +
       '.msg-compose textarea{flex:1;resize:none;max-height:120px;min-height:20px;border:1px solid var(--border);border-radius:20px;padding:10px 14px;font-family:inherit;font-size:14px;background:var(--surface2);color:var(--text);outline:none;}' +
       '.msg-send{width:42px;height:42px;border-radius:50%;border:none;background:var(--gold);color:#fff;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}' +
+      '.msg-attach{width:42px;height:42px;border-radius:50%;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;}' +
+      '.msg-attach.rec{background:#e74c3c;border-color:#e74c3c;color:#fff;animation:s33msgpulse 1.2s infinite;}' +
+      '@keyframes s33msgpulse{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,.45)}50%{box-shadow:0 0 0 8px rgba(231,76,60,0)}}' +
+      '@media(max-width:420px){.msg-attach{width:36px;height:36px;}.msg-send{width:38px;height:38px;}}' +
       '.msg-daysep{align-self:center;font-size:10px;color:var(--text-faint);background:var(--surface2);border-radius:99px;padding:3px 12px;margin:8px 0;}' +
       '@media(max-width:767px){' +
         '.msg-wrap{height:calc(100vh - 150px);border:none;border-radius:0;}' +
@@ -29663,9 +29782,12 @@ window.addEventListener('appinstalled', () => {
           '<div class="msg-thread" id="msg-thread">' +
             '<div class="msg-thead"><button class="msg-back" onclick="s33MsgBackToList()">&#8592;</button>' +
               '<div id="msg-thread-avatar"></div>' +
-              '<div style="font-size:15px;font-weight:700;color:var(--text);" id="msg-thread-title">Équipe</div></div>' +
+              '<div style="min-width:0;"><div style="font-size:15px;font-weight:700;color:var(--text);" id="msg-thread-title">Équipe</div>' +
+              '<div id="msg-thread-status" style="font-size:10.5px;color:var(--text-faint);line-height:1.3;"></div></div></div>' +
             '<div class="msg-scroll" id="msg-scroll"></div>' +
             '<div class="msg-compose">' +
+              '<button class="msg-attach" onclick="s33MsgAttach()" title="Photo ou document"><span class="mi">attach_file</span></button>' +
+              '<button class="msg-attach" id="msg-mic-btn" onclick="s33MsgMic()" title="Message vocal"><span class="mi">mic</span></button>' +
               '<textarea id="msg-input" rows="1" placeholder="Votre message…" oninput="s33MsgAutoGrow(this)" onkeydown="s33MsgKey(event)"></textarea>' +
               '<button class="msg-send" onclick="s33MsgSend()" title="Envoyer"><span class="mi">send</span></button>' +
             '</div>' +
@@ -29680,11 +29802,15 @@ window.addEventListener('appinstalled', () => {
     const item = (ch, name, uuid) => {
       const last = lastMsgOf(ch);
       const u = unread(ch);
-      const prev = last ? ((String(last.sender_id) === myId() ? 'Vous : ' : '') + last.body) : 'Aucun message';
+      const prev = last ? ((String(last.sender_id) === myId() ? 'Vous : ' : '') + (last.body || attLabel(last))) : 'Aucun message';
+      const dot = (uuid && isAdm() && isOnline(uuid))
+        ? '<span style="position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:#22c55e;border:2px solid var(--surface);"></span>' : '';
       return '<div class="msg-conv' + (ch === _msgChannel ? ' active' : '') + '" onclick="s33MsgOpen(\'' + ch + '\')">' +
+        '<div style="position:relative;flex-shrink:0;">' +
         (ch === 'team'
           ? '<div style="width:38px;height:38px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="mi" style="color:#fff;font-size:20px;">groups</span></div>'
-          : avatar(uuid, name, 38)) +
+          : avatar(uuid, name, 38)) + dot +
+        '</div>' +
         '<div class="msg-conv-body"><div class="msg-conv-name">' + esc(name) + '</div>' +
           '<div class="msg-conv-prev">' + esc(prev) + '</div></div>' +
         (u > 0 ? '<span class="msg-badge">' + u + '</span>' : '') +
@@ -29718,6 +29844,17 @@ window.addEventListener('appinstalled', () => {
       ? '<div style="width:34px;height:34px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;"><span class="mi" style="color:#fff;font-size:18px;">groups</span></div>'
       : avatar(channelOther(ch), channelTitle(ch), 34);
 
+    // Statut de présence (admin uniquement) sous le titre du fil
+    const stEl = document.getElementById('msg-thread-status');
+    if (stEl) {
+      let st = '';
+      if (isAdm() && ch !== 'team') {
+        const other = channelOther(ch);
+        st = isOnline(other) ? '<span style="color:#22c55e;font-weight:700;">● En ligne</span>' : esc(lastSeenTxt(other));
+      }
+      stEl.innerHTML = st;
+    }
+
     const msgs = _msgCache.filter(m => m.channel === ch);
     const atBottom = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 60;
     let html = '', lastDay = '';
@@ -29728,14 +29865,50 @@ window.addEventListener('appinstalled', () => {
       if (ch === 'team' && !mine) html += '<div class="msg-name">' + esc(m.sender_name || memberName(m.sender_id)) + '</div>';
       html += '<div class="msg-row ' + (mine ? 'mine' : 'other') + '">' +
         (ch === 'team' && !mine ? avatar(m.sender_id, m.sender_name, 26) : '') +
-        '<div class="msg-bubble">' + esc(m.body) + '</div></div>' +
-        '<div class="msg-meta">' + fmtTime(m.created_at) + (m._pending ? ' · envoi…' : '') + '</div>';
+        '<div class="msg-bubble">' + attHTML(m) + (m.body ? esc(m.body) : '') + '</div></div>' +
+        '<div class="msg-meta">' + fmtTime(m.created_at) + (m._pending ? ' · envoi…' : (mine ? ticksHTML(m, ch) : '')) + '</div>';
     });
     if (!msgs.length) html = '<div style="margin:auto;color:var(--text-faint);font-size:13px;text-align:center;">Démarrez la conversation</div>';
     scroll.innerHTML = html;
     if (!keepScroll || atBottom) scroll.scrollTop = scroll.scrollHeight;
     markRead(ch);
     updateBadges();
+    // Charger les miniatures manquantes des photos du fil puis ré-afficher
+    const imgIds = msgs.filter(m => m.att_mime && m.att_mime.indexOf('image/') === 0).map(m => m.id);
+    ensureThumbs(imgIds).then(loaded => { if (loaded) renderThread(true); });
+  }
+
+  function attLabel(m) {
+    if (!m || !m.att_mime) return '';
+    if (m.att_mime.indexOf('image/') === 0) return '📷 Photo';
+    if (m.att_mime.indexOf('audio/') === 0) return '🎤 Message vocal';
+    return '📎 ' + (m.att_name || 'Document');
+  }
+  function attHTML(m) {
+    if (!m.att_mime) return '';
+    const mb = m.body ? 'margin-bottom:6px;' : '';
+    if (m.att_mime.indexOf('image/') === 0) {
+      const src = _thumbs[m.id] || m.att_thumb || '';
+      if (!src) return '<div style="width:170px;height:110px;border-radius:10px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--text-faint);font-size:11px;' + mb + '">Photo…</div>';
+      return '<img src="' + src + '" onclick="s33MsgAttOpen(\'' + m.id + '\')" alt="" style="max-width:min(230px,58vw);border-radius:10px;display:block;cursor:pointer;' + mb + '">';
+    }
+    if (m.att_mime.indexOf('audio/') === 0) {
+      return '<button onclick="s33MsgAttPlay(\'' + m.id + '\', this)" style="display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;color:inherit;font-family:inherit;font-size:13px;font-weight:700;padding:2px 0;' + mb + '"><span class="mi" style="font-size:26px;">play_circle</span> Message vocal</button>';
+    }
+    return '<button onclick="s33MsgAttOpen(\'' + m.id + '\')" style="display:flex;align-items:center;gap:7px;background:none;border:none;cursor:pointer;color:inherit;font-family:inherit;font-size:13px;font-weight:700;padding:2px 0;text-align:left;' + mb + '"><span class="mi" style="font-size:20px;">description</span> ' + esc(m.att_name || 'Document') + '</button>';
+  }
+  // Coches de lecture — visibles uniquement par l'admin (Chaima)
+  function ticksHTML(m, ch) {
+    if (!isAdm() || String(m.id).indexOf('_tmp_') === 0) return '';
+    const after = (ra) => ra && new Date(ra).getTime() >= new Date(m.created_at).getTime();
+    if (ch === 'team') {
+      const others = roster();
+      if (!others.length) return '';
+      const n = others.filter(u => after(readAt('team', u.user_id))).length;
+      if (n === others.length) return ' · <span style="color:#22c55e;font-weight:800;">✓✓</span>';
+      return n > 0 ? ' · ✓ lu par ' + n + '/' + others.length : ' · ✓';
+    }
+    return after(readAt(ch, channelOther(ch))) ? ' · <span style="color:#22c55e;font-weight:800;">✓✓ Lu</span>' : ' · ✓';
   }
 
   function updateBadges() {
@@ -29783,26 +29956,24 @@ window.addEventListener('appinstalled', () => {
   window.s33MsgKey = function(e) {
     if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 767) { e.preventDefault(); s33MsgSend(); }
   };
-  window.s33MsgSend = async function() {
-    const inp = document.getElementById('msg-input');
-    if (!inp) return;
-    const body = inp.value.trim();
-    if (!body || _msgSending) return;
+  // Envoi commun : texte seul ou avec pièce jointe (photo, document, vocal)
+  async function _sendMsg(body, att) {
+    if (_msgSending) return false;
     _msgSending = true;
-    inp.value = ''; inp.style.height = 'auto';
     const ch = _msgChannel;
-    const optim = { channel: ch, sender_id: myId(), sender_name: myName(), body, id: '_tmp_' + Date.now(), created_at: new Date().toISOString(), _pending: true };
+    const row = Object.assign({ channel: ch, sender_id: myId(), sender_name: myName(), body: body || '' }, att || {});
+    const optim = { channel: ch, sender_id: myId(), sender_name: myName(), body: body || '', id: '_tmp_' + Date.now(), created_at: new Date().toISOString(), _pending: true, att_mime: att ? att.att_mime : null, att_name: att ? att.att_name : null };
+    if (att && att.att_thumb) _thumbs[optim.id] = att.att_thumb;
     _msgCache.push(optim);
     renderThread(false);
     let sent = false;
     try {
-      await sbInsertOrThrow('messages', { channel: ch, sender_id: myId(), sender_name: myName(), body });
+      await sbInsertOrThrow('messages', row);
       sent = true;
-      notifyRecipients(ch, body);
+      notifyRecipients(ch, body || attLabel(optim));
     } catch(e) {
-      // Échec réel (RLS, réseau…) : retirer le message optimiste et rendre le texte
+      // Échec réel (RLS, réseau…) : retirer le message optimiste
       _msgCache = _msgCache.filter(m => m !== optim);
-      inp.value = body;
       toast('Message non envoyé — vérifiez votre connexion et réessayez');
     }
     _msgSending = false;
@@ -29811,6 +29982,131 @@ window.addEventListener('appinstalled', () => {
       localStorage.setItem(readKey(ch), new Date().toISOString());
     }
     renderConvList(); renderThread(false);
+    return sent;
+  }
+
+  window.s33MsgSend = async function() {
+    const inp = document.getElementById('msg-input');
+    if (!inp) return;
+    const body = inp.value.trim();
+    if (!body || _msgSending) return;
+    inp.value = ''; inp.style.height = 'auto';
+    const ok = await _sendMsg(body, null);
+    if (!ok) inp.value = body;
+  };
+
+  // ── Pièces jointes : photo / document ──
+  window.s33MsgAttach = function() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf,.doc,.docx,.xls,.xlsx,.dwg';
+    input.onchange = function() { const f = input.files && input.files[0]; if (f) _sendFile(f); };
+    input.click();
+  };
+  function _sendFile(f) {
+    if (f.type && f.type.indexOf('image/') === 0) {
+      const img = new Image();
+      img.onload = function() {
+        const mk = (max, q) => {
+          const r = Math.min(1, max / Math.max(img.width, img.height));
+          const cv = document.createElement('canvas');
+          cv.width = Math.max(1, Math.round(img.width * r)); cv.height = Math.max(1, Math.round(img.height * r));
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          return cv.toDataURL('image/jpeg', q);
+        };
+        _sendMsg('', { att_data: mk(1300, 0.72), att_thumb: mk(300, 0.55), att_mime: 'image/jpeg', att_name: f.name || 'photo.jpg' });
+      };
+      img.onerror = function() { toast('Image illisible'); };
+      img.src = URL.createObjectURL(f);
+    } else {
+      if (f.size > 5 * 1024 * 1024) { toast('Fichier trop lourd (max 5 Mo) — compressez-le ou envoyez une photo'); return; }
+      const rd = new FileReader();
+      rd.onload = function() { _sendMsg('', { att_data: String(rd.result), att_mime: f.type || 'application/octet-stream', att_name: f.name || 'document' }); };
+      rd.readAsDataURL(f);
+    }
+  }
+
+  // ── Message vocal : un tap pour enregistrer, un tap pour envoyer ──
+  let _rec = null, _recChunks = [], _recTimer = null, _recStart = 0;
+  window.s33MsgMic = async function() {
+    const btn = document.getElementById('msg-mic-btn');
+    if (_rec) { try { _rec.stop(); } catch(_) {} return; }
+    if (!navigator.mediaDevices || typeof MediaRecorder === 'undefined') { toast('Micro non disponible sur ce navigateur'); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+        : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+      _rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      _recChunks = [];
+      _rec.ondataavailable = function(e) { if (e.data && e.data.size) _recChunks.push(e.data); };
+      _rec.onstop = function() {
+        stream.getTracks().forEach(t => t.stop());
+        clearInterval(_recTimer);
+        const type = (_rec.mimeType || mime || 'audio/webm').split(';')[0];
+        _rec = null;
+        if (btn) { btn.classList.remove('rec'); btn.innerHTML = '<span class="mi">mic</span>'; }
+        const blob = new Blob(_recChunks, { type });
+        if (blob.size < 1500) { toast('Message vocal trop court'); return; }
+        if (blob.size > 5 * 1024 * 1024) { toast('Message vocal trop long'); return; }
+        const rd = new FileReader();
+        rd.onload = function() { _sendMsg('', { att_data: String(rd.result), att_mime: type, att_name: 'vocal' }); };
+        rd.readAsDataURL(blob);
+      };
+      _rec.start();
+      _recStart = Date.now();
+      if (btn) btn.classList.add('rec');
+      _recTimer = setInterval(function() {
+        const s = Math.floor((Date.now() - _recStart) / 1000);
+        if (btn) btn.innerHTML = '<span style="font-size:10px;font-weight:800;">' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + '</span>';
+        if (s >= 120 && _rec) { try { _rec.stop(); } catch(_) {} }
+      }, 500);
+      toast('Enregistrement… tape à nouveau sur le micro pour envoyer');
+    } catch(e) { toast('Micro refusé — autorise-le dans les réglages du navigateur'); }
+  };
+
+  // ── Ouvrir / écouter une pièce jointe (chargée à la demande) ──
+  async function _attFull(id) {
+    try {
+      const rows = await sbGet('messages', '?id=eq.' + id + '&select=att_data,att_mime,att_name');
+      return rows && rows[0] && rows[0].att_data ? rows[0] : null;
+    } catch(_) { return null; }
+  }
+  window.s33MsgAttOpen = async function(id) {
+    if (String(id).indexOf('_tmp_') === 0) return;
+    toast('Chargement…');
+    const m = await _attFull(id);
+    if (!m) { toast('Fichier introuvable'); return; }
+    if (m.att_mime.indexOf('image/') === 0) {
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:18px;cursor:pointer;';
+      ov.innerHTML = '<img src="' + m.att_data + '" style="max-width:100%;max-height:94vh;border-radius:10px;">';
+      ov.onclick = function() { ov.remove(); };
+      document.body.appendChild(ov);
+      return;
+    }
+    try {
+      const bin = atob(m.att_data.split(',')[1]);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const blob = new Blob([arr], { type: m.att_mime });
+      const url = URL.createObjectURL(blob);
+      if (m.att_mime === 'application/pdf') { window.open(url, '_blank'); }
+      else {
+        const a = document.createElement('a');
+        a.href = url; a.download = m.att_name || 'document';
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+      setTimeout(function() { URL.revokeObjectURL(url); }, 60000);
+    } catch(_) { toast('Ouverture impossible'); }
+  };
+  window.s33MsgAttPlay = async function(id, btn) {
+    if (String(id).indexOf('_tmp_') === 0) return;
+    if (btn) btn.disabled = true;
+    const m = await _attFull(id);
+    if (!m) { toast('Audio introuvable'); if (btn) btn.disabled = false; return; }
+    const wrap = document.createElement('span');
+    wrap.innerHTML = '<audio controls autoplay src="' + m.att_data + '" style="height:36px;max-width:min(230px,58vw);"></audio>';
+    if (btn) btn.replaceWith(wrap.firstChild);
   };
 
   function notifyRecipients(ch, body) {
@@ -32793,9 +33089,13 @@ window.addEventListener('appinstalled', () => {
       const msg = encodeURIComponent(
         'Bonjour ' + (d.clientName || '') + ',\n\n' +
         'Voici notre devis ' + (d.num || d.ref || '') + (d.projet ? ' pour « ' + d.projet + ' »' : '') +
-        ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' MAD TTC).\n\n' +
+        ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' MAD TTC).\n' +
         'Vous pouvez le consulter et le signer directement depuis votre téléphone ici :\n' + link + '\n\n' +
-        'Bien cordialement,\nStudio 33 Architects');
+        'مرحباً،\n' +
+        'هذا عرض أتعابنا رقم ' + (d.num || d.ref || '') + (d.projet ? ' الخاص بمشروع « ' + d.projet + ' »' : '') +
+        ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' درهم شامل الضريبة).\n' +
+        'يمكنكم الاطلاع عليه وتوقيعه مباشرة من هاتفكم عبر الرابط أعلاه.\n\n' +
+        'Studio 33 Architects');
       window.open('https://wa.me/' + (intl ? intl : '') + '?text=' + msg, '_blank');
       toast('Lien de signature copié et prêt à envoyer');
     } catch(e) { console.error('sign share', e); toast('Lien impossible — réessayez'); }
@@ -34255,6 +34555,113 @@ window.addEventListener('appinstalled', () => {
   };
 
   console.log('✓ Module dossier+ chargé');
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODULE FRAÎCHEUR — bouton Actualiser partout + notifications
+     obligatoires pour l'équipe à l'ouverture de l'app
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+  // Jamais dans l'espace client ni la page de signature
+  const qp = new URLSearchParams(location.search);
+  if (qp.has('portal') || qp.has('sign')) return;
+
+  /* ── 1. BOUTON ACTUALISER ────────────────────────────────────────── */
+  const css = document.createElement('style');
+  css.textContent =
+    '@keyframes s33spin{to{transform:rotate(360deg)}}' +
+    '.s33-refresh-ic{display:inline-block;}' +
+    '.s33-refresh-ic.spin{animation:s33spin .9s linear infinite;}' +
+    '.s33-refresh-fab{position:fixed;left:12px;bottom:calc(68px + env(safe-area-inset-bottom));z-index:900;width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--surface);color:var(--text-dim);box-shadow:0 4px 14px rgba(0,0,0,.18);cursor:pointer;display:none;align-items:center;justify-content:center;}' +
+    '@media(max-width:767px){.s33-refresh-fab{display:flex;}}' +
+    'body.s33-msg-thread-open .s33-refresh-fab{display:none !important;}';
+  document.head.appendChild(css);
+
+  window.s33Refresh = async function() {
+    if (window._s33Refreshing || !window.currentUser) return;
+    window._s33Refreshing = true;
+    document.querySelectorAll('.s33-refresh-ic').forEach(el => el.classList.add('spin'));
+    try {
+      await loadDB();
+      const pg = (typeof currentPage !== 'undefined' && currentPage) ? currentPage : 'dashboard';
+      if (pg === 'project-detail' && typeof renderProjectDetailPage === 'function') renderProjectDetailPage();
+      else if (typeof renderPage === 'function') renderPage(pg);
+      toast('Données actualisées ✓');
+      // Au passage : vérifier s'il existe une nouvelle version de l'app
+      try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) reg.update(); } catch(_) {}
+    } catch(e) { console.error('refresh', e); toast('Actualisation impossible — vérifie la connexion'); }
+    document.querySelectorAll('.s33-refresh-ic').forEach(el => el.classList.remove('spin'));
+    window._s33Refreshing = false;
+  };
+
+  function injectRefresh() {
+    // Ordinateur / tablette : à côté de la cloche, en bas de la barre latérale
+    const bellWrap = document.getElementById('notif-bell-btn');
+    if (bellWrap && !document.getElementById('s33-refresh-side')) {
+      bellWrap.parentElement.insertAdjacentHTML('beforebegin',
+        '<button id="s33-refresh-side" onclick="event.stopPropagation();s33Refresh()" title="Actualiser les données" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:6px 11px;cursor:pointer;color:var(--text);font-family:inherit;display:flex;align-items:center;"><span class="mi mi-lg s33-refresh-ic">refresh</span></button>');
+    }
+    // Téléphone : bouton flottant en bas à gauche, au-dessus de la barre
+    if (!document.getElementById('s33-refresh-fab')) {
+      document.body.insertAdjacentHTML('beforeend',
+        '<button id="s33-refresh-fab" class="s33-refresh-fab" onclick="s33Refresh()" title="Actualiser"><span class="mi s33-refresh-ic" style="font-size:22px;">refresh</span></button>');
+    }
+  }
+  // Le bouton flottant n'apparaît qu'une fois connecté
+  setInterval(function() {
+    const f = document.getElementById('s33-refresh-fab');
+    if (f) f.style.visibility = window.currentUser ? '' : 'hidden';
+  }, 1500);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectRefresh);
+  else injectRefresh();
+
+  /* ── 2. NOTIFICATIONS OBLIGATOIRES ───────────────────────────────── */
+  let _gateShown = false;
+  async function pushGate() {
+    if (_gateShown || !window.currentUser) return;
+    const supported = ('Notification' in window) && ('serviceWorker' in navigator) && ('PushManager' in window);
+    if (supported) {
+      try { if (typeof s33IsPushEnabled === 'function' && await s33IsPushEnabled()) return; } catch(_) { return; }
+    }
+    _gateShown = true;
+    const ov = document.createElement('div');
+    ov.id = 's33-push-gate';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2600;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:22px;';
+    const inner = supported
+      ? '<p style="font-size:13.5px;color:var(--text-dim);line-height:1.6;margin:0 0 18px;">Pour travailler dans l\'équipe, les notifications sont <b>obligatoires</b> : rappels de rapport, messages, tâches et signatures arrivent par là.</p>' +
+        '<button onclick="s33GateEnable(this)" style="width:100%;padding:14px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;">Activer mes notifications</button>' +
+        '<div id="s33-gate-help" style="display:none;margin-top:14px;font-size:12px;color:var(--text-dim);background:var(--surface2);border-radius:10px;padding:12px;line-height:1.55;text-align:left;"></div>'
+      : '<p style="font-size:13.5px;color:var(--text-dim);line-height:1.6;margin:0 0 18px;">Ce navigateur ne permet pas les notifications. Installe d\'abord l\'application sur ton écran d\'accueil (Partager → « Sur l\'écran d\'accueil »), puis active-les depuis Équipe → Notifications.</p>' +
+        '<button onclick="document.getElementById(\'s33-push-gate\').remove()" style="width:100%;padding:14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">J\'ai compris</button>';
+    ov.innerHTML = '<div style="background:var(--surface);border-radius:18px;max-width:420px;width:100%;padding:26px 22px;text-align:center;">' +
+      '<div style="font-size:40px;line-height:1;">🔔</div>' +
+      '<div style="font-size:17px;font-weight:800;color:var(--text);margin:10px 0 8px;">Active tes notifications</div>' + inner + '</div>';
+    document.body.appendChild(ov);
+  }
+  window.s33GateEnable = async function(btn) {
+    btn.disabled = true; btn.textContent = 'Activation…';
+    let ok = false;
+    try { ok = await s33EnablePush(); } catch(_) {}
+    if (ok) {
+      const g = document.getElementById('s33-push-gate');
+      if (g) g.remove();
+      return;
+    }
+    btn.disabled = false; btn.textContent = 'Réessayer';
+    const help = document.getElementById('s33-gate-help');
+    if (help) {
+      help.style.display = 'block';
+      help.innerHTML = ('Notification' in window) && Notification.permission === 'denied'
+        ? '<b>Les notifications sont bloquées dans le navigateur.</b><br>Sur ordinateur (Chrome / Edge) : clique sur le cadenas 🔒 à côté de l\'adresse → Notifications → Autoriser, puis « Réessayer ».<br>Sur iPhone : Réglages → Notifications → Studio 33 → Autoriser.<br>Sur Android : appui long sur l\'icône de l\'app → Infos → Notifications → Autoriser.'
+        : 'Accepte la demande d\'autorisation du navigateur quand elle apparaît, puis réessaie.';
+    }
+  };
+  setInterval(pushGate, 3000);
+
+  console.log('✓ Module fraîcheur chargé');
 })();
 </script>
 

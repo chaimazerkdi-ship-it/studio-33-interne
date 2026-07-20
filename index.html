@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-20.4 — mise à jour fiable';
+const S33_BUILD = '2026-07-20.5 — devis = échéancier facture';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11169,14 +11169,12 @@ document.getElementById('quick-note-text').addEventListener('keydown', function(
 // ===== DEVIS =====
 let currentDevisId = null;
 let devisPhases = [
-  { phase: 'A', mission: 'Signature du contrat', taux: 20 },
-  { phase: 'A', mission: 'Études préliminaires (esquisses)', taux: 10 },
-  { phase: 'A', mission: "Dépôt de la demande d'autorisation de construire", taux: 10 },
-  { phase: 'A', mission: "Obtention de l'avis conforme", taux: 10 },
-  { phase: 'B', mission: "Plans détails d'exécution (PE)", taux: 10 },
-  { phase: 'B', mission: "Dossier de consultation entreprise (DCE)", taux: 20 },
-  { phase: 'C', mission: "Direction et suivi des travaux", taux: 10 },
-  { phase: 'C', mission: "Attestation de conformité et fin des travaux", taux: 10 },
+  { phase: 'A', mission: 'Signature du contrat', taux: 30 },
+  { phase: 'A', mission: "Dépôt de la demande d'autorisation", taux: 20 },
+  { phase: 'A', mission: "Obtention de l'autorisation (avis conforme)", taux: 15 },
+  { phase: 'B', mission: "Dossier d'exécution & consultation entreprises", taux: 15 },
+  { phase: 'C', mission: 'Suivi de chantier — situation intermédiaire', taux: 15 },
+  { phase: 'C', mission: 'Réception & conformité', taux: 5 },
 ];
 
 function initDevis() {
@@ -11654,6 +11652,27 @@ function s33BaremeMontants(ttc) {
   return rows;
 }
 
+// Échéancier d'un devis : les phases que le client a signées font foi ;
+// s'il n'y en a pas (vieux devis), on retombe sur le barème par défaut.
+function s33DevisEchRows(d, ttc) {
+  let ph = d && d.phases;
+  if (typeof ph === 'string') { try { ph = JSON.parse(ph); } catch(_) { ph = null; } }
+  ph = Array.isArray(ph) ? ph.filter(p => (parseFloat(p.taux) || 0) > 0 && String(p.mission || '').trim()) : [];
+  const sum = ph.reduce((s, p) => s + (parseFloat(p.taux) || 0), 0);
+  if (!ph.length || sum <= 0) return s33BaremeMontants(ttc);
+  const rows = ph.map(p => ({
+    label: String(p.mission).trim(),
+    pct: parseFloat(p.taux) || 0,
+    montant: Math.round(ttc * (parseFloat(p.taux) || 0) / 100)
+  }));
+  // N'absorber l'arrondi que si les taux totalisent bien 100 %
+  if (Math.abs(sum - 100) < 0.01) {
+    const s2 = rows.reduce((s, r) => s + r.montant, 0);
+    rows[rows.length - 1].montant += Math.round(ttc) - s2;
+  }
+  return rows;
+}
+
 async function convertDevisToInvoice(id) {
   const d = db.devis.find(x => x.id === id);
   if (!d) return;
@@ -11697,7 +11716,7 @@ async function convertDevisToInvoice(id) {
     projSel.innerHTML = '<option value="__new__">+ Créer le projet « ' + escHTML(d.projet || d.clientName || 'Projet') + ' »</option>' +
       projs.map(p => '<option value="' + p.id + '">' + escHTML(p.name) + '</option>').join('');
     const t = parseFloat(document.getElementById('vd-ttc').value) || 0;
-    document.getElementById('vd-echeancier').innerHTML = s33BaremeMontants(t).map((r, i) =>
+    document.getElementById('vd-echeancier').innerHTML = s33DevisEchRows(d, t).map((r, i) =>
       '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 12px;border-bottom:1px solid var(--border);' + (i === 0 ? 'background:var(--surface2);font-weight:700;' : '') + '">' +
         '<span>' + (i + 1) + '. ' + escHTML(r.label) + ' <span style="color:var(--text-faint);">(' + r.pct + '%)</span>' + (i === 0 ? ' <span style="color:var(--gold);font-size:10px;font-weight:800;">FACTURÉE MAINTENANT</span>' : '') + '</span>' +
         '<span style="font-weight:600;white-space:nowrap;">' + money(r.montant) + ' MAD</span>' +
@@ -11763,7 +11782,7 @@ async function s33ConfirmerValidationDevis(devisId) {
       navigate('project-detail');
       return;
     }
-    const rows = s33BaremeMontants(ttc);
+    const rows = s33DevisEchRows(d, ttc);
     const echIds = [];
     for (let i = 0; i < rows.length; i++) {
       const insE = await sbInsertOrThrow('honoraires_echeances', {
@@ -11803,14 +11822,12 @@ async function s33ConfirmerValidationDevis(devisId) {
 function resetDevis() {
   currentDevisId = null;
   devisPhases = [
-    { phase: 'A', mission: 'Signature du contrat', taux: 20 },
-    { phase: 'A', mission: 'Études préliminaires (esquisses)', taux: 10 },
-    { phase: 'A', mission: "Dépôt de la demande d'autorisation de construire", taux: 10 },
-    { phase: 'A', mission: "Obtention de l'avis conforme", taux: 10 },
-    { phase: 'B', mission: "Plans détails d'exécution (PE)", taux: 10 },
-    { phase: 'B', mission: "Dossier de consultation entreprise (DCE)", taux: 20 },
-    { phase: 'C', mission: "Direction et suivi des travaux", taux: 10 },
-    { phase: 'C', mission: "Attestation de conformité et fin des travaux", taux: 10 },
+    { phase: 'A', mission: 'Signature du contrat', taux: 30 },
+    { phase: 'A', mission: "Dépôt de la demande d'autorisation", taux: 20 },
+    { phase: 'A', mission: "Obtention de l'autorisation (avis conforme)", taux: 15 },
+    { phase: 'B', mission: "Dossier d'exécution & consultation entreprises", taux: 15 },
+    { phase: 'C', mission: 'Suivi de chantier — situation intermédiaire', taux: 15 },
+    { phase: 'C', mission: 'Réception & conformité', taux: 5 },
   ];
   document.getElementById('dv-ref').value = 'DEV-' + String(db.devisCounter).padStart(3, '0');
   document.getElementById('dv-ht').value = '500000';

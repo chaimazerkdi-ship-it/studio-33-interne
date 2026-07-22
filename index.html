@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-20.7 — textes longs a la ligne';
+const S33_BUILD = '2026-07-20.8 — messagerie : bulle, modifier, supprimer';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -29731,7 +29731,7 @@ window.addEventListener('appinstalled', () => {
   async function fetchMessages() {
     // RLS restreint déjà aux canaux autorisés (équipe + mes DM).
     // Les données lourdes (att_data, miniatures) sont chargées à part, à la demande.
-    const rows = await sbGet('messages', '?select=id,channel,sender_id,sender_name,body,created_at,att_mime,att_name&order=created_at.desc&limit=300');
+    const rows = await sbGet('messages', '?select=id,channel,sender_id,sender_name,body,created_at,att_mime,att_name,edited_at&order=created_at.desc&limit=300');
     _msgCache = Array.isArray(rows) ? rows.slice().reverse() : [];
     if (isAdm()) {
       try {
@@ -29795,6 +29795,16 @@ window.addEventListener('appinstalled', () => {
       '.msg-attach.rec{background:#e74c3c;border-color:#e74c3c;color:#fff;animation:s33msgpulse 1.2s infinite;}' +
       '@keyframes s33msgpulse{0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,.45)}50%{box-shadow:0 0 0 8px rgba(231,76,60,0)}}' +
       '@media(max-width:420px){.msg-attach{width:36px;height:36px;}.msg-send{width:38px;height:38px;}}' +
+      '.msg-more{border:none;background:none;cursor:pointer;font-size:17px;line-height:1;color:var(--text-faint);padding:0 3px;opacity:.4;flex-shrink:0;align-self:center;}' +
+      '.msg-more:hover{opacity:1;}' +
+      '.s33-mact{display:flex;align-items:center;gap:10px;width:100%;padding:13px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;margin-bottom:8px;font-family:inherit;font-size:14px;font-weight:600;color:var(--text);cursor:pointer;text-align:left;}' +
+      '#s33-msg-bubble{position:fixed;right:22px;bottom:100px;width:52px;height:52px;border-radius:50%;border:none;background:var(--gold);color:#fff;cursor:pointer;z-index:1100;display:none;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.25);}' +
+      '@media(min-width:768px){#s33-msg-bubble{display:flex;}}' +
+      '#s33-msg-dock{position:fixed;top:0;right:0;bottom:0;width:min(680px,94vw);z-index:1590;background:var(--surface);border-left:1px solid var(--border);box-shadow:-14px 0 44px rgba(0,0,0,.22);transform:translateX(105%);transition:transform .25s ease;display:flex;flex-direction:column;}' +
+      '#s33-msg-dock.open{transform:none;}' +
+      '#s33-msg-dock-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}' +
+      '#s33-msg-dock-body{flex:1;min-height:0;display:flex;}' +
+      '#s33-msg-dock-body .msg-wrap{height:100% !important;flex:1;border:none;border-radius:0;min-height:0;}' +
       '.msg-daysep{align-self:center;font-size:10px;color:var(--text-faint);background:var(--surface2);border-radius:99px;padding:3px 12px;margin:8px 0;}' +
       '@media(max-width:767px){' +
         '.msg-wrap{height:calc(100vh - 150px);border:none;border-radius:0;}' +
@@ -29924,11 +29934,14 @@ window.addEventListener('appinstalled', () => {
       const dl = dayLabel(m.created_at);
       if (dl !== lastDay) { html += '<div class="msg-daysep">' + esc(dl) + '</div>'; lastDay = dl; }
       const mine = String(m.sender_id) === myId();
+      const canAct = !m._pending && String(m.id).indexOf('_tmp_') !== 0 && (mine || isAdm());
       if (ch === 'team' && !mine) html += '<div class="msg-name">' + esc(m.sender_name || memberName(m.sender_id)) + '</div>';
       html += '<div class="msg-row ' + (mine ? 'mine' : 'other') + '">' +
         (ch === 'team' && !mine ? avatar(m.sender_id, m.sender_name, 26) : '') +
-        '<div class="msg-bubble">' + attHTML(m) + (m.body ? esc(m.body) : '') + '</div></div>' +
-        '<div class="msg-meta">' + fmtTime(m.created_at) + (m._pending ? ' · envoi…' : (mine ? ticksHTML(m, ch) : '')) + '</div>';
+        '<div class="msg-bubble">' + attHTML(m) + (m.body ? esc(m.body) : '') + '</div>' +
+        (canAct ? '<button class="msg-more" onclick="s33MsgActions(\'' + m.id + '\')" title="Modifier ou supprimer">⋯</button>' : '') +
+        '</div>' +
+        '<div class="msg-meta">' + fmtTime(m.created_at) + (m.edited_at ? ' · modifié' : '') + (m._pending ? ' · envoi…' : (mine ? ticksHTML(m, ch) : '')) + '</div>';
     });
     if (!msgs.length) html = '<div style="margin:auto;color:var(--text-faint);font-size:13px;text-align:center;">Démarrez la conversation</div>';
     scroll.innerHTML = html;
@@ -29975,7 +29988,7 @@ window.addEventListener('appinstalled', () => {
 
   function updateBadges() {
     const n = totalUnread();
-    ['nav-msg-badge', 'mnav-msg-badge'].forEach(id => {
+    ['nav-msg-badge', 'mnav-msg-badge', 'bub-msg-badge'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.textContent = n; el.style.display = n > 0 ? 'flex' : 'none'; }
     });
@@ -29991,7 +30004,8 @@ window.addEventListener('appinstalled', () => {
     else updateBadges();
     if (_msgPoll) clearInterval(_msgPoll);
     _msgPoll = setInterval(async () => {
-      if (typeof currentPage !== 'undefined' && currentPage !== 'messagerie') return;
+      const active = (typeof currentPage !== 'undefined' && currentPage === 'messagerie') || window._s33MsgDockOpen;
+      if (!active) return;
       await fetchMessages(); renderConvList(); renderThread(true);
     }, 4000);
   };
@@ -30171,6 +30185,94 @@ window.addEventListener('appinstalled', () => {
     if (btn) btn.replaceWith(wrap.firstChild);
   };
 
+  // ── Modifier / supprimer un message ─────────────────────────────
+  window.s33MsgActions = function(id) {
+    const m = _msgCache.find(x => String(x.id) === String(id));
+    if (!m) return;
+    const mine = String(m.sender_id) === myId();
+    if (!mine && !isAdm()) return;
+    const old = document.getElementById('s33-msg-act');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 's33-msg-act';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2650;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;';
+    ov.innerHTML = '<div style="background:var(--surface);border-radius:16px 16px 0 0;padding:16px 16px 24px;width:100%;max-width:430px;" onclick="event.stopPropagation()">' +
+      '<div style="font-size:12px;color:var(--text-faint);margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(m.body || attLabel(m)) + '</div>' +
+      (mine && m.body && !m.att_mime ? '<button onclick="s33MsgEdit(\'' + id + '\')" class="s33-mact"><span class="mi" style="font-size:18px;">edit</span> Modifier le message</button>' : '') +
+      '<button onclick="s33MsgDelete(\'' + id + '\')" class="s33-mact" style="color:#c0392b;"><span class="mi" style="font-size:18px;">delete</span> Supprimer le message</button>' +
+      '<button onclick="document.getElementById(\'s33-msg-act\').remove()" class="s33-mact" style="justify-content:center;margin-bottom:0;">Annuler</button>' +
+      '</div>';
+    ov.addEventListener('click', () => ov.remove());
+    document.body.appendChild(ov);
+  };
+  window.s33MsgEdit = async function(id) {
+    const act = document.getElementById('s33-msg-act');
+    if (act) act.remove();
+    const m = _msgCache.find(x => String(x.id) === String(id));
+    if (!m || String(m.sender_id) !== myId()) return;
+    const nv = prompt('Modifier le message :', m.body || '');
+    if (nv === null || !nv.trim() || nv.trim() === m.body) return;
+    try {
+      await sbUpdate('messages', id, { body: nv.trim(), edited_at: new Date().toISOString() });
+      m.body = nv.trim(); m.edited_at = new Date().toISOString();
+      renderThread(true); renderConvList();
+    } catch(_) { toast('Modification impossible — réessayez'); }
+  };
+  window.s33MsgDelete = async function(id) {
+    const act = document.getElementById('s33-msg-act');
+    if (act) act.remove();
+    const m = _msgCache.find(x => String(x.id) === String(id));
+    if (!m) return;
+    if (String(m.sender_id) !== myId() && !isAdm()) return;
+    if (!confirm('Supprimer ce message pour tout le monde ?')) return;
+    try {
+      await sbDelete('messages', id);
+      _msgCache = _msgCache.filter(x => String(x.id) !== String(id));
+      renderThread(true); renderConvList();
+    } catch(_) { toast('Suppression impossible — réessayez'); }
+  };
+
+  // ── Bulle + panneau latéral (ordinateur) ────────────────────────
+  function injectDock() {
+    if (document.getElementById('s33-msg-bubble')) return;
+    document.body.insertAdjacentHTML('beforeend',
+      '<button id="s33-msg-bubble" onclick="s33MsgDockToggle()" title="Messagerie">' +
+        '<span class="mi" style="font-size:25px;">forum</span>' +
+        '<span id="bub-msg-badge" class="msg-badge" style="display:none;position:absolute;top:-3px;right:-3px;"></span>' +
+      '</button>' +
+      '<div id="s33-msg-dock">' +
+        '<div id="s33-msg-dock-head">' +
+          '<span style="font-size:15px;font-weight:800;color:var(--text);"><span class="mi" style="vertical-align:-3px;color:var(--gold);">forum</span> Messagerie</span>' +
+          '<button onclick="s33MsgDockToggle()" style="border:none;background:var(--surface2);color:var(--text);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;font-weight:700;">×</button>' +
+        '</div>' +
+        '<div id="s33-msg-dock-body"></div>' +
+      '</div>');
+  }
+  window.s33MsgDockToggle = async function() {
+    injectDock(); injectCSS(); injectPage();
+    const dock = document.getElementById('s33-msg-dock');
+    const wrap = document.getElementById('msg-wrap');
+    if (!dock || !wrap) return;
+    if (!dock.classList.contains('open')) {
+      document.getElementById('s33-msg-dock-body').appendChild(wrap);
+      dock.classList.add('open');
+      window._s33MsgDockOpen = true;
+      try { await window.renderMessagerie(); } catch(e) { console.error(e); }
+    } else {
+      dock.classList.remove('open');
+      window._s33MsgDockOpen = false;
+      const pg = document.getElementById('page-messagerie');
+      if (pg) pg.appendChild(wrap);
+    }
+  };
+  // La bulle n'apparaît qu'une fois connecté, et jamais sur la page Messagerie
+  setInterval(function() {
+    const b = document.getElementById('s33-msg-bubble');
+    if (!b) return;
+    const onPage = (typeof currentPage !== 'undefined' && currentPage === 'messagerie');
+    b.style.visibility = (window.currentUser && !onPage) ? '' : 'hidden';
+  }, 1200);
+
   function notifyRecipients(ch, body) {
     const preview = body.length > 90 ? body.slice(0, 90) + '…' : body;
     const targets = ch === 'team' ? roster().map(m => String(m.user_id)) : [channelOther(ch)].filter(Boolean);
@@ -30183,7 +30285,7 @@ window.addEventListener('appinstalled', () => {
   // Badge en arrière-plan (même hors de la page)
   setInterval(async () => {
     if (!window.currentUser) return;
-    if (typeof currentPage !== 'undefined' && currentPage === 'messagerie') return;
+    if ((typeof currentPage !== 'undefined' && currentPage === 'messagerie') || window._s33MsgDockOpen) return;
     try { await fetchMessages(); updateBadges(); } catch(_) {}
   }, 20000);
 
@@ -30191,7 +30293,18 @@ window.addEventListener('appinstalled', () => {
   const _origRP = window.renderPage;
   window.renderPage = function(page) {
     if (typeof _origRP === 'function') { try { _origRP.apply(this, arguments); } catch(_) {} }
-    if (page === 'messagerie') { try { window.renderMessagerie(); } catch(e) { console.error('renderMessagerie', e); } }
+    if (page === 'messagerie') {
+      // Si le panneau latéral est ouvert, le refermer d'abord (la page reprend le fil)
+      if (window._s33MsgDockOpen) {
+        const dock = document.getElementById('s33-msg-dock');
+        const wrap = document.getElementById('msg-wrap');
+        const pg = document.getElementById('page-messagerie');
+        if (dock) dock.classList.remove('open');
+        window._s33MsgDockOpen = false;
+        if (wrap && pg) pg.appendChild(wrap);
+      }
+      try { window.renderMessagerie(); } catch(e) { console.error('renderMessagerie', e); }
+    }
     else {
       // Quitter la messagerie : refermer le fil plein écran mobile
       document.body.classList.remove('s33-msg-thread-open');
@@ -30201,7 +30314,7 @@ window.addEventListener('appinstalled', () => {
   };
 
   // Injection immédiate (page + nav) pour que navigate('messagerie') fonctionne
-  function _init() { try { injectCSS(); injectNav(); injectPage(); } catch(_) {} }
+  function _init() { try { injectCSS(); injectNav(); injectPage(); injectDock(); } catch(_) {} }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _init);
   else _init();
 

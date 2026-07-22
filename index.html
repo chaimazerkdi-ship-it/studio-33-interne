@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-20.5 — devis = échéancier facture';
+const S33_BUILD = '2026-07-20.6 — retour en haut au changement d'onglet';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6544,6 +6544,14 @@ function navigate(page) {
     }
   });
   currentPage = page;
+  // Chaque onglet s'ouvre en haut de page (sinon on hérite du scroll du précédent)
+  try {
+    window.scrollTo(0, 0);
+    const mainEl = document.querySelector('.main');
+    if (mainEl) mainEl.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  } catch(_) {}
   renderPage(page);
 }
 

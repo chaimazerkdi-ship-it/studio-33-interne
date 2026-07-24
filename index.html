@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.1 — taux de TVA par facture';
+const S33_BUILD = '2026-07-21.2 — mention exoneration sur le devis';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11397,6 +11397,7 @@ function updateDevis() {
       <div class="intro">Nos honoraires pour la mission sont fixés à la somme forfaitaire HT de :</div>
       <div class="ht-val">${fmtN(ht)} MAD HT</div>
       <div class="ttc-val">Montant total TTC : ${fmtN(ttc)} MAD TTC</div>
+      ${tvaRate === 0 ? '<div style="font-size:11px;font-style:italic;color:#888;margin-top:4px;">TVA non applicable — opération exonérée (provinces du Sud).</div>' : (tvaRate !== 20 ? '<div style="font-size:11px;font-style:italic;color:#888;margin-top:4px;">TVA au taux de ' + tvaRate + ' %.</div>' : '')}
     </div>
 
     <div class="dv-table-title">Les honoraires seront fixés au montant forfaitaire de ${fmtN(ttc)} MAD TTC réparti comme suit :</div>
@@ -11994,7 +11995,15 @@ async function s33DevisPdf() {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(19); doc.setTextColor.apply(doc, INK);
     doc.text(money(ht) + ' MAD HT', W / 2, y, { align: 'center' }); y += 6;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
-    doc.text('Montant total TTC : ' + money(ttc) + ' MAD TTC', W / 2, y, { align: 'center' }); y += 9;
+    doc.text('Montant total TTC : ' + money(ttc) + ' MAD TTC', W / 2, y, { align: 'center' }); y += 5;
+    if (tvaRate === 0) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(8.2); doc.setTextColor(85);
+      doc.text('TVA non applicable — opération exonérée (provinces du Sud).', W / 2, y, { align: 'center' }); y += 4;
+    } else if (tvaRate !== 20) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(8.2); doc.setTextColor(85);
+      doc.text('TVA au taux de ' + tvaRate + ' %.', W / 2, y, { align: 'center' }); y += 4;
+    }
+    y += 4;
 
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, INK);
     doc.text(('Les honoraires seront fixés au montant forfaitaire de ' + money(ttc) + ' MAD TTC réparti comme suit :').toUpperCase(), M, y); y += 3;

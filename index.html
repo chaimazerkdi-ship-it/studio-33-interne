@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-20.9 — fusion des clients en double';
+const S33_BUILD = '2026-07-21.1 — taux de TVA par facture';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5586,13 +5586,24 @@ const S33_BUILD = '2026-07-20.9 — fusion des clients en double';
         <input type="number" id="i-amount" placeholder="0" oninput="calcTVA()">
       </div>
       <div class="form-row" style="margin-bottom:0">
-        <label>dont TVA (20%) — Auto</label>
-        <input type="text" id="i-tva" readonly style="opacity:0.6;">
+        <label>Taux de TVA</label>
+        <select id="i-tvarate" onchange="calcTVA()">
+          <option value="20">20 % (normal)</option>
+          <option value="14">14 %</option>
+          <option value="10">10 %</option>
+          <option value="0">0 % — Exonérée (Dakhla, provinces du Sud…)</option>
+        </select>
       </div>
     </div>
-    <div class="form-row">
-      <label>Montant HT (MAD) — Auto</label>
-      <input type="text" id="i-ttc" readonly style="color:var(--gold);font-weight:500;">
+    <div class="form-row-2">
+      <div class="form-row" style="margin-bottom:0">
+        <label>dont TVA — Auto</label>
+        <input type="text" id="i-tva" readonly style="opacity:0.6;">
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <label>Montant HT (MAD) — Auto</label>
+        <input type="text" id="i-ttc" readonly style="color:var(--gold);font-weight:500;">
+      </div>
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
@@ -7930,6 +7941,8 @@ function openModal(id) {
     if (idue) { idue.value = ''; s33SyncDueDate(); }
     document.getElementById('i-tva').value = '';
     document.getElementById('i-ttc').value = '';
+    const itr0 = document.getElementById('i-tvarate');
+    if (itr0) itr0.value = '20';
     const ipm = document.getElementById('i-payment-method'); if(ipm) ipm.value = '';
   }
   if (id === 'entree-modal') {
@@ -10071,12 +10084,20 @@ async function pvGeneratePDF() {
 
 // ===== INVOICES =====
 function calcTVA() {
-  // Le montant saisi est TTC ; la TVA (20 %) et le HT sont calculés à rebours
+  // Le montant saisi est TTC ; la TVA (au taux choisi) et le HT sont calculés à rebours
   const ttc = parseFloat(document.getElementById('i-amount').value) || 0;
-  const ht = ttc / 1.2;
+  const _r = parseFloat(document.getElementById('i-tvarate')?.value);
+  const rate = isNaN(_r) ? 20 : _r;
+  const ht = ttc / (1 + rate / 100);
   const tva = ttc - ht;
   document.getElementById('i-tva').value = formatNum(tva) + ' MAD';
   document.getElementById('i-ttc').value = formatNum(ht) + ' MAD';
+}
+
+// Taux de TVA effectif d'une facture (les anciennes n'ont pas la colonne → 20 %)
+function s33InvTvaRate(inv) {
+  const r = parseFloat(inv && inv.tva_rate);
+  return isNaN(r) ? 20 : r;
 }
 
 // Échéance de paiement par défaut : date de facturation + 15 jours
@@ -10194,7 +10215,8 @@ function renderInvoices() {
       const project = db.projects.find(p => p.id === inv.projectId);
       // Le montant saisi est TTC : HT et TVA sont calculés à rebours
       const ttc = inv.amount;
-      const ht = ttc / 1.2;
+      const _rate = s33InvTvaRate(inv);
+      const ht = ttc / (1 + _rate / 100);
       const tva = ttc - ht;
       const todayISO = new Date().toISOString().slice(0, 10);
       // Sans échéance saisie : retard 30 j après la date d'émission
@@ -10301,6 +10323,8 @@ function editInvoice(id) {
   if (idue) idue.value = inv.due_date || '';
   const ipm = document.getElementById('i-payment-method');
   if (ipm) ipm.value = inv.payment_method || localStorage.getItem('s33_paymethod_' + id) || '';
+  const itr = document.getElementById('i-tvarate');
+  if (itr) itr.value = String(s33InvTvaRate(inv));
   calcTVA();
   // Open modal WITHOUT resetting (edit id is already set)
   document.getElementById('invoice-modal').classList.add('open');
@@ -10316,6 +10340,7 @@ async function saveInvoice() {
     date: document.getElementById('i-date').value,
     due_date: document.getElementById('i-due')?.value || null,
     payment_method: document.getElementById('i-payment-method')?.value || null,
+    tva_rate: (function() { const r = parseFloat(document.getElementById('i-tvarate')?.value); return isNaN(r) ? 20 : r; })(),
   };
   if (!obj.object || !obj.amount) return;
 
@@ -10556,7 +10581,8 @@ async function s33InvoicePdf(id) {
   const project = db.projects.find(pr => pr.id === inv.projectId);
   // Convention de l'app : le montant saisi est TTC
   const ttc = parseFloat(inv.amount) || 0;
-  const ht = ttc / 1.2;
+  const tvaRate = s33InvTvaRate(inv);
+  const ht = ttc / (1 + tvaRate / 100);
   const tva = ttc - ht;
   toast('Préparation du PDF…');
   try {
@@ -10638,12 +10664,18 @@ async function s33InvoicePdf(id) {
     const xr = W - M, xl = W - M - 70;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
     doc.text('Sous-total HT', xl, y); doc.text(money(ht) + ' MAD', xr, y, { align: 'right' }); y += 5.4;
-    doc.text('TVA (20 %)', xl, y); doc.text(money(tva) + ' MAD', xr, y, { align: 'right' }); y += 4;
+    doc.text(tvaRate === 0 ? 'TVA — exonérée (0 %)' : 'TVA (' + tvaRate + ' %)', xl, y);
+    doc.text(money(tva) + ' MAD', xr, y, { align: 'right' }); y += 4;
     doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.4);
     doc.line(xl, y, xr, y); y += 5.4;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor.apply(doc, INK);
     doc.text('Total TTC', xl, y);
-    doc.text(money(ttc) + ' MAD', xr, y, { align: 'right' }); y += 9;
+    doc.text(money(ttc) + ' MAD', xr, y, { align: 'right' }); y += 6;
+    if (tvaRate === 0) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(85);
+      doc.text('TVA non applicable — opération exonérée.', xr, y, { align: 'right' }); y += 4;
+    }
+    y += 3;
 
     // Échéance / règlement
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor(85);
@@ -11309,7 +11341,8 @@ function updateDevis() {
   const dateVal = document.getElementById('dv-date')?.value || '';
   const projet = document.getElementById('dv-projet')?.value || '';
   const ht = parseFloat(document.getElementById('dv-ht')?.value) || 0;
-  const tvaRate = parseFloat(document.getElementById('dv-tva')?.value) || 20;
+  const _tvaIn = parseFloat(document.getElementById('dv-tva')?.value);
+  const tvaRate = isNaN(_tvaIn) ? 20 : _tvaIn;
   const tvaAmt = ht * tvaRate / 100;
   const ttc = ht + tvaAmt;
 
@@ -11434,7 +11467,8 @@ async function saveDevis() {
   const dateVal = document.getElementById('dv-date').value;
   const projet = document.getElementById('dv-projet').value.trim();
   const ht = parseFloat(document.getElementById('dv-ht').value) || 0;
-  const tvaRate = parseFloat(document.getElementById('dv-tva').value) || 20;
+  const _tvaIn2 = parseFloat(document.getElementById('dv-tva').value);
+  const tvaRate = isNaN(_tvaIn2) ? 20 : _tvaIn2;
   const ttc = ht * (1 + tvaRate / 100);
 
   if (!ref || !projet) { toast('Remplis la référence et la description'); return; }
@@ -11642,7 +11676,8 @@ function s33DevisTTC(d) {
   const t = parseFloat(d.ttc);
   if (t > 0) return t;
   const ht = parseFloat(d.ht) || 0;
-  return ht * (1 + (parseFloat(d.tvaRate ?? d.tva_rate) || 20) / 100);
+  const _tr = parseFloat(d.tvaRate ?? d.tva_rate);
+  return ht * (1 + (isNaN(_tr) ? 20 : _tr) / 100);
 }
 
 // Relance d'une facture impayée par WhatsApp (message pré-rempli)
@@ -11822,7 +11857,8 @@ async function s33ConfirmerValidationDevis(devisId) {
       num, client_id: clientId, project_id: projectId,
       object: 'Honoraires — ' + rows[0].label + ' (' + rows[0].pct + '%)',
       amount: rows[0].montant, date: today,
-      due_date: s33DueDateFrom(today), status: 'En attente'
+      due_date: s33DueDateFrom(today), status: 'En attente',
+      tva_rate: (function() { const r = parseFloat(d.tvaRate ?? d.tva_rate); return isNaN(r) ? 20 : r; })()
     });
     db.invoiceCounter++;
     await saveDB();
@@ -11897,7 +11933,8 @@ async function s33DevisPdf() {
   const clientName = (typeof s33DvClientName === 'function' ? s33DvClientName() : (document.getElementById('dv-client')?.value || ''));
   const projet = document.getElementById('dv-projet')?.value || '';
   const ht = parseFloat(document.getElementById('dv-ht')?.value) || 0;
-  const tvaRate = parseFloat(document.getElementById('dv-tva')?.value) || 20;
+  const _tvaIn = parseFloat(document.getElementById('dv-tva')?.value);
+  const tvaRate = isNaN(_tvaIn) ? 20 : _tvaIn;
   const ttc = ht * (1 + tvaRate / 100);
   const dateStr = (document.getElementById('dv-date')?.value
     ? new Date(document.getElementById('dv-date').value + 'T00:00') : new Date()).toLocaleDateString('fr-FR');
@@ -30807,7 +30844,12 @@ window.addEventListener('appinstalled', () => {
       const ins = await sbInsertOrThrow('invoices', {
         num, client_id: p.clientId ?? p.client_id, project_id: p.id,
         object: 'Honoraires — ' + (r.label || r.phase),
-        amount: montant, date: today, due_date: due, status: 'En attente'
+        amount: montant, date: today, due_date: due, status: 'En attente',
+        tva_rate: (function() {
+          const prev = (db.invoices || []).filter(i => i.projectId === r.project_id && i.tva_rate != null)
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+          return prev ? s33InvTvaRate(prev) : 20;
+        })()
       });
       db.invoiceCounter++; await saveDB();
       db.invoices.push({ ...ins[0], clientId: ins[0].client_id, projectId: ins[0].project_id });
@@ -32858,7 +32900,12 @@ window.addEventListener('appinstalled', () => {
       const ins = await sbInsertOrThrow('invoices', {
         num, client_id: p.clientId != null ? p.clientId : p.client_id, project_id: p.id,
         object: 'Honoraires — ' + (r.label || ''),
-        amount: montant, date: today, due_date: due, status: 'En attente'
+        amount: montant, date: today, due_date: due, status: 'En attente',
+        tva_rate: (function() {
+          const prev = (db.invoices || []).filter(i => i.projectId === r.project_id && i.tva_rate != null)
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+          return prev ? s33InvTvaRate(prev) : 20;
+        })()
       });
       db.invoiceCounter++; await saveDB();
       db.invoices.push({ ...ins[0], clientId: ins[0].client_id, projectId: ins[0].project_id });

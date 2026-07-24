@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.2 — mention exoneration sur le devis';
+const S33_BUILD = '2026-07-21.3 — liste des devis : recherche et voir plus';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3949,6 +3949,7 @@ const S33_BUILD = '2026-07-21.2 — mention exoneration sur le devis';
       <!-- SAVED DEVIS LIST -->
       <div style="margin-bottom:28px;">
         <div class="section-title">Devis enregistrés</div>
+        <input class="search-input" id="devis-search" placeholder="Rechercher un devis (client, projet, n°, statut)…" oninput="window._dvQuery=this.value;window._dvShowAll=false;renderDevisList();" style="max-width:360px;margin-bottom:10px;">
         <div class="table-wrap">
           <table>
             <thead>
@@ -11529,7 +11530,19 @@ function renderDevisList() {
     tbody.innerHTML = `<tr><td colspan="7">${emptyStateHTML('Aucun devis sauvegardé', { icon: 'description', sub: 'Créez un devis et enregistrez-le pour le retrouver ici.' })}</td></tr>`;
     return;
   }
-  tbody.innerHTML = [...db.devis].reverse().map(d => {
+  // Les plus récents en haut ; recherche + liste raccourcie (12) avec « Voir plus »
+  const _dvq = (window._dvQuery || '').trim().toLowerCase();
+  let _dvList = [...db.devis].reverse();
+  if (_dvq) _dvList = _dvList.filter(d => [d.num, d.ref, d.clientName, d.projet, d.status].some(v => String(v || '').toLowerCase().includes(_dvq)));
+  const _dvTotal = _dvList.length;
+  const _DVLIM = 12;
+  const _dvHidden = (!_dvq && !window._dvShowAll && _dvTotal > _DVLIM) ? _dvTotal - _DVLIM : 0;
+  if (_dvHidden) _dvList = _dvList.slice(0, _DVLIM);
+  if (!_dvList.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-faint);font-size:12.5px;padding:22px;">Aucun devis ne correspond à « ${escHTML(window._dvQuery || '')} »</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = _dvList.map(d => {
     // Couleur du statut appliquée directement sur le menu déroulant
     const statusStyles = {
       'Accepté':   'background:rgba(61,214,140,.14);border:1px solid rgba(61,214,140,.55);color:#1a9a5c;font-weight:700;',
@@ -11565,7 +11578,13 @@ function renderDevisList() {
         <button class="btn btn-danger" onclick="deleteDevis(${d.id})">×</button>
       </td>
     </tr>`;
-  }).join('');
+  }).join('') +
+  (_dvHidden ? `<tr><td colspan="7" style="text-align:center;padding:10px;">
+      <button onclick="window._dvShowAll=true;renderDevisList();" style="border:1px dashed var(--border);background:none;color:var(--gold);font-family:inherit;font-size:12px;font-weight:700;padding:8px 20px;border-radius:99px;cursor:pointer;">Voir les ${_dvHidden} devis plus anciens</button>
+    </td></tr>` :
+   (window._dvShowAll && !_dvq && _dvTotal > _DVLIM ? `<tr><td colspan="7" style="text-align:center;padding:10px;">
+      <button onclick="window._dvShowAll=false;renderDevisList();" style="border:1px dashed var(--border);background:none;color:var(--text-dim);font-family:inherit;font-size:12px;font-weight:600;padding:8px 20px;border-radius:99px;cursor:pointer;">Réduire la liste</button>
+    </td></tr>` : ''));
 }
 
 function loadDevis(id) {

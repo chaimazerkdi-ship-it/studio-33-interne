@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-20.8 — messagerie : bulle, modifier, supprimer';
+const S33_BUILD = '2026-07-20.9 — fusion des clients en double';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -34837,6 +34837,165 @@ window.addEventListener('appinstalled', () => {
   setInterval(pushGate, 3000);
 
   console.log('✓ Module fraîcheur chargé');
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODULE FUSION CLIENTS — détection et fusion des fiches en double
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+  const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
+
+  // Nom normalisé : minuscules, sans accents, sans titre (Mr/Mme…), sans ponctuation
+  function norm(s) {
+    return String(s || '').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/^\s*(mr|mme|mlle|mr?s|m|dr)\.?\s+/, '')
+      .replace(/[^a-z0-9؀-ۿ]/g, '');
+  }
+
+  // Groupes de doublons probables : même nom normalisé OU même téléphone
+  window.s33FusionGroups = function() {
+    const actifs = (db.clients || []).filter(c => !c.deleted_at);
+    const byName = {}, byPhone = {};
+    actifs.forEach(c => {
+      const n = norm(c.name);
+      if (n) (byName[n] = byName[n] || []).push(c);
+      const d = String(c.phone || '').replace(/\D/g, '');
+      if (d.length >= 9) { const k = d.slice(-9); (byPhone[k] = byPhone[k] || []).push(c); }
+    });
+    const out = [], seen = new Set();
+    Object.values(byName).concat(Object.values(byPhone)).forEach(g => {
+      if (g.length < 2) return;
+      const key = g.map(c => c.id).sort((a, b) => a - b).join('-');
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(g.slice().sort((a, b) => a.id - b.id));
+    });
+    return out;
+  };
+
+  function refCounts(cid) {
+    return {
+      projets: (db.projects || []).filter(p => p.clientId === cid).length,
+      factures: (db.invoices || []).filter(i => i.clientId === cid).length
+    };
+  }
+
+  window.s33FusionOpen = function() {
+    const groups = s33FusionGroups();
+    const old = document.getElementById('s33-fusion-modal');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 's33-fusion-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    let inner;
+    if (!groups.length) {
+      inner = '<div style="padding:30px 10px;text-align:center;color:var(--text-faint);font-size:13.5px;">Aucun doublon détecté 🎉<br><span style="font-size:12px;">(mêmes noms ou mêmes numéros de téléphone)</span></div>';
+    } else {
+      inner = groups.map((g, gi) =>
+        '<div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px;">' +
+          '<div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:4px;">' + esc(g[0].name) + ' <span style="color:var(--text-faint);font-weight:600;">— ' + g.length + ' fiches</span></div>' +
+          '<div style="font-size:11px;color:var(--text-faint);margin-bottom:10px;">Choisis la fiche à <b>garder</b> — les autres partent à la corbeille, et tous leurs projets, factures, paiements et événements sont rattachés à la fiche gardée.</div>' +
+          g.map((c, ci) => {
+            const rc = refCounts(c.id);
+            return '<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;cursor:pointer;background:var(--surface2);">' +
+              '<input type="radio" name="fus-g' + gi + '" value="' + c.id + '"' + (ci === 0 ? ' checked' : '') + '>' +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:12.5px;font-weight:700;color:var(--text);">' + esc(c.name) + ' <span style="font-weight:500;color:var(--text-faint);">#' + c.id + '</span></div>' +
+                '<div style="font-size:11px;color:var(--text-dim);">' + rc.projets + ' projet(s) · ' + rc.factures + ' facture(s)' + (c.phone ? ' · ' + esc(c.phone) : '') + (c.email ? ' · ' + esc(c.email) : '') + '</div>' +
+              '</div></label>';
+          }).join('') +
+          '<button onclick="s33FusionDo(' + gi + ')" class="btn btn-gold" style="margin-top:6px;font-size:12px;padding:8px 18px;"><span class="mi mi-sm">merge</span> Fusionner ces ' + g.length + ' fiches</button>' +
+        '</div>').join('');
+    }
+    ov.innerHTML = '<div class="modal" style="max-width:560px;" onclick="event.stopPropagation()">' +
+      '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">merge</span> Fusionner les clients en double</div>' +
+      '<div id="s33-fusion-body">' + inner + '</div></div>';
+    document.body.appendChild(ov);
+    window._s33FusionGroups = groups;
+  };
+
+  window.s33FusionDo = async function(gi) {
+    const g = (window._s33FusionGroups || [])[gi];
+    if (!g) return;
+    const sel = document.querySelector('input[name="fus-g' + gi + '"]:checked');
+    const masterId = sel ? parseInt(sel.value) : g[0].id;
+    const dupIds = g.map(c => c.id).filter(id => id !== masterId);
+    const master = db.clients.find(c => c.id === masterId);
+    if (!master || !dupIds.length) return;
+    if (!confirm('Garder « ' + master.name + ' » (#' + masterId + ') et fusionner ' + dupIds.length + ' fiche(s) dedans ?\n\nTout leur contenu (projets, factures, paiements, événements) sera rattaché à la fiche gardée. Les doublons partent à la corbeille (récupérables).')) return;
+    toast('Fusion en cours…');
+    try {
+      for (const dupId of dupIds) {
+        await sbFetch('projects', 'PATCH', { client_id: masterId }, '?client_id=eq.' + dupId);
+        await sbFetch('invoices', 'PATCH', { client_id: masterId }, '?client_id=eq.' + dupId);
+        await sbFetch('payments', 'PATCH', { client_id: masterId }, '?client_id=eq.' + dupId);
+        await sbFetch('calendar_events', 'PATCH', { client_id: masterId }, '?client_id=eq.' + dupId);
+        await sbFetch('entrees', 'PATCH', { client_id: masterId }, '?client_id=eq.' + dupId);
+        await sbFetch('prospects', 'PATCH', { converted_to_client_id: masterId }, '?converted_to_client_id=eq.' + dupId);
+      }
+      // Compléter la fiche gardée avec ce que les doublons avaient en plus
+      const dups = dupIds.map(id => db.clients.find(c => c.id === id)).filter(Boolean);
+      const patch = {};
+      ['phone', 'email', 'type'].forEach(f => {
+        if (!master[f]) { const d = dups.find(x => x && x[f]); if (d) patch[f] = d[f]; }
+      });
+      const notes = [master.notes].concat(dups.map(d => d.notes)).filter(Boolean)
+        .filter((v, i, a) => a.indexOf(v) === i).join('\n---\n');
+      if (notes && notes !== (master.notes || '')) patch.notes = notes;
+      const links = (master.links || []).concat.apply(master.links || [], dups.map(d => d.links || []));
+      if (links.length > (master.links || []).length) patch.links = links;
+      const comms = (master.communications || []).concat.apply(master.communications || [], dups.map(d => d.communications || []));
+      if (comms.length > (master.communications || []).length) patch.communications = comms;
+      if (Object.keys(patch).length) await sbUpdate('clients', masterId, patch);
+      // Corbeille pour les doublons
+      for (const dupId of dupIds) {
+        await sbUpdate('clients', dupId, { deleted_at: new Date().toISOString() });
+      }
+      // État local
+      Object.assign(master, patch);
+      (db.projects || []).forEach(p => { if (dupIds.includes(p.clientId)) p.clientId = masterId; });
+      (db.invoices || []).forEach(i => { if (dupIds.includes(i.clientId)) i.clientId = masterId; });
+      db.clients = db.clients.filter(c => !dupIds.includes(c.id));
+      try { logActivity('client_merge', currentUser.name + ' a fusionné ' + dupIds.length + ' doublon(s) dans « ' + master.name + ' »', 'clients', masterId, master.name); } catch(_) {}
+      toast('Fusion terminée : « ' + master.name + ' » regroupe maintenant tout ✓');
+      s33FusionOpen();
+      if (typeof renderClients === 'function') renderClients();
+      updateBtn();
+    } catch(e) {
+      console.error('fusion', e);
+      toast('Erreur pendant la fusion — rien n\'a été perdu, réessayez');
+    }
+  };
+
+  // Bouton « Doublons (N) » dans l'en-tête de la page Clients (admin)
+  function updateBtn() {
+    if (!window.currentUser || currentUser.role !== 'admin') return;
+    const header = document.querySelector('#page-clients .page-header > div:last-child');
+    if (!header) return;
+    const n = s33FusionGroups().length;
+    let btn = document.getElementById('s33-fusion-btn');
+    if (!n) { if (btn) btn.remove(); return; }
+    if (!btn) {
+      header.insertAdjacentHTML('afterbegin',
+        '<button id="s33-fusion-btn" onclick="s33FusionOpen()" style="background:rgba(217,119,6,.09);border:1px solid rgba(217,119,6,.35);color:#b7600a;font-size:12px;font-weight:700;padding:7px 14px;border-radius:var(--radius-pill);cursor:pointer;font-family:inherit;"><span class="mi mi-sm">merge</span> <span id="s33-fusion-n"></span></button>');
+      btn = document.getElementById('s33-fusion-btn');
+    }
+    const lbl = document.getElementById('s33-fusion-n');
+    if (lbl) lbl.textContent = 'Doublons (' + n + ')';
+  }
+  const _origRC = window.renderClients;
+  window.renderClients = function() {
+    if (typeof _origRC === 'function') { try { _origRC.apply(this, arguments); } catch(e) { console.error(e); } }
+    try { updateBtn(); } catch(_) {}
+  };
+
+  console.log('✓ Module fusion clients chargé');
 })();
 </script>
 

@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.5 — modifier une charge sans la recreer';
+const S33_BUILD = '2026-07-21.6 — simulateur brut/net';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -4107,6 +4107,7 @@ const S33_BUILD = '2026-07-21.5 — modifier une charge sans la recreer';
           <select id="finance-month" onchange="renderFinance()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:12px;border-radius:var(--radius);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;"></select>
           <select id="finance-year" onchange="renderFinance()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:12px;border-radius:var(--radius);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;"></select>
           <button class="btn btn-outline" onclick="s33ScanRecu()" title="Photographier un reçu et créer la dépense"><span class="mi mi-sm">photo_camera</span> Reçu</button>
+          <button class="btn btn-outline" onclick="s33PaieOpen()" title="Simulateur salaire brut / net / coût employeur"><span class="mi mi-sm">calculate</span> Brut ⇄ Net</button>
           <button class="btn btn-gold" onclick="openModal('charge-modal')">+ Charge</button>
           <button class="btn btn-outline" onclick="openModal('entree-modal')">+ Entrée</button>
           <button class="btn btn-outline" onclick="exportFinancesCSV()" title="Exporter l'année en CSV (Excel)"><span class="mi">download</span> Exporter</button>
@@ -35104,6 +35105,110 @@ window.addEventListener('appinstalled', () => {
   };
 
   console.log('✓ Module fusion clients chargé');
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     SIMULATEUR PAIE MAROC — brut ⇄ net, CNSS, AMO, IR, coût employeur
+     Estimation (barème IR loi de finances 2025, célibataire) —
+     toujours à valider avec le comptable.
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+  const F = n => (typeof formatNum === 'function' ? formatNum(Math.round(n)) : String(Math.round(n)));
+
+  // Barème IR mensuel (LF 2025) : continu par construction
+  function irMensuel(netImposable, personnesCharge) {
+    const t = netImposable;
+    let ir = 0;
+    if (t <= 3333.33) ir = 0;
+    else if (t <= 5000) ir = t * 0.10 - 333.33;
+    else if (t <= 6666.67) ir = t * 0.20 - 833.33;
+    else if (t <= 8333.33) ir = t * 0.30 - 1500;
+    else if (t <= 15000) ir = t * 0.34 - 1833.33;
+    else ir = t * 0.37 - 2283.33;
+    // Déduction pour charges de famille : 500 MAD/an/personne (max 6)
+    ir -= 41.67 * Math.min(6, Math.max(0, personnesCharge || 0));
+    return Math.max(0, ir);
+  }
+
+  window.s33PaieCalc = function(brut, personnesCharge) {
+    const cnssSal = 0.0448 * Math.min(brut, 6000);   // prestations sociales, plafond 6 000
+    const amoSal = 0.0226 * brut;                     // AMO, sans plafond
+    const fraisPro = Math.min(0.25 * brut, 2916.67);  // frais professionnels 25 %, plafonnés
+    const netImposable = Math.max(0, brut - cnssSal - amoSal - fraisPro);
+    const ir = irMensuel(netImposable, personnesCharge);
+    const net = brut - cnssSal - amoSal - ir;
+    const patAF = 0.064 * brut;                       // allocations familiales
+    const patPS = 0.0898 * Math.min(brut, 6000);      // CNSS patronale, plafond 6 000
+    const patAMO = 0.0411 * brut;
+    const patTFP = 0.016 * brut;                      // taxe formation professionnelle
+    const patronal = patAF + patPS + patAMO + patTFP;
+    return { brut, cnssSal, amoSal, ir, net, patronal, patAF, patPS, patAMO, patTFP,
+      cout: brut + patronal, cnssTotal: cnssSal + patPS + patAF };
+  };
+  // Net souhaité → brut nécessaire (recherche dichotomique)
+  window.s33PaieBrutDepuisNet = function(net, personnesCharge) {
+    let lo = net, hi = net * 1.8;
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2;
+      if (s33PaieCalc(mid, personnesCharge).net < net) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  };
+
+  window.s33PaieOpen = function() {
+    const old = document.getElementById('s33-paie-modal');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 's33-paie-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    ov.innerHTML = '<div class="modal" style="max-width:520px;" onclick="event.stopPropagation()">' +
+      '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">calculate</span> Simulateur de salaire (Maroc)</div>' +
+      '<div class="form-row-2">' +
+        '<div class="form-row" style="margin-bottom:0"><label>Je connais…</label>' +
+          '<select id="paie-mode" onchange="s33PaieMaj()"><option value="net">Le NET que je verse</option><option value="brut">Le BRUT</option></select></div>' +
+        '<div class="form-row" style="margin-bottom:0"><label>Montant (MAD/mois)</label>' +
+          '<input type="number" id="paie-montant" placeholder="7000" oninput="s33PaieMaj()"></div>' +
+      '</div>' +
+      '<div class="form-row"><label>Personnes à charge (conjoint, enfants — pour l\'IR)</label>' +
+        '<select id="paie-pers" onchange="s33PaieMaj()"><option value="0">0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>' +
+      '<div id="paie-resultat" style="border:1px solid var(--border);border-radius:var(--radius);padding:4px 16px;font-size:13px;"></div>' +
+      '<div style="font-size:10.5px;color:var(--text-faint);margin-top:10px;line-height:1.5;">Estimation — barème IR 2025, CNSS 4,48 % (plafond 6 000), AMO 2,26 %, frais professionnels 25 %. L\'ancienneté, les primes et certains cas particuliers changent le résultat : fais valider les bulletins par ton comptable.</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    document.getElementById('paie-montant').focus();
+    s33PaieMaj();
+  };
+
+  window.s33PaieMaj = function() {
+    const box = document.getElementById('paie-resultat');
+    if (!box) return;
+    const mode = document.getElementById('paie-mode').value;
+    const montant = parseFloat(document.getElementById('paie-montant').value) || 0;
+    const pers = parseInt(document.getElementById('paie-pers').value) || 0;
+    if (!montant) { box.innerHTML = '<div style="padding:14px 0;color:var(--text-faint);">Saisis un montant pour voir le détail.</div>'; return; }
+    const brut = mode === 'brut' ? montant : s33PaieBrutDepuisNet(montant, pers);
+    const c = s33PaieCalc(brut, pers);
+    const ligne = (lbl, val, opts) => '<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--surface2);' + ((opts || {}).strong ? 'font-weight:800;' : '') + '">' +
+      '<span' + ((opts || {}).dim ? ' style="color:var(--text-dim);"' : '') + '>' + lbl + '</span><span style="white-space:nowrap;' + ((opts || {}).color ? 'color:' + opts.color + ';' : '') + '">' + val + '</span></div>';
+    box.innerHTML =
+      ligne('Salaire brut', F(c.brut) + ' MAD', { strong: true }) +
+      ligne('− CNSS salarié (4,48 %, plafonné)', '− ' + F(c.cnssSal), { dim: true }) +
+      ligne('− AMO salarié (2,26 %)', '− ' + F(c.amoSal), { dim: true }) +
+      ligne('− Impôt sur le revenu (IR)', '− ' + F(c.ir), { dim: true }) +
+      ligne('Net versé au salarié', F(c.net) + ' MAD', { strong: true, color: 'var(--gold)' }) +
+      '<div style="height:8px;"></div>' +
+      ligne('+ Charges patronales (~' + (c.patronal / c.brut * 100).toFixed(1) + ' %)', '+ ' + F(c.patronal), { dim: true }) +
+      '<div style="font-size:10.5px;color:var(--text-faint);padding:2px 0 6px;">dont alloc. familiales ' + F(c.patAF) + ' · CNSS ' + F(c.patPS) + ' · AMO ' + F(c.patAMO) + ' · formation ' + F(c.patTFP) + '</div>' +
+      ligne('Coût total pour le cabinet', F(c.cout) + ' MAD', { strong: true }) +
+      ligne('CNSS totale à verser (salarié + patron)', F(c.cnssTotal + c.amoSal + c.patAMO) + ' MAD avec AMO', { dim: true });
+  };
+
+  console.log('✓ Simulateur paie chargé');
 })();
 </script>
 

@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.4 — fin des doublons de charges (demo neutralisee)';
+const S33_BUILD = '2026-07-21.5 — modifier une charge sans la recreer';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -7916,6 +7916,14 @@ function taskExtraPanelsHTML(projId, t) {
 
 // ===== MODAL HELPERS =====
 function openModal(id) {
+  if (id === 'charge-modal') {
+    // « + Charge » = création : vider le mode édition et le formulaire
+    document.getElementById('charge-edit-id').value = '';
+    document.getElementById('charge-modal-title').textContent = 'Ajouter une charge';
+    document.getElementById('ch-label').value = '';
+    document.getElementById('ch-amount').value = '';
+    if (!document.getElementById('ch-month').value) document.getElementById('ch-month').value = new Date().toISOString().slice(0, 7);
+  }
   if (id === 'project-modal') {
     // Seulement réinitialiser si on est en mode "Nouveau projet" (pas en mode édition)
     const editId = document.getElementById('project-edit-id').value;
@@ -13325,7 +13333,8 @@ function renderFinance() {
           </div>
           ${c.receipt_photo ? `<img src="${c.receipt_photo}" onclick="s33ShowRecu(${c.id})" alt="reçu" style="width:34px;height:34px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--border);flex-shrink:0;">` : ''}
           <span style="color:var(--red);font-size:13px;font-weight:400;">− ${formatNum(c.amount)} MAD</span>
-          <button class="btn btn-danger" onclick="deleteCharge(${c.id})" style="margin-left:8px;">×</button>
+          <button class="btn btn-ghost" onclick="editCharge(${c.id})" title="Modifier le montant ou le libellé" style="margin-left:8px;padding:4px 8px;"><span class="mi" style="font-size:14px;">edit</span></button>
+          <button class="btn btn-danger" onclick="deleteCharge(${c.id})" style="margin-left:4px;">×</button>
         </div>
       `).join('');
     }
@@ -13405,6 +13414,22 @@ async function saveCharge() {
   }
   closeModal('charge-modal');
   await loadDB(); renderFinance(); toast('Charge enregistrée');
+}
+
+// Modifier une charge existante (montant, libellé, catégorie…) sans la recréer
+function editCharge(id) {
+  const c = (db.charges || []).find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('charge-edit-id').value = id;
+  document.getElementById('charge-modal-title').textContent = 'Modifier la charge';
+  document.getElementById('ch-label').value = c.label || '';
+  const catSel = document.getElementById('ch-cat');
+  catSel.value = c.cat || 'Autre';
+  if (catSel.value !== (c.cat || 'Autre')) catSel.value = 'Autre';
+  document.getElementById('ch-amount').value = c.amount || '';
+  document.getElementById('ch-recur').value = c.recur === 'mensuel' ? 'mensuel' : 'ponctuel';
+  document.getElementById('ch-month').value = /^\d{4}-\d{2}$/.test(c.month || '') ? c.month : new Date().toISOString().slice(0, 7);
+  document.getElementById('charge-modal').classList.add('open');
 }
 
 async function deleteCharge(id) {

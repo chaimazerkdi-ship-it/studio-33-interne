@@ -263,17 +263,67 @@
     </div>
   </div>
 
-  <div class="btn-row">
+  <div class="btn-row" id="btn-row-interne">
     <button class="btn-secondary" onclick="clearForm()">Effacer</button>
     <button class="btn-primary" onclick="window.print()">Exporter PDF</button>
     <button class="btn-primary" onclick="exportDOCX()">Exporter DOCX</button>
     <button class="btn-save embed-only" onclick="saveToProject()">Enregistrer dans le projet</button>
+  </div>
+  <div class="btn-row" id="btn-row-client" style="display:none;flex-direction:column;align-items:center;gap:10px;">
+    <button class="btn-save" id="btn-client-send" onclick="clientSubmit()" style="font-size:15px;padding:16px 40px;">✓ Envoyer mes réponses au Studio 33</button>
+    <div style="font-size:11px;color:var(--muted);text-align:center;">Vos réponses partent directement chez votre architecte. Vous pouvez renvoyer le formulaire si vous changez d'avis.</div>
   </div>
 
 </div>
 <script>
 const IS_EMBED = window.parent !== window;
 if (IS_EMBED) document.body.classList.add('is-embed');
+
+// ── Mode CLIENT : le lien ?b=TOKEN permet au client de répondre chez lui ──
+const CLIENT_TOKEN = new URLSearchParams(location.search).get('b') || '';
+const SB_URL = 'https://yjxcqptgugatrxeyzrdc.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlqeGNxcHRndWdhdHJ4ZXl6cmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3MzEzNjksImV4cCI6MjA5MDMwNzM2OX0.Oijn7Q7g_IYy-ciUwcK5B88CBuJN48XTSAHo2dUqLhM';
+if (CLIENT_TOKEN) {
+  document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('btn-row-interne').style.display = 'none';
+    document.getElementById('btn-row-client').style.display = 'flex';
+    const h = document.querySelector('header p');
+    if (h) h.textContent = 'Prenez votre temps — répondez en famille, tout nous aide à dessiner votre projet';
+  });
+}
+async function clientSubmit() {
+  const btn = document.getElementById('btn-client-send');
+  const data = _collectFormData();
+  const rempli = Object.values(data).filter(function(v) { return v && v !== false; }).length;
+  if (rempli < 3) { alert('Remplissez au moins votre nom et quelques réponses avant d\'envoyer 🙂'); return; }
+  btn.disabled = true; btn.textContent = 'Envoi en cours…';
+  try {
+    const r = await fetch(SB_URL + '/rest/v1/client_briefs?token=eq.' + encodeURIComponent(CLIENT_TOKEN), {
+      method: 'PATCH',
+      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify({ answers: data, submitted_at: new Date().toISOString(), imported: false, client_name: (data.client_nom || '') || null })
+    });
+    const rows = await r.json().catch(function() { return null; });
+    if (!r.ok || !Array.isArray(rows) || !rows.length) throw new Error('lien invalide');
+    // Prévenir l'équipe (best effort — l'app affiche de toute façon « Répondu »)
+    try {
+      await fetch(SB_URL + '/functions/v1/send-push', {
+        method: 'POST',
+        headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_ids: [], roles: ['admin'], title: 'Questionnaire client rempli 📋', body: (data.client_nom || 'Un client') + ' a envoyé ses réponses au brief', url: '/', tag: 'brief_' + CLIENT_TOKEN })
+      });
+    } catch(e) {}
+    document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg);">' +
+      '<div style="max-width:440px;text-align:center;background:var(--card);border:1px solid var(--border);border-radius:2px;padding:48px 32px;">' +
+      '<div style="font-size:44px;">🙏</div>' +
+      '<h1 style="font-family:\'Cormorant Garamond\',serif;font-weight:300;font-size:26px;margin:14px 0 10px;">Merci !</h1>' +
+      '<p style="font-size:13px;color:var(--muted);line-height:1.7;">Vos réponses ont bien été transmises à Studio 33 Architects.<br>Nous les étudions et revenons vers vous très vite pour donner vie à votre projet.</p>' +
+      '</div></div>';
+  } catch(e) {
+    btn.disabled = false; btn.textContent = '✓ Envoyer mes réponses au Studio 33';
+    alert('Envoi impossible — vérifiez votre connexion et réessayez. Si le problème persiste, contactez-nous.');
+  }
+}
 
 const FIELD_IDS = [
   'client_nom','client_tel','client_email','brief_date','proj_adresse',

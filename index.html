@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.6 — simulateur brut/net';
+const S33_BUILD = '2026-07-21.7 — questionnaire client par lien';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -35209,6 +35209,177 @@ window.addEventListener('appinstalled', () => {
   };
 
   console.log('✓ Simulateur paie chargé');
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     QUESTIONNAIRE CLIENT PAR LIEN — le client répond en famille depuis
+     brief.html?b=TOKEN ; les réponses reviennent en version du générateur
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+  const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
+  let _briefs = null;
+
+  const briefUrl = t => new URL('brief.html?b=' + t, location.href).href;
+
+  async function loadBriefs() {
+    try { _briefs = await sbGet('client_briefs', '?order=created_at.desc&select=id,token,client_name,project_id,submitted_at,imported,created_at') || []; }
+    catch(_) { _briefs = _briefs || []; }
+    return _briefs;
+  }
+
+  // Réponses reçues → versions du générateur Questionnaire (une seule fois)
+  async function importSubmitted() {
+    let imported = 0;
+    for (const b of (_briefs || [])) {
+      if (!b.submitted_at || b.imported) continue;
+      try {
+        const full = await sbGet('client_briefs', '?id=eq.' + b.id + '&select=answers');
+        const answers = full && full[0] && full[0].answers;
+        if (!answers) continue;
+        const pid = b.project_id || null;
+        const existing = (db.generatedDocs || []).filter(d => d.doc_type === 'questionnaire' && String(d.project_id || '') === String(pid || ''));
+        const version = existing.reduce((m, d) => Math.max(m, d.version || 0), 0) + 1;
+        const ins = await sbInsertOrThrow('generated_documents', {
+          project_id: pid, doc_type: 'questionnaire', version,
+          title: 'Brief — ' + (b.client_name || 'Client') + ' (rempli par le client)',
+          form_data: answers, html_content: '', metadata: { source: 'lien_client', token: b.token },
+          created_by: b.client_name || 'Client'
+        });
+        if (ins && ins[0]) db.generatedDocs.push(ins[0]);
+        await sbUpdate('client_briefs', b.id, { imported: true });
+        b.imported = true;
+        imported++;
+      } catch(e) { console.error('import brief', e); }
+    }
+    return imported;
+  }
+
+  window.s33BriefNewLink = function() {
+    const old = document.getElementById('s33-brief-modal');
+    if (old) old.remove();
+    const projOpts = '<option value="">— Sans projet pour l\'instant —</option>' +
+      (db.projects || []).filter(p => !p.archived).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+        .map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('');
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 's33-brief-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    ov.innerHTML = '<div class="modal" style="max-width:460px;" onclick="event.stopPropagation()">' +
+      '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">quiz</span> Lien questionnaire client</div>' +
+      '<div class="form-row"><label>Nom du client</label><input type="text" id="bl-nom" placeholder="Mr et Mme …"></div>' +
+      '<div class="form-row"><label>Projet (optionnel)</label><select id="bl-proj">' + projOpts + '</select></div>' +
+      '<div class="form-actions"><button class="btn btn-outline" onclick="document.getElementById(\'s33-brief-modal\').remove()">Annuler</button>' +
+      '<button class="btn btn-gold" onclick="s33BriefCreate()"><span class="mi mi-sm">link</span> Créer le lien</button></div></div>';
+    document.body.appendChild(ov);
+    document.getElementById('bl-nom').focus();
+  };
+  window.s33BriefCreate = async function() {
+    const nom = (document.getElementById('bl-nom').value || '').trim();
+    if (!nom) { toast('Indique le nom du client'); return; }
+    const pid = parseInt(document.getElementById('bl-proj').value) || null;
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
+    try {
+      const ins = await sbInsertOrThrow('client_briefs', { token, client_name: nom, project_id: pid });
+      if (ins && ins[0]) (_briefs = _briefs || []).unshift(ins[0]);
+      document.getElementById('s33-brief-modal').remove();
+      try { await navigator.clipboard.writeText(briefUrl(token)); } catch(_) {}
+      toast('Lien créé et copié ✓ — envoie-le par WhatsApp');
+      renderBlock();
+      logActivity('brief_link', currentUser.name + ' a créé un lien questionnaire pour ' + nom, 'generateur', null, nom);
+    } catch(e) { console.error(e); toast('Création impossible — réessayez'); }
+  };
+  window.s33BriefWa = function(id) {
+    const b = (_briefs || []).find(x => x.id === id);
+    if (!b) return;
+    const link = briefUrl(b.token);
+    const cli = (db.clients || []).find(c => (c.name || '').trim().toLowerCase() === (b.client_name || '').trim().toLowerCase());
+    const digits = cli && cli.phone ? String(cli.phone).replace(/\D/g, '') : '';
+    const intl = digits ? (digits.startsWith('0') ? '212' + digits.slice(1) : digits) : '';
+    const txt = encodeURIComponent(
+      'Bonjour ' + (b.client_name || '') + ',\n\n' +
+      'Pour bien préparer votre projet, voici notre questionnaire — prenez le temps d\'y répondre tranquillement, en famille. Chaque réponse nous aide à dessiner la maison qui vous ressemble :\n' + link + '\n\n' +
+      'مرحباً،\nلتحضير مشروعكم جيداً، إليكم استبياننا — خذوا وقتكم وأجيبوا عليه بهدوء مع العائلة. كل إجابة تساعدنا على تصميم المنزل الذي يشبهكم (الرابط أعلاه).\n\n' +
+      'Studio 33 Architects');
+    window.open('https://wa.me/' + intl + '?text=' + txt, '_blank');
+  };
+  window.s33BriefCopy = function(id) {
+    const b = (_briefs || []).find(x => x.id === id);
+    if (!b) return;
+    navigator.clipboard.writeText(briefUrl(b.token)).then(() => toast('Lien copié ✓')).catch(() => prompt('Copie ce lien :', briefUrl(b.token)));
+  };
+  window.s33BriefDel = async function(id) {
+    if (!confirm('Supprimer ce lien ? Le client ne pourra plus répondre (les réponses déjà importées restent dans les versions).')) return;
+    try {
+      await sbDelete('client_briefs', id);
+      _briefs = (_briefs || []).filter(x => x.id !== id);
+      renderBlock();
+    } catch(_) { toast('Suppression impossible'); }
+  };
+
+  function renderBlock() {
+    const host = document.getElementById('s33-brief-links');
+    if (!host) return;
+    const rows = (_briefs || []).map(b => {
+      const proj = (db.projects || []).find(p => p.id === b.project_id);
+      const ok = !!b.submitted_at;
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface2);flex-wrap:wrap;">' +
+        '<span class="mi" style="font-size:17px;color:' + (ok ? '#16a34a' : '#d97706') + ';flex-shrink:0;">' + (ok ? 'mark_email_read' : 'schedule') + '</span>' +
+        '<div style="flex:1;min-width:150px;">' +
+          '<div style="font-size:12.5px;font-weight:700;color:var(--text);">' + esc(b.client_name || 'Client') + (proj ? ' <span style="font-weight:500;color:var(--text-dim);">· ' + esc(proj.name) + '</span>' : '') + '</div>' +
+          '<div style="font-size:10.5px;color:' + (ok ? '#16a34a' : 'var(--text-faint)') + ';font-weight:' + (ok ? '700' : '400') + ';">' +
+            (ok ? 'Répondu le ' + new Date(b.submitted_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' — voir dans les versions ci-dessous'
+                : 'Envoyé le ' + new Date(b.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' · en attente de réponse') + '</div>' +
+        '</div>' +
+        '<button onclick="s33BriefWa(' + b.id + ')" title="Envoyer par WhatsApp" style="border:none;background:rgba(37,211,102,.1);color:#1da851;border-radius:99px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;"><span class="mi" style="font-size:13px;vertical-align:-2px;">chat</span> WhatsApp</button>' +
+        '<button onclick="s33BriefCopy(' + b.id + ')" style="border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:99px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">Copier</button>' +
+        '<button onclick="s33BriefDel(' + b.id + ')" style="width:24px;height:24px;border-radius:50%;border:none;background:#fff0f0;color:#c0392b;cursor:pointer;font-weight:700;">×</button>' +
+      '</div>';
+    }).join('');
+    host.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
+        '<div style="font-size:13px;font-weight:800;color:var(--text);"><span class="mi" style="font-size:16px;vertical-align:-3px;color:var(--gold);">family_restroom</span> Questionnaires envoyés aux clients</div>' +
+        '<button onclick="s33BriefNewLink()" class="btn btn-gold" style="font-size:12px;padding:7px 16px;"><span class="mi mi-sm">add_link</span> Lien questionnaire</button>' +
+      '</div>' +
+      (rows || '<div style="font-size:12px;color:var(--text-faint);padding:6px 0;">Aucun lien envoyé. Crée un lien, envoie-le par WhatsApp : le client répond en famille depuis son téléphone, et ses réponses arrivent ici toutes seules.</div>');
+  }
+
+  // Injection dans l'onglet Questionnaire du générateur
+  const _origRG = window.renderGenerateurs;
+  window.renderGenerateurs = function() {
+    if (typeof _origRG === 'function') { try { _origRG.apply(this, arguments); } catch(e) { console.error(e); } }
+    if (_genState.type !== 'questionnaire') return;
+    const content = document.getElementById('generateurs-content');
+    if (!content || document.getElementById('s33-brief-links')) return;
+    const anchor = content.querySelector('.card') || content.firstElementChild;
+    const box = document.createElement('div');
+    box.id = 's33-brief-links';
+    box.className = 'card';
+    box.style.cssText = 'padding:14px 18px;margin-bottom:18px;';
+    box.innerHTML = '<div style="font-size:12px;color:var(--text-faint);">Chargement…</div>';
+    content.insertBefore(box, content.firstChild.nextSibling || content.firstChild);
+    loadBriefs().then(async () => {
+      const nouveaux = await importSubmitted();
+      renderBlock();
+      if (nouveaux > 0) {
+        toast(nouveaux + ' questionnaire(s) client importé(s) dans les versions ✓');
+        // Rafraîchir la liste des versions puis remettre notre bloc en place
+        try {
+          _origRG.apply(this, []);
+          const c2 = document.getElementById('generateurs-content');
+          if (c2 && !document.getElementById('s33-brief-links')) {
+            c2.insertBefore(box, c2.firstChild.nextSibling || c2.firstChild);
+            renderBlock();
+          }
+        } catch(_) {}
+      }
+    });
+  };
+
+  console.log('✓ Questionnaire client par lien chargé');
 })();
 </script>
 

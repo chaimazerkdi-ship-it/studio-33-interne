@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.3 — liste des devis : recherche et voir plus';
+const S33_BUILD = '2026-07-21.4 — fin des doublons de charges (demo neutralisee)';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6198,8 +6198,10 @@ async function loadDB() {
     db.invoiceCounter = invConf ? parseInt(invConf.value) : 1;
     db.devisCounter = devConf ? parseInt(devConf.value) : 1;
 
-    // Seed if empty
-    if (db.clients.length === 0) await seedData();
+    // NE PLUS SEMER LA DÉMO : l'app est en production. Une connexion en
+    // échec renvoie des listes vides, et l'ancien « seed if empty »
+    // réinjectait clients/charges/bibliothèque de démonstration à chaque
+    // coupure réseau (doublons constatés en juillet 2026).
 
     showLoadingOverlay(false);
   } catch(e) {
@@ -24207,13 +24209,19 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
       const r = await _origLoadDB.apply(this, arguments);
       if (!db.projectTemplates) db.projectTemplates = [];
       try {
-        const rows = await sbGet('project_templates', '?order=id');
-        if (Array.isArray(rows)) { db.projectTemplates = rows; persistLocalTpl(); }
+        // throwOnError : un échec réseau LÈVE une erreur au lieu de renvoyer []
+        // — sbGet renvoie [] en cas de panne, indistinguable d'une table vide,
+        // et le seed dupliquait alors les modèles à chaque coupure.
+        const rows = await sbFetch('project_templates', 'GET', null, '?order=id', true);
+        if (Array.isArray(rows)) {
+          db.projectTemplates = rows; persistLocalTpl();
+          // Semer les modèles par défaut UNIQUEMENT si la table a réellement répondu vide
+          await seedDefaultsIfEmpty();
+        }
       } catch(e) {
-        console.warn('project_templates table absente — cache local utilisé.');
+        console.warn('project_templates injoignable — cache local utilisé, aucun seed.');
         loadLocalTpl();
       }
-      await seedDefaultsIfEmpty();
       applyRoleVisibility();
       return r;
     };

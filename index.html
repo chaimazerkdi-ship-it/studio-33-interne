@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.7 — questionnaire client par lien';
+const S33_BUILD = '2026-07-21.8 — portail : dossiers + notif de visite';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -12954,9 +12954,14 @@ async function s33PortalLoadVisits(projectId) {
     box.innerHTML = '<div style="font-size:11.5px;color:var(--text-faint);"><span class="mi" style="font-size:13px;vertical-align:-2px;">visibility_off</span> Le client n\'a pas encore ouvert son espace.</div>';
     return;
   }
+  let totalVisits = list.length;
+  try {
+    const allIds = await sbGet('portal_visits', '?project_id=eq.' + projectId + '&select=id');
+    if (Array.isArray(allIds)) totalVisits = allIds.length;
+  } catch(_) {}
   const fmt = iso => { try { const d = new Date(iso); return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } };
   box.innerHTML =
-    '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px;"><span class="mi" style="font-size:13px;vertical-align:-2px;">visibility</span> Visites du client</div>' +
+    '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px;"><span class="mi" style="font-size:13px;vertical-align:-2px;">visibility</span> Visites du client — ' + totalVisits + ' au total</div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' +
       '<span style="font-size:11.5px;background:rgba(39,174,96,.1);color:#27ae60;border:1px solid rgba(39,174,96,.25);border-radius:99px;padding:3px 10px;font-weight:700;">Dernière : ' + fmt(list[0].visited_at) + '</span>' +
       list.slice(1).map(v => '<span style="font-size:11px;background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);border-radius:99px;padding:3px 10px;">' + fmt(v.visited_at) + '</span>').join('') +
@@ -29246,6 +29251,7 @@ window.addEventListener('appinstalled', () => {
       feesDetail: 'Voir le détail des paiements', invPaid: 'Payée le', invDue: 'À régler avant le', invLate: 'Échéance dépassée depuis le',
       echeTitle: 'Échéancier des honoraires', stepPaid: 'Réglée', stepDue: 'À régler', stepUpcoming: 'À venir',
       totalPaid: 'Réglé', totalLeft: 'Reste à régler',
+      folderOther: 'Autres documents',
       piecesTitle: 'Documents à nous fournir', piecesHint: 'Photographiez chaque document ou choisissez un fichier PDF — il arrive directement dans votre dossier.',
       pieceDone: 'Reçu, merci !', pieceSend: 'Envoyer', pieceFail: 'Envoi impossible — vérifiez votre connexion et réessayez.', pieceTooBig: 'Fichier trop volumineux — préférez une photo.',
       video: 'VIDÉO',
@@ -29276,6 +29282,7 @@ window.addEventListener('appinstalled', () => {
       feesDetail: 'عرض تفاصيل الأداءات', invPaid: 'تم الأداء في', invDue: 'يُرجى الأداء قبل', invLate: 'تجاوز أجل الأداء منذ',
       echeTitle: 'جدول أداء الأتعاب', stepPaid: 'تم الأداء', stepDue: 'مستحقّة الأداء', stepUpcoming: 'قادمة',
       totalPaid: 'تم أداؤه', totalLeft: 'المتبقي للأداء',
+      folderOther: 'وثائق أخرى',
       piecesTitle: 'وثائق مطلوبة منكم', piecesHint: 'صوّروا كل وثيقة أو اختاروا ملف PDF — تصل مباشرة إلى ملفكم.',
       pieceDone: 'تم التوصل، شكرًا!', pieceSend: 'إرسال', pieceFail: 'تعذّر الإرسال — تحقّقوا من الاتصال وحاولوا مجددًا.', pieceTooBig: 'الملف كبير جدًا — الأفضل إرسال صورة.',
       video: 'فيديو',
@@ -29523,25 +29530,52 @@ window.addEventListener('appinstalled', () => {
         }).join(''), { open: true, count: data.events.length });
     }
 
-    // Documents (avec validation « Bon pour accord »)
+    // Documents (avec validation « Bon pour accord ») — groupés par dossier :
+    // le client voit les noms de dossiers (ESQ, Administratif…) et ouvre
+    // chaque dossier pour découvrir son contenu, pas tout d'un coup.
     if (data.docs && data.docs.length) {
-      html += section('docs', t.docs,
-        data.docs.map(function(dc) {
-          const approvedTxt = dc.approved_at
-            ? (function() { try { const d = new Date(dc.approved_at); return t.approvedOn + ' ' + d.toLocaleDateString(t.locale, { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' }); } catch(_) { return t.approvedOn; } })()
-            : '';
-          return '<div style="display:flex;gap:11px;align-items:center;padding:11px 0;border-bottom:1px solid #f2f2f2;flex-wrap:wrap;">' +
-            '<div style="width:34px;height:34px;border-radius:8px;background:#FFF1E6;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="mi" style="font-size:17px;color:#F97316;">' + (dc.isPdf ? 'description' : 'attach_file') + '</span></div>' +
-            '<div style="flex:1;min-width:140px;">' +
-              '<div style="font-size:14px;font-weight:500;word-break:break-word;">' + esc(dc.name) + '</div>' +
-              (approvedTxt ? '<div style="font-size:11px;color:#16a34a;font-weight:700;margin-top:2px;"><span class="mi" style="font-size:12px;vertical-align:-2px;">check_circle</span> ' + approvedTxt + '</div>' : '') +
+      const docRow = function(dc) {
+        const approvedTxt = dc.approved_at
+          ? (function() { try { const d = new Date(dc.approved_at); return t.approvedOn + ' ' + d.toLocaleDateString(t.locale, { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' }); } catch(_) { return t.approvedOn; } })()
+          : '';
+        return '<div style="display:flex;gap:11px;align-items:center;padding:11px 0;border-bottom:1px solid #f2f2f2;flex-wrap:wrap;">' +
+          '<div style="width:34px;height:34px;border-radius:8px;background:#FFF1E6;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="mi" style="font-size:17px;color:#F97316;">' + (dc.isPdf ? 'description' : 'attach_file') + '</span></div>' +
+          '<div style="flex:1;min-width:140px;">' +
+            '<div style="font-size:14px;font-weight:500;word-break:break-word;">' + esc(dc.name) + '</div>' +
+            (approvedTxt ? '<div style="font-size:11px;color:#16a34a;font-weight:700;margin-top:2px;"><span class="mi" style="font-size:12px;vertical-align:-2px;">check_circle</span> ' + approvedTxt + '</div>' : '') +
+          '</div>' +
+          (!dc.approved_at && dc.id
+            ? '<button onclick="s33pApprove(' + dc.id + ')" style="background:#fff;border:1.5px solid #16a34a;color:#16a34a;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;"><span class="mi" style="font-size:13px;vertical-align:-2px;">task_alt</span> ' + t.approve + '</button>'
+            : '') +
+          '<a href="' + (dc.src || '#') + '" target="_blank" rel="noopener" style="font-size:12px;color:#F97316;font-weight:700;flex-shrink:0;text-decoration:none;">' + t.open + '</a>' +
+        '</div>';
+      };
+      // Regrouper par dossier en préservant l'ordre d'apparition
+      const folders = [], byFolder = {};
+      data.docs.forEach(function(dc) {
+        const f = (dc.folder && String(dc.folder).trim()) || t.folderOther;
+        if (!byFolder[f]) { byFolder[f] = []; folders.push(f); }
+        byFolder[f].push(dc);
+      });
+      let docsInner;
+      if (folders.length <= 1) {
+        // Un seul dossier (ou aucun) : liste simple, comme avant
+        docsInner = data.docs.map(docRow).join('');
+      } else {
+        docsInner = folders.map(function(f, i) {
+          const items = byFolder[f];
+          return '<div style="border:1px solid #f0e8dd;border-radius:12px;margin-bottom:8px;overflow:hidden;">' +
+            '<div onclick="s33pFolderToggle(' + i + ')" style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:#FBF7F1;">' +
+              '<span class="mi" style="font-size:20px;color:#C9A96E;">folder</span>' +
+              '<span style="flex:1;font-size:13.5px;font-weight:700;">' + esc(f) + '</span>' +
+              '<span style="font-size:11px;color:#999;font-weight:600;">' + items.length + '</span>' +
+              '<span class="mi s33p-folder-chev" id="s33p-fchev-' + i + '" style="font-size:19px;color:#bbb;transition:transform .18s;">expand_more</span>' +
             '</div>' +
-            (!dc.approved_at && dc.id
-              ? '<button onclick="s33pApprove(' + dc.id + ')" style="background:#fff;border:1.5px solid #16a34a;color:#16a34a;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;"><span class="mi" style="font-size:13px;vertical-align:-2px;">task_alt</span> ' + t.approve + '</button>'
-              : '') +
-            '<a href="' + (dc.src || '#') + '" target="_blank" rel="noopener" style="font-size:12px;color:#F97316;font-weight:700;flex-shrink:0;text-decoration:none;">' + t.open + '</a>' +
+            '<div id="s33p-fbody-' + i + '" style="display:none;padding:0 14px;">' + items.map(docRow).join('') + '</div>' +
           '</div>';
-        }).join(''), { count: data.docs.length });
+        }).join('');
+      }
+      html += section('docs', t.docs, docsInner, { count: data.docs.length });
     }
 
     // Photos
@@ -29581,6 +29615,15 @@ window.addEventListener('appinstalled', () => {
   }
 
   // Validation « Bon pour accord » d'un document
+  window.s33pFolderToggle = function(i) {
+    const body = document.getElementById('s33p-fbody-' + i);
+    const chev = document.getElementById('s33p-fchev-' + i);
+    if (!body) return;
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
+  };
+
   window.s33pApprove = async function(mediaId) {
     const t = L();
     if (!confirm(t.confirmApprove)) return;

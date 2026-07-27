@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.8 — portail : dossiers + notif de visite';
+const S33_BUILD = '2026-07-21.9 — nom de projet facile a modifier';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -4948,7 +4948,9 @@ const S33_BUILD = '2026-07-21.8 — portail : dossiers + notif de visite';
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
         <label>Nom du projet</label>
-        <input type="text" id="p-name" placeholder="Villa Bensoussan...">
+        <textarea id="p-name" rows="1" placeholder="Villa Bensoussan..." style="min-height:44px;resize:none;overflow:hidden;line-height:1.4;"
+          oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"></textarea>
       </div>
       <div class="form-row" style="margin-bottom:0;position:relative;">
         <label>Client</label>
@@ -8147,7 +8149,7 @@ function _formError(fieldId, msg) {
 async function saveProject() {
   const editId = document.getElementById('project-edit-id').value;
   const obj = {
-    name: document.getElementById('p-name').value.trim(),
+    name: document.getElementById('p-name').value.replace(/\s*\n+\s*/g, ' ').trim(),
     client_id: parseInt(document.getElementById('p-client').value) || null,
     phase: document.getElementById('p-phase').value,
     type: document.getElementById('p-type')?.value || 'Autre',
@@ -8214,7 +8216,14 @@ function editProject(id) {
   const p = db.projects.find(x => x.id === id);
   document.getElementById('project-modal-title').textContent = 'Modifier le projet';
   document.getElementById('project-edit-id').value = id;
-  document.getElementById('p-name').value = p.name;
+  const _pn = document.getElementById('p-name');
+  _pn.value = p.name;
+  // Nom long : afficher en entier et placer le curseur à la fin
+  setTimeout(function() {
+    _pn.style.height = 'auto';
+    _pn.style.height = _pn.scrollHeight + 'px';
+    try { _pn.focus(); _pn.setSelectionRange(_pn.value.length, _pn.value.length); } catch(_) {}
+  }, 80);
   document.getElementById('p-client').value = p.clientId;
   const _ec = db.clients.find(c=>c.id===p.clientId);
   document.getElementById('p-client-search').value = _ec ? _ec.name : '';

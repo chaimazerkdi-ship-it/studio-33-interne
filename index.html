@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-21.9 — nom de projet facile a modifier';
+const S33_BUILD = '2026-07-22.1 — honoraires : orange, jaune, vert';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3263,7 +3263,7 @@ const S33_BUILD = '2026-07-21.9 — nom de projet facile a modifier';
           <table>
             <thead>
               <tr>
-                <th></th><th>Projet</th><th>Client</th><th>Type</th><th>Phase</th><th>Urgence</th><th>Budget</th><th></th>
+                <th></th><th>Projet</th><th>Client</th><th>Type</th><th>Phase</th><th>Urgence</th><th>Honoraires</th><th></th>
               </tr>
             </thead>
             <tbody id="projects-table"></tbody>
@@ -4999,7 +4999,7 @@ const S33_BUILD = '2026-07-21.9 — nom de projet facile a modifier';
         <div id="p-responsable-wrap" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);min-height:44px;"></div>
       </div>
       <div class="form-row" style="margin-bottom:0">
-        <label>Budget (MAD)</label>
+        <label>Honoraires (MAD)</label>
         <input type="number" id="p-budget" placeholder="0">
       </div>
     </div>
@@ -6682,7 +6682,7 @@ function renderProjectDetailPage() {
       </div>
       ` : isAdmin ? `
       <div class="stat-card" style="cursor:pointer;border:1px dashed var(--border);" onclick="editProject(${p.id})">
-        <div class="stat-label">Budget</div>
+        <div class="stat-label">Honoraires</div>
         <div style="font-size:13px;color:var(--text-faint);margin-top:8px;">Non défini</div>
         <div style="font-size:11px;color:var(--gold);margin-top:4px;font-weight:600;">+ Ajouter →</div>
       </div>
@@ -7154,15 +7154,13 @@ function getProjectHealth(p) {
   }
 
   if (p.budget && p.budget > 0) {
-    const spent = (db.invoices || [])
+    const fact = (db.invoices || [])
       .filter(inv => inv.projectId === p.id && inv.status !== 'Annulé')
       .reduce((s, inv) => s + (inv.amount || 0), 0);
-    const pct = spent / p.budget;
-    if (pct > 1) {
-      reasons.push('Budget dépassé');
-      status = 'critical';
-    } else if (pct > 0.85) {
-      reasons.push(`Budget à ${Math.round(pct * 100)}%`);
+    // Facturer 100 % des honoraires est une BONNE nouvelle (mission facturée
+    // en entier) — la seule anomalie est de facturer plus que le contrat.
+    if (fact > p.budget * 1.005) {
+      reasons.push('Facturé au-delà des honoraires');
       if (status === 'ok') status = 'warning';
     }
   }
@@ -7372,10 +7370,12 @@ function makeProjectCard(p, small) {
       if (!p.budget || p.budget <= 0 || currentUser?.role !== 'admin') return '';
       const invoiced = (db.invoices||[]).filter(inv=>inv.projectId===p.id&&inv.status!=='Annulé').reduce((s,inv)=>s+(inv.amount||0),0);
       const bp = Math.round(invoiced/p.budget*100);
-      const bc = bp>100?'var(--red)':bp>85?'var(--yellow)':'var(--green)';
+      // Progression des honoraires factures : orange (début) → jaune → vert (100 %).
+      // Rouge uniquement si on a facturé plus que les honoraires du contrat.
+      const bc = bp>100?'var(--red)':bp>=100?'var(--green)':bp>=50?'var(--yellow)':'#e67e22';
       return `<div style="margin-top:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
-          <span style="font-size:9px;color:var(--text-faint);font-weight:600;letter-spacing:.04em;">BUDGET</span>
+          <span style="font-size:9px;color:var(--text-faint);font-weight:600;letter-spacing:.04em;">HONORAIRES</span>
           <span style="font-size:10px;font-weight:700;color:${bc};">${bp}%</span>
         </div>
         <div style="height:3px;background:var(--surface3);border-radius:99px;overflow:hidden;">

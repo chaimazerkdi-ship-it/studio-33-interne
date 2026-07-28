@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-22.1 — honoraires : orange, jaune, vert';
+const S33_BUILD = '2026-07-22.2 — vrai jaune sur la jauge honoraires';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -7370,13 +7370,15 @@ function makeProjectCard(p, small) {
       if (!p.budget || p.budget <= 0 || currentUser?.role !== 'admin') return '';
       const invoiced = (db.invoices||[]).filter(inv=>inv.projectId===p.id&&inv.status!=='Annulé').reduce((s,inv)=>s+(inv.amount||0),0);
       const bp = Math.round(invoiced/p.budget*100);
-      // Progression des honoraires factures : orange (début) → jaune → vert (100 %).
+      // Progression des honoraires facturés : orange (début) → VRAI jaune → vert (100 %).
       // Rouge uniquement si on a facturé plus que les honoraires du contrat.
-      const bc = bp>100?'var(--red)':bp>=100?'var(--green)':bp>=50?'var(--yellow)':'#e67e22';
+      // Barre en jaune vif, pourcentage en jaune foncé (lisible sur fond clair).
+      const bc  = bp>100?'var(--red)':bp>=100?'var(--green)':bp>=50?'#FFD60A':'#e67e22';
+      const bcT = bp>100?'var(--red)':bp>=100?'var(--green)':bp>=50?'#c9a800':'#e67e22';
       return `<div style="margin-top:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
           <span style="font-size:9px;color:var(--text-faint);font-weight:600;letter-spacing:.04em;">HONORAIRES</span>
-          <span style="font-size:10px;font-weight:700;color:${bc};">${bp}%</span>
+          <span style="font-size:10px;font-weight:700;color:${bcT};">${bp}%</span>
         </div>
         <div style="height:3px;background:var(--surface3);border-radius:99px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(bp,100)}%;background:${bc};border-radius:99px;"></div>

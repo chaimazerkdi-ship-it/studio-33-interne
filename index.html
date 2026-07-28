@@ -2958,7 +2958,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-28.5 — experience client : frise, plans commentables, rapport mensuel';
+const S33_BUILD = '2026-07-28.6 — plans PDF commentables page par page';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -29881,7 +29881,7 @@ window.addEventListener('appinstalled', () => {
             ? '<button onclick="s33pApprove(' + dc.id + ')" style="background:#fff;border:1.5px solid #16a34a;color:#16a34a;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;"><span class="mi" style="font-size:13px;vertical-align:-2px;">task_alt</span> ' + t.approve + '</button>'
             : '') +
           (function() {
-            if (!dc.isImg || !dc.src || !dc.id) return '';
+            if ((!dc.isImg && !dc.isPdf) || !dc.src || !dc.id) return '';
             const nCom = ((_lastData && _lastData.plan_comments) || []).filter(function(c) { return c.media_id === dc.id; }).length;
             return '<button onclick="s33pPlanOpen(' + dc.id + ')" style="background:#fff;border:1.5px solid #F97316;color:#F97316;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;"><span class="mi" style="font-size:13px;vertical-align:-2px;">push_pin</span> ' + t.planComment + (nCom ? ' (' + nCom + ')' : '') + '</button>';
           })() +
@@ -30023,18 +30023,70 @@ window.addEventListener('appinstalled', () => {
   };
 
   // ── Plan interactif : le client épingle ses remarques sur le plan ──
-  let _planPin = null; // {x_pct, y_pct} en attente d'envoi
-  window.s33pPlanOpen = function(mediaId) {
+  // Marche pour les images ET les PDF (rendus page par page avec pdf.js).
+  let _planPin = null;   // {x_pct, y_pct} en attente d'envoi
+  let _planPdf = null;   // { pdf, numPages } quand le plan est un PDF
+  let _planPage = 1;     // page courante (PDF)
+  let _planImg = null;   // rendu de la page courante (dataURL) pour les PDF
+  let _pdfjsReady = null;
+  function s33pLoadPdfJs() {
+    if (window.pdfjsLib) return Promise.resolve();
+    if (_pdfjsReady) return _pdfjsReady;
+    _pdfjsReady = new Promise(function(res, rej) {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = function() {
+        try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch(_) {}
+        res();
+      };
+      s.onerror = function() { _pdfjsReady = null; rej(new Error('pdfjs')); };
+      document.head.appendChild(s);
+    });
+    return _pdfjsReady;
+  }
+  async function s33pPdfRenderPage() {
+    const pg = await _planPdf.pdf.getPage(_planPage);
+    const vp0 = pg.getViewport({ scale: 1 });
+    const scale = Math.min(3, 1600 / vp0.width);
+    const vp = pg.getViewport({ scale: scale });
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    _planImg = cv.toDataURL('image/jpeg', 0.85);
+  }
+  window.s33pPlanOpen = async function(mediaId) {
     const t = L();
     const dc = ((_lastData && _lastData.docs) || []).find(function(d) { return d.id === mediaId; });
     if (!dc || !dc.src) return;
-    _planPin = null;
+    _planPin = null; _planPdf = null; _planPage = 1; _planImg = null;
     const old = document.getElementById('s33p-plan-ov'); if (old) old.remove();
     const ov = document.createElement('div');
     ov.id = 's33p-plan-ov';
     ov.style.cssText = 'position:fixed;inset:0;background:#faf8f3;z-index:10000;overflow-y:auto;';
     document.body.appendChild(ov);
     document.body.style.overflow = 'hidden';
+    if (dc.isPdf) {
+      ov.innerHTML = '<div style="text-align:center;padding:90px 20px;color:#888;font-size:13px;font-family:Inter,system-ui,sans-serif;">' + t.loading + '</div>';
+      try {
+        await s33pLoadPdfJs();
+        const pdf = await window.pdfjsLib.getDocument({ url: dc.src }).promise;
+        _planPdf = { pdf: pdf, numPages: pdf.numPages };
+        await s33pPdfRenderPage();
+      } catch(e) {
+        // Rendu PDF impossible (vieux navigateur / réseau) : on ouvre le PDF normalement
+        s33pPlanClose();
+        window.open(dc.src, '_blank');
+        return;
+      }
+    }
+    s33pPlanRender(mediaId);
+  };
+  window.s33pPlanPage = async function(mediaId, delta) {
+    if (!_planPdf) return;
+    const target = Math.max(1, Math.min(_planPdf.numPages, _planPage + delta));
+    if (target === _planPage) return;
+    _planPage = target; _planPin = null;
+    await s33pPdfRenderPage();
     s33pPlanRender(mediaId);
   };
   window.s33pPlanClose = function() {
@@ -30047,7 +30099,17 @@ window.addEventListener('appinstalled', () => {
     const ov = document.getElementById('s33p-plan-ov');
     const dc = ((_lastData && _lastData.docs) || []).find(function(d) { return d.id === mediaId; });
     if (!ov || !dc) return;
-    const coms = ((_lastData && _lastData.plan_comments) || []).filter(function(c) { return c.media_id === mediaId; });
+    const allComs = ((_lastData && _lastData.plan_comments) || []).filter(function(c) { return c.media_id === mediaId; });
+    // Sur un PDF, les épingles n'apparaissent que sur leur page
+    const coms = _planPdf ? allComs.filter(function(c) { return (parseInt(c.page) || 1) === _planPage; }) : allComs;
+    const imgSrc = _planPdf ? _planImg : dc.src;
+    const pageNav = _planPdf && _planPdf.numPages > 1
+      ? '<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin:10px 0 0;">' +
+          '<button onclick="s33pPlanPage(' + mediaId + ',-1)" ' + (_planPage <= 1 ? 'disabled style="opacity:.35;"' : '') + ' style="background:#fff;border:1px solid #eee;border-radius:99px;width:38px;height:38px;font-size:17px;cursor:pointer;font-family:inherit;">‹</button>' +
+          '<span style="font-size:12.5px;font-weight:700;color:#666;">Page ' + _planPage + ' / ' + _planPdf.numPages + '</span>' +
+          '<button onclick="s33pPlanPage(' + mediaId + ',1)" ' + (_planPage >= _planPdf.numPages ? 'disabled style="opacity:.35;"' : '') + ' style="background:#fff;border:1px solid #eee;border-radius:99px;width:38px;height:38px;font-size:17px;cursor:pointer;font-family:inherit;">›</button>' +
+        '</div>'
+      : '';
     ov.innerHTML = '<div dir="' + (LANG === 'ar' ? 'rtl' : 'ltr') + '" style="max-width:860px;margin:0 auto;padding:16px 14px 60px;font-family:Inter,system-ui,sans-serif;color:#1a1a1a;">' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
         '<div style="flex:1;"><div style="font-size:15px;font-weight:800;">' + esc(dc.name) + '</div>' +
@@ -30055,27 +30117,30 @@ window.addEventListener('appinstalled', () => {
         '<button onclick="s33pPlanClose()" style="background:#fff;border:1px solid #eee;border-radius:99px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">' + t.close + ' ×</button>' +
       '</div>' +
       '<div id="s33p-plan-wrap" style="position:relative;border-radius:12px;overflow:hidden;border:1px solid #eee;background:#fff;cursor:crosshair;">' +
-        '<img src="' + esc(dc.src) + '" alt="" style="width:100%;display:block;" onclick="s33pPlanTap(event,' + mediaId + ')">' +
-        coms.map(function(c, i) {
+        '<img src="' + (imgSrc ? esc(imgSrc) : '') + '" alt="" style="width:100%;display:block;" onclick="s33pPlanTap(event,' + mediaId + ')">' +
+        coms.map(function(c) {
           const done = !!c.done_at;
-          return '<div title="' + esc(c.body) + '" style="position:absolute;left:' + c.x_pct + '%;top:' + c.y_pct + '%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:' + (done ? '#16a34a' : '#F97316') + ';color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none;">' + (i + 1) + '</div>';
+          const num = allComs.indexOf(c) + 1;
+          return '<div title="' + esc(c.body) + '" style="position:absolute;left:' + c.x_pct + '%;top:' + c.y_pct + '%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:' + (done ? '#16a34a' : '#F97316') + ';color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none;">' + num + '</div>';
         }).join('') +
         (_planPin ? '<div style="position:absolute;left:' + _planPin.x_pct + '%;top:' + _planPin.y_pct + '%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#1a1a1a;color:#fff;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;">+</div>' : '') +
       '</div>' +
+      pageNav +
       (_planPin
         ? '<div style="background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;margin-top:10px;">' +
             '<textarea id="s33p-plan-txt" rows="2" placeholder="' + t.planWrite + '" style="width:100%;box-sizing:border-box;border:1px solid #e5e5e5;border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;resize:none;outline:none;"></textarea>' +
             '<button id="s33p-plan-send" onclick="s33pPlanSend(' + mediaId + ')" style="margin-top:8px;width:100%;background:#F97316;color:#fff;border:none;border-radius:99px;padding:12px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">' + t.planSend + '</button>' +
           '</div>'
         : '') +
-      (coms.length
+      (allComs.length
         ? '<div style="background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;margin-top:10px;">' +
-            '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#a58a3c;margin-bottom:6px;">' + t.planTitle + ' (' + coms.length + ')</div>' +
-            coms.map(function(c, i) {
+            '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#a58a3c;margin-bottom:6px;">' + t.planTitle + ' (' + allComs.length + ')</div>' +
+            allComs.map(function(c, i) {
+              const pgTag = _planPdf && _planPdf.numPages > 1 ? ' · p.' + (parseInt(c.page) || 1) : '';
               return '<div style="display:flex;gap:9px;padding:8px 0;border-top:1px solid #f5f2ea;align-items:flex-start;">' +
                 '<span style="flex-shrink:0;width:20px;height:20px;border-radius:50%;background:' + (c.done_at ? '#16a34a' : '#F97316') + ';color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;">' + (i + 1) + '</span>' +
                 '<div style="flex:1;font-size:12.5px;">' + esc(c.body) +
-                  '<div style="font-size:10.5px;color:#999;margin-top:2px;">' + esc(c.author_name || '') + (c.done_at ? ' · <b style="color:#16a34a;">' + t.planDone + '</b>' : '') + '</div>' +
+                  '<div style="font-size:10.5px;color:#999;margin-top:2px;">' + esc(c.author_name || '') + pgTag + (c.done_at ? ' · <b style="color:#16a34a;">' + t.planDone + '</b>' : '') + '</div>' +
                 '</div>' +
               '</div>';
             }).join('') +
@@ -30107,7 +30172,7 @@ window.addEventListener('appinstalled', () => {
     try {
       const r = await fetch(FN_URL, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'plan_comment', media_id: mediaId, x_pct: _planPin.x_pct, y_pct: _planPin.y_pct, body })
+        body: JSON.stringify({ action: 'plan_comment', media_id: mediaId, x_pct: _planPin.x_pct, y_pct: _planPin.y_pct, page: _planPage, body })
       });
       const j = await r.json().catch(function() { return null; });
       if (r.ok && j && j.ok && j.comment) {
@@ -36825,7 +36890,7 @@ window.addEventListener('appinstalled', () => {
         return '<div style="display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--border);">' +
           '<span class="mi" style="font-size:15px;color:' + (r.done_at ? '#16a34a' : 'var(--gold)') + ';flex-shrink:0;margin-top:1px;">' + (r.done_at ? 'check_circle' : 'push_pin') + '</span>' +
           '<div style="flex:1;min-width:0;font-size:12.5px;color:var(--text);">' + escHTML(r.body) +
-            '<div style="font-size:10.5px;color:var(--text-faint);margin-top:2px;">' + escHTML(r.author_name || 'Client') + ' · ' + fmt(r.created_at) + (med ? ' · sur « ' + escHTML(med.name) + ' »' : '') + (r.done_at ? ' · traité par ' + escHTML(r.done_by || '') : '') + '</div>' +
+            '<div style="font-size:10.5px;color:var(--text-faint);margin-top:2px;">' + escHTML(r.author_name || 'Client') + ' · ' + fmt(r.created_at) + (med ? ' · sur « ' + escHTML(med.name) + ' »' : '') + ((parseInt(r.page) || 1) > 1 ? ' · page ' + r.page : '') + (r.done_at ? ' · traité par ' + escHTML(r.done_by || '') : '') + '</div>' +
           '</div>' +
           (!r.done_at ? '<button class="btn" style="padding:5px 12px;font-size:11px;flex-shrink:0;" onclick="s33PlanComDone(' + r.id + ',' + projectId + ')">Marquer traité</button>' : '') +
         '</div>';

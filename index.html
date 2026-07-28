@@ -12,7 +12,8 @@
   <!-- Espace client : détection précoce du jeton pour masquer l'app avant tout affichage -->
   <script>
     try {
-      if (new URLSearchParams(location.search).get('portal')) {
+      var _qpp = new URLSearchParams(location.search);
+      if (_qpp.get('portal') || _qpp.get('pvsign') || _qpp.get('ent')) {
         document.documentElement.classList.add('s33-portal-mode');
       }
     } catch(_) {}
@@ -2957,7 +2958,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-28.3 — outils du cabinet, dictee, mode reunion, photos horodatees';
+const S33_BUILD = '2026-07-28.4 — signature PV et espace entreprise';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6667,6 +6668,7 @@ function renderProjectDetailPage() {
       <button onclick="openVisitReport(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">assignment</span> Rapport visite</button>
       ${isAdmin ? `<button onclick="openClientPortalShare(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">share</span> Espace client</button>` : ''}
       ${isAdmin ? `<button onclick="s33ModeReunion(${p.id})" title="Affiche uniquement la vue client de ce projet — rien de confidentiel à l'écran" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">co_present</span> Mode réunion</button>` : ''}
+      ${isAdmin ? `<button onclick="s33EntShare(${p.id})" title="Lien pour les artisans : plans à jour + réserves à corriger" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">engineering</span> Espace entreprise</button>` : ''}
       ${isAdmin ? `
         <button onclick="applyTemplateFromProject(${p.id})" style="padding:9px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">bolt</span> Template</button>
         <button onclick="editProject(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">edit</span> Éditer</button>
@@ -30848,6 +30850,7 @@ window.addEventListener('appinstalled', () => {
     return '<div class="ch-item"' + (open ? '' : ' style="opacity:.65;"') + '>' +
       '<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
         '<span class="ch-badge ' + (open ? 'ouverte' : 'levee') + '">' + (open ? 'OUVERTE' : 'LEVÉE') + '</span>' +
+        (open && r.entreprise_signale_at ? '<span class="ch-chip" style="background:rgba(22,163,74,.13);color:#16a34a;font-weight:800;" title="L entreprise dit avoir corrigé — vérifier sur place avant de lever">🔔 signalée corrigée</span>' : '') +
         '<div style="flex:1;min-width:160px;">' +
           '<div style="font-size:12.5px;color:var(--text);white-space:pre-wrap;">' + esc(r.description) + '</div>' +
           '<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">' +
@@ -32923,6 +32926,13 @@ window.addEventListener('appinstalled', () => {
             '<button class="pvch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33PvCopyLink(' + pv.id + ')"><span class="mi" style="font-size:14px;">link</span> Copier le lien PDF</button>' +
           '</div>' +
           '<div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;">L\'email s\'ouvre pré-rempli avec le lien de téléchargement du PDF (valable 1 an). L\'horodatage de diffusion est enregistré au premier envoi.</div>' +
+          '<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          (pv.sign_data && pv.sign_data.image
+            ? '<span class="pvch-chip" style="background:rgba(22,163,74,.13);color:#16a34a;"><span class="mi" style="font-size:13px;">draw</span> Signé par ' + esc(pv.sign_data.signer_name || '') + (pv.sign_data.qualite ? ' (' + esc(pv.sign_data.qualite) + ')' : '') + ' le ' + fmtDT(pv.sign_data.signed_at) + '</span>' +
+              '<button class="pvch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33PvVoirSign(' + pv.id + ')"><span class="mi" style="font-size:14px;">visibility</span> Voir la signature</button>'
+            : '<button class="pvch-btn" style="background:#0ea5e9;color:#fff;" onclick="s33PvSignShare(' + pv.id + ')"><span class="mi" style="font-size:14px;">draw</span> Faire signer (client / entreprise)</button>' +
+              '<span style="font-size:10.5px;color:var(--text-faint);">Lien de signature sur téléphone — nom, date et heure enregistrés.</span>') +
+          '</div>' +
         '</div>';
     }
 
@@ -33099,6 +33109,48 @@ window.addEventListener('appinstalled', () => {
     if (!data) { toast('PDF introuvable'); return; }
     const w = window.open(data, '_blank');
     if (!w) toast('Autorisez les pop-ups pour ouvrir le PDF');
+  };
+
+  // ── Signature électronique du PV (client / entreprise) ──────────
+  window.s33PvSignShare = async function(pvId) {
+    const pv = _pvs.find(p => p.id === pvId);
+    if (!pv) return;
+    let token = pv.sign_token;
+    if (!token) {
+      token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
+      const ok = await sbUpdate('pv_chantier', pv.id, { sign_token: token }).catch(() => null);
+      if (ok === false) { toast('Impossible de créer le lien — vérifie la connexion'); return; }
+      pv.sign_token = token;
+    }
+    const link = location.origin + location.pathname + '?pvsign=' + token;
+    try { await navigator.clipboard.writeText(link); } catch(_) {}
+    const msg = encodeURIComponent(
+      'Bonjour,\n\n' +
+      'Voici le PV de chantier ' + (pv.ref || '') + ' — « ' + projName(pv.project_id) + ' » (visite du ' + fmtD(pv.visit_date) + ').\n' +
+      'Vous pouvez le consulter et le signer directement depuis votre téléphone ici :\n' + link + '\n\n' +
+      'مرحباً،\n' +
+      'هذا محضر ورش البناء ' + (pv.ref || '') + '. يمكنكم الاطلاع عليه وتوقيعه مباشرة من هاتفكم عبر الرابط أعلاه.\n\n' +
+      'Studio 33 Architects');
+    window.open('https://wa.me/?text=' + msg, '_blank');
+    toast('Lien de signature copié et prêt à envoyer');
+  };
+
+  window.s33PvVoirSign = function(pvId) {
+    const pv = _pvs.find(p => p.id === pvId);
+    const sd = pv && pv.sign_data;
+    if (!sd || !sd.image) { toast('Pas encore de signature sur ce PV'); return; }
+    const dt = sd.signed_at ? new Date(sd.signed_at) : null;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer;';
+    ov.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:100%;text-align:center;cursor:default;" onclick="event.stopPropagation()">' +
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#a58a3c;margin-bottom:4px;">Signature — ' + esc(pv.ref || '') + '</div>' +
+      '<div style="font-size:16px;font-weight:800;color:#1a1a1a;">' + esc(sd.signer_name || '') + (sd.qualite ? ' <span style="font-weight:400;color:#888;font-size:13px;">(' + esc(sd.qualite) + ')</span>' : '') + '</div>' +
+      (dt ? '<div style="font-size:12px;color:#888;margin-top:2px;">Signé le ' + dt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) + ' à ' + dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + ' · à distance</div>' : '') +
+      '<img src="' + sd.image + '" alt="signature" style="width:100%;max-height:180px;object-fit:contain;background:#faf8f3;border:1px solid #eee;border-radius:10px;margin-top:14px;">' +
+      '<button onclick="this.closest(\'div\').parentElement.remove()" style="margin-top:16px;padding:9px 24px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">Fermer</button>' +
+    '</div>';
+    ov.onclick = () => ov.remove();
+    document.body.appendChild(ov);
   };
 
   // ── Init ────────────────────────────────────────────────────────
@@ -35158,7 +35210,7 @@ window.addEventListener('appinstalled', () => {
   'use strict';
   // Jamais dans l'espace client ni la page de signature
   const qp = new URLSearchParams(location.search);
-  if (qp.has('portal') || qp.has('sign')) return;
+  if (qp.has('portal') || qp.has('sign') || qp.has('pvsign') || qp.has('ent')) return;
 
   /* ── 1. BOUTON ACTUALISER ────────────────────────────────────────── */
   const css = document.createElement('style');
@@ -36235,6 +36287,276 @@ window.addEventListener('appinstalled', () => {
   }, 3000);
 
   console.log('✓ Outils du cabinet chargés');
+})();
+</script>
+
+<!-- ═══ SIGNATURE PV (?pvsign=) + ESPACE ENTREPRISE (?ent=) ═══ -->
+<script>
+(function() {
+  'use strict';
+  const FN = 'https://yjxcqptgugatrxeyzrdc.supabase.co/functions/v1';
+  const qp = new URLSearchParams(location.search);
+  const escT = s => { const dv = document.createElement('div'); dv.textContent = s == null ? '' : String(s); return dv.innerHTML; };
+  const GRAVL = { mineur: ['Mineur', '#f59e0b'], majeur: ['Majeur', '#f97316'], bloquant: ['Bloquant', '#ef4444'] };
+
+  /* ── Côté interne : partage de l espace entreprise ─────────────── */
+  window.s33EntShare = async function(pid) {
+    const p = (db.projects || []).find(x => x.id === pid);
+    if (!p) return;
+    let ov = document.getElementById('s33-ent-modal');
+    if (ov) ov.remove();
+    ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 's33-ent-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    const render = () => {
+      const link = p.entreprise_token ? (location.origin + location.pathname + '?ent=' + p.entreprise_token) : '';
+      ov.innerHTML = '<div class="modal" style="max-width:560px;" onclick="event.stopPropagation()">' +
+        '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+        '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">engineering</span> Espace entreprise — ' + escHTML(p.name) + '</div>' +
+        '<div style="font-size:12.5px;color:var(--text-dim);margin-bottom:14px;">Un lien pour les artisans et entreprises du chantier : ils voient les <b>plans à jour</b> et la <b>liste des réserves à corriger</b>, sans compte. Quand ils corrigent, ils le signalent et tu reçois une notification pour aller vérifier.</div>' +
+        (link
+          ? '<div style="display:flex;gap:8px;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px;">' +
+              '<span style="flex:1;font-size:11.5px;word-break:break-all;color:var(--text);">' + escHTML(link) + '</span>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+              '<button class="btn btn-gold" onclick="s33EntCopy(' + p.id + ')"><span class="mi mi-sm">content_copy</span> Copier</button>' +
+              '<button class="btn" style="background:#25d366;color:#fff;" onclick="s33EntWa(' + p.id + ')"><span class="mi mi-sm">send</span> WhatsApp</button>' +
+              '<button class="btn" title="Nouveau lien — l ancien cesse de marcher" onclick="s33EntGen(' + p.id + ', true)"><span class="mi mi-sm">refresh</span> Régénérer</button>' +
+            '</div>'
+          : '<div style="text-align:center;padding:10px 0 4px;"><button class="btn btn-gold" onclick="s33EntGen(' + p.id + ')"><span class="mi mi-sm">link</span> Générer le lien entreprise</button></div>');
+      document.body.appendChild(ov);
+    };
+    render();
+    window._s33EntRender = render;
+  };
+  window.s33EntGen = async function(pid) {
+    const p = (db.projects || []).find(x => x.id === pid);
+    if (!p) return;
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
+    const ok = await sbUpdate('projects', pid, { entreprise_token: token }).catch(() => null);
+    if (ok === false) { toast('Impossible — vérifie la connexion'); return; }
+    p.entreprise_token = token;
+    const ov = document.getElementById('s33-ent-modal');
+    if (ov) { ov.remove(); window.s33EntShare(pid); }
+    toast('Lien entreprise créé');
+  };
+  window.s33EntCopy = async function(pid) {
+    const p = (db.projects || []).find(x => x.id === pid);
+    if (!p || !p.entreprise_token) return;
+    const link = location.origin + location.pathname + '?ent=' + p.entreprise_token;
+    try { await navigator.clipboard.writeText(link); toast('Lien copié'); } catch(_) { prompt('Copiez le lien :', link); }
+  };
+  window.s33EntWa = function(pid) {
+    const p = (db.projects || []).find(x => x.id === pid);
+    if (!p || !p.entreprise_token) return;
+    const link = location.origin + location.pathname + '?ent=' + p.entreprise_token;
+    const msg = encodeURIComponent(
+      'Bonjour,\n\nVoici l accès chantier du projet « ' + p.name + ' » :\n' + link + '\n\n' +
+      'Vous y trouverez les plans à jour et la liste des réserves à corriger. Quand un point est corrigé, appuyez sur « C est corrigé » pour nous prévenir.\n\n' +
+      'مرحباً،\nهذا رابط ورش مشروع « ' + p.name + ' » — ستجدون فيه التصاميم المحدثة ولائحة الملاحظات الواجب إصلاحها.\n\n' +
+      'Studio 33 Architects');
+    window.open('https://wa.me/?text=' + msg, '_blank');
+  };
+
+  /* ── Pad de signature (partagé pvsign) ─────────────────────────── */
+  let _drawn = false;
+  function initPad(id) {
+    const cv = document.getElementById(id);
+    if (!cv) return;
+    const scale = window.devicePixelRatio || 1;
+    cv.width = cv.offsetWidth * scale; cv.height = 160 * scale;
+    const ctx = cv.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1a1a1a'; ctx.fillStyle = '#1a1a1a';
+    let drawing = false, pts = [], moved = false;
+    const pos = e => { const r = cv.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return { x: t.clientX - r.left, y: t.clientY - r.top }; };
+    const start = e => { drawing = true; moved = false; pts = [pos(e)]; e.preventDefault(); };
+    const move = e => {
+      if (!drawing) return;
+      const raw = pos(e);
+      const last = pts[pts.length - 1];
+      const p = { x: last.x + (raw.x - last.x) * 0.45, y: last.y + (raw.y - last.y) * 0.45 };
+      if (Math.hypot(p.x - last.x, p.y - last.y) < 0.8) { e.preventDefault(); return; }
+      pts.push(p); moved = true;
+      const n = pts.length;
+      if (n >= 3) {
+        const m1 = { x: (pts[n - 3].x + pts[n - 2].x) / 2, y: (pts[n - 3].y + pts[n - 2].y) / 2 };
+        const m2 = { x: (pts[n - 2].x + pts[n - 1].x) / 2, y: (pts[n - 2].y + pts[n - 1].y) / 2 };
+        ctx.beginPath(); ctx.moveTo(m1.x, m1.y); ctx.quadraticCurveTo(pts[n - 2].x, pts[n - 2].y, m2.x, m2.y); ctx.stroke();
+      }
+      _drawn = true;
+      e.preventDefault();
+    };
+    const end = () => {
+      if (!drawing) return;
+      drawing = false;
+      if (!moved && pts.length) { const p = pts[0]; ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2); ctx.fill(); _drawn = true; }
+      else if (moved && pts.length === 2) { ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.stroke(); }
+      pts = [];
+    };
+    cv.addEventListener('mousedown', start); cv.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+    cv.addEventListener('touchstart', start, { passive: false }); cv.addEventListener('touchmove', move, { passive: false }); cv.addEventListener('touchend', end);
+  }
+
+  const shell = (subtitle, inner) => '<div style="max-width:600px;margin:0 auto;padding:28px 18px 60px;font-family:Inter,system-ui,sans-serif;color:#1a1a1a;">' +
+    '<div style="text-align:center;margin-bottom:22px;"><div style="font-size:20px;font-weight:800;">STUDIO <span style="color:#F97316;">33</span> <span style="font-weight:400;color:#777;font-size:13px;">ARCHITECTS</span></div>' +
+    '<div style="font-size:11px;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;">' + subtitle + '</div></div>' + inner + '</div>';
+
+  /* ── Page publique : signature de PV (?pvsign=) ────────────────── */
+  const pvTok = qp.get('pvsign');
+  if (pvTok) {
+    document.title = 'Signature du PV — Studio 33';
+    const boot = () => {
+      const host = document.getElementById('s33-portal');
+      if (!host) return setTimeout(boot, 60);
+      host.innerHTML = shell('Signature de PV de chantier', '<div style="text-align:center;color:#888;padding:40px 0;">Chargement du PV…</div>');
+      fetch(FN + '/pv-sign?token=' + encodeURIComponent(pvTok))
+        .then(r => r.json())
+        .then(d => {
+          if (!d || d.error) { host.innerHTML = shell('Signature de PV de chantier', '<div style="text-align:center;padding:40px 20px;color:#777;">Ce lien n est plus valide.<br>Contactez Studio 33 pour en obtenir un nouveau.</div>'); return; }
+          if (d.signed) {
+            host.innerHTML = shell('Signature de PV de chantier', '<div style="text-align:center;padding:40px 20px;">' +
+              '<div style="font-size:44px;color:#16a34a;">✓</div>' +
+              '<div style="font-size:17px;font-weight:700;margin-top:8px;">PV déjà signé</div>' +
+              '<div style="font-size:13px;color:#777;margin-top:6px;">Signé par ' + escT(d.signer_name || '') + '. Merci.</div></div>');
+            return;
+          }
+          const decs = (d.decisions || []).filter(x => x && (x.text || x.desc));
+          const acts = (d.actions || []).filter(x => x && (x.desc || x.text));
+          host.innerHTML = shell('Signature de PV de chantier',
+            '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:22px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' +
+              '<div style="font-size:12px;color:#999;">' + escT(d.ref || 'PV') + '</div>' +
+              '<div style="font-size:18px;font-weight:800;margin-top:4px;">' + escT(d.projet || 'Chantier') + '</div>' +
+              '<div style="font-size:13px;color:#666;margin-top:2px;">Visite du ' + escT(d.visit_date || '') + (d.heure ? ' à ' + escT(d.heure) : '') + (d.auteur ? ' · rédigé par ' + escT(d.auteur) : '') + '</div>' +
+              ((d.presents || []).length ? '<div style="margin-top:12px;font-size:12px;color:#666;"><b style="color:#a58a3c;font-size:10.5px;letter-spacing:.06em;">PRÉSENTS</b><br>' + d.presents.map(p => escT((p.name || p.nom || p) + (p.role ? ' — ' + p.role : ''))).join('<br>') + '</div>' : '') +
+              (decs.length ? '<div style="margin-top:12px;font-size:12px;color:#333;"><b style="color:#a58a3c;font-size:10.5px;letter-spacing:.06em;">DÉCISIONS / AVANCEMENT</b><br>' + decs.map(x => '• ' + escT(x.text || x.desc)).join('<br>') + '</div>' : '') +
+              (acts.length ? '<div style="margin-top:12px;font-size:12px;color:#333;"><b style="color:#e53935;font-size:10.5px;letter-spacing:.06em;">RÉSERVES / POINTS À CORRIGER</b><br>' + acts.map((x, i) => '• ' + escT(x.desc || x.text)).join('<br>') + '</div>' : '') +
+              (d.notes ? '<div style="margin-top:12px;font-size:12px;color:#666;white-space:pre-wrap;">' + escT(d.notes) + '</div>' : '') +
+              '<div style="font-size:11px;color:#999;margin-top:16px;">En signant ci-dessous, vous reconnaissez avoir pris connaissance de ce PV. Votre signature, votre nom, la date et l heure seront enregistrés.</div>' +
+              '<label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;display:block;margin:16px 0 6px;">Votre nom complet</label>' +
+              '<input id="s33pv-name" type="text" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid #ddd;border-radius:10px;font-size:14px;font-family:inherit;">' +
+              '<label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;display:block;margin:12px 0 6px;">Vous êtes <span style="font-weight:400;text-transform:none;">(client, entreprise, BET…)</span></label>' +
+              '<input id="s33pv-qualite" type="text" placeholder="Ex : Maître d ouvrage / Entreprise gros œuvre" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid #ddd;border-radius:10px;font-size:14px;font-family:inherit;">' +
+              '<label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;display:block;margin:16px 0 6px;">Votre signature <span style="font-weight:400;text-transform:none;">(signez avec le doigt)</span></label>' +
+              '<canvas id="s33pv-pad" style="width:100%;height:160px;border:1.5px dashed #ccc;border-radius:10px;background:#fff;touch-action:none;display:block;"></canvas>' +
+              '<button onclick="s33pvClear()" style="margin-top:8px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline;">Effacer et recommencer</button>' +
+              '<button id="s33pv-submit" onclick="s33pvSubmit()" style="width:100%;margin-top:16px;padding:14px;background:#F97316;color:#fff;border:none;border-radius:99px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;">Je signe le PV</button>' +
+            '</div>' +
+            '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir, Maroc</div>');
+          initPad('s33pv-pad');
+        })
+        .catch(() => { host.innerHTML = shell('Signature de PV de chantier', '<div style="text-align:center;padding:40px 20px;color:#777;">Connexion impossible — vérifiez votre réseau et rechargez la page.</div>'); });
+    };
+    window.s33pvClear = function() { const cv = document.getElementById('s33pv-pad'); if (cv) { cv.getContext('2d').clearRect(0, 0, cv.width, cv.height); _drawn = false; } };
+    window.s33pvSubmit = async function() {
+      const name = (document.getElementById('s33pv-name') || {}).value || '';
+      if (!name.trim()) { alert('Écrivez votre nom complet.'); return; }
+      if (!_drawn) { alert('Signez dans le cadre avec votre doigt.'); return; }
+      const btn = document.getElementById('s33pv-submit');
+      btn.disabled = true; btn.textContent = 'Enregistrement…';
+      try {
+        const image = document.getElementById('s33pv-pad').toDataURL('image/png');
+        const r = await fetch(FN + '/pv-sign', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: pvTok, name: name.trim(), qualite: ((document.getElementById('s33pv-qualite') || {}).value || '').trim(), image })
+        });
+        const d = await r.json();
+        if (d && d.ok) {
+          const host = document.getElementById('s33-portal');
+          host.innerHTML = shell('Signature de PV de chantier', '<div style="text-align:center;padding:40px 20px;">' +
+            '<div style="font-size:44px;color:#16a34a;">✓</div>' +
+            '<div style="font-size:17px;font-weight:700;margin-top:8px;">PV signé — merci !</div>' +
+            '<div style="font-size:13px;color:#777;margin-top:6px;">Studio 33 a été notifié. Vous pouvez fermer cette page.</div></div>');
+        } else { btn.disabled = false; btn.textContent = 'Je signe le PV'; alert('Enregistrement impossible — réessayez.'); }
+      } catch(_) { btn.disabled = false; btn.textContent = 'Je signe le PV'; alert('Connexion impossible — réessayez.'); }
+    };
+    boot();
+  }
+
+  /* ── Page publique : espace entreprise (?ent=) ─────────────────── */
+  const entTok = qp.get('ent');
+  if (entTok) {
+    document.title = 'Espace chantier — Studio 33';
+    let _entData = null;
+    const bootE = () => {
+      const host = document.getElementById('s33-portal');
+      if (!host) return setTimeout(bootE, 60);
+      host.innerHTML = shell('Espace chantier — entreprises', '<div style="text-align:center;color:#888;padding:40px 0;">Chargement…</div>');
+      fetch(FN + '/entreprise-portal?token=' + encodeURIComponent(entTok))
+        .then(r => r.json())
+        .then(d => {
+          if (!d || d.error) { host.innerHTML = shell('Espace chantier — entreprises', '<div style="text-align:center;padding:40px 20px;color:#777;">Ce lien n est plus valide.<br>Contactez Studio 33.</div>'); return; }
+          _entData = d;
+          renderEnt();
+        })
+        .catch(() => { host.innerHTML = shell('Espace chantier — entreprises', '<div style="text-align:center;padding:40px 20px;color:#777;">Connexion impossible — vérifiez votre réseau et rechargez.</div>'); });
+    };
+    const renderEnt = () => {
+      const host = document.getElementById('s33-portal');
+      const d = _entData;
+      const plans = (d.plans || []);
+      const res = (d.reserves || []);
+      host.innerHTML = shell('Espace chantier — entreprises',
+        '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:22px;box-shadow:0 4px 20px rgba(0,0,0,.05);margin-bottom:16px;">' +
+          '<div style="font-size:18px;font-weight:800;">' + escT(d.project || 'Chantier') + '</div>' +
+          '<div style="font-size:12px;color:#888;margin-top:2px;">Plans à jour et points à corriger — mis à jour par Studio 33.</div>' +
+        '</div>' +
+        '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:22px;box-shadow:0 4px 20px rgba(0,0,0,.05);margin-bottom:16px;">' +
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#a58a3c;margin-bottom:10px;">📐 Plans à jour (' + plans.length + ')</div>' +
+          (plans.length ? plans.map(p =>
+            '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f5f2ea;">' +
+              '<span style="font-size:18px;">' + (p.is_pdf ? '📄' : '🖼') + '</span>' +
+              '<span style="flex:1;font-size:13px;color:#1a1a1a;">' + escT(p.name || 'Plan') + (p.added_at ? '<br><span style="font-size:10.5px;color:#aaa;">ajouté le ' + escT(p.added_at) + '</span>' : '') + '</span>' +
+              (p.url ? '<a href="' + escT(p.url) + '" target="_blank" rel="noopener" style="background:#F97316;color:#fff;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;">Ouvrir</a>' : '<span style="font-size:11px;color:#bbb;">indisponible</span>') +
+            '</div>').join('')
+          : '<div style="font-size:12.5px;color:#999;">Aucun plan partagé pour le moment.</div>') +
+        '</div>' +
+        '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:22px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' +
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#e53935;margin-bottom:10px;">🛠 Réserves à corriger (' + res.length + ')</div>' +
+          (res.length ? res.map(r => {
+            const g = GRAVL[r.gravite] || null;
+            return '<div style="padding:12px 0;border-top:1px solid #f5f2ea;">' +
+              '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                '<b style="font-family:monospace;color:#e53935;font-size:12.5px;">' + escT((r.pv_ref ? r.pv_ref + '.' : 'R') + (r.point_num || r.id)) + '</b>' +
+                (r.lot ? '<span style="font-size:10.5px;font-weight:700;background:#faf8f3;color:#a58a3c;border-radius:99px;padding:2px 9px;">' + escT(r.lot) + '</span>' : '') +
+                (g ? '<span style="font-size:10.5px;font-weight:700;background:' + g[1] + '1f;color:' + g[1] + ';border-radius:99px;padding:2px 9px;">' + g[0] + '</span>' : '') +
+                (r.entreprise ? '<span style="font-size:10.5px;color:#888;">→ ' + escT(r.entreprise) + '</span>' : '') +
+              '</div>' +
+              '<div style="font-size:13px;color:#1a1a1a;margin-top:5px;">' + escT(r.description || '') + '</div>' +
+              (r.deadline ? '<div style="font-size:11px;color:#c0392b;margin-top:3px;">À corriger avant le ' + escT(r.deadline) + '</div>' : '') +
+              '<div style="margin-top:8px;">' +
+              (r.entreprise_signale_at
+                ? '<span style="font-size:11.5px;font-weight:700;color:#16a34a;background:#f0fdf4;border-radius:99px;padding:5px 12px;">✓ Signalée corrigée — Studio 33 va vérifier sur place</span>'
+                : '<button onclick="s33EntOk(' + r.id + ', this)" style="background:#16a34a;color:#fff;border:none;border-radius:99px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">C est corrigé — demander la vérification</button>') +
+              '</div>' +
+            '</div>';
+          }).join('') : '<div style="font-size:12.5px;color:#16a34a;font-weight:600;">✓ Aucune réserve ouverte — bravo, tout est en ordre.</div>') +
+        '</div>' +
+        '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir, Maroc</div>');
+    };
+    window.s33EntOk = async function(rid, btn) {
+      const who = prompt('Votre nom ou celui de votre entreprise :') || '';
+      if (!who.trim()) return;
+      btn.disabled = true; btn.textContent = 'Envoi…';
+      try {
+        const r = await fetch(FN + '/entreprise-portal', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: entTok, reserve_id: rid, who: who.trim() })
+        });
+        const d = await r.json();
+        if (d && d.ok) {
+          const row = (_entData.reserves || []).find(x => x.id === rid);
+          if (row) row.entreprise_signale_at = new Date().toISOString();
+          renderEnt();
+        } else { btn.disabled = false; btn.textContent = 'C est corrigé — demander la vérification'; alert('Envoi impossible — réessayez.'); }
+      } catch(_) { btn.disabled = false; btn.textContent = 'C est corrigé — demander la vérification'; alert('Connexion impossible — réessayez.'); }
+    };
+    bootE();
+  }
+
+  console.log('✓ Signature PV + espace entreprise chargés');
 })();
 </script>
 

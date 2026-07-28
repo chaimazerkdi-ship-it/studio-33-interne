@@ -2932,7 +2932,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-22.2 — vrai jaune sur la jauge honoraires';
+const S33_BUILD = '2026-07-22.3 — facturation separee par projet';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -10234,7 +10234,7 @@ function renderInvoices() {
     const paidCount = invList.filter(i => i.status === 'Payée').length;
     const groupId = 'inv-group-' + key;
 
-    const rows = invList.map(inv => {
+    const invRow = (inv) => {
       const project = db.projects.find(p => p.id === inv.projectId);
       // Le montant saisi est TTC : HT et TVA sont calculés à rebours
       const ttc = inv.amount;
@@ -10274,7 +10274,36 @@ function renderInvoices() {
           </div>
         </td>
       </tr>`;
-    }).join('');
+    };
+
+    // Un promoteur peut avoir plusieurs projets : on sépare alors les
+    // factures par projet, avec facturé / payé / reste pour chacun.
+    let rows;
+    const _projIds = [...new Set(invList.map(i => i.projectId || 0))];
+    if (_projIds.length > 1) {
+      const byProj = {};
+      invList.forEach(i => { const k = i.projectId || 0; (byProj[k] = byProj[k] || []).push(i); });
+      const sortedProj = Object.keys(byProj).sort((a, b) => {
+        const na = a == 0 ? 'zzz' : (db.projects.find(p => p.id == a)?.name || 'zz');
+        const nb = b == 0 ? 'zzz' : (db.projects.find(p => p.id == b)?.name || 'zz');
+        return na.localeCompare(nb, 'fr');
+      });
+      rows = sortedProj.map(pk => {
+        const list = byProj[pk];
+        const proj = db.projects.find(p => p.id == pk);
+        const tot = list.reduce((s2, i) => s2 + (i.amount || 0), 0);
+        const paye = list.reduce((s2, i) => s2 + (i.status === 'Payée' ? (i.amount || 0) : (parseFloat(i.paid_amount) || 0)), 0);
+        const reste = Math.max(0, tot - paye);
+        return `<tr><td colspan="7" style="padding:10px 14px;background:var(--surface2);border-top:1px solid var(--border);border-left:3px solid var(--gold);">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span style="font-size:12px;font-weight:800;color:var(--text);"><span class="mi" style="font-size:14px;vertical-align:-2px;color:var(--gold);">folder</span> ${escHTML(proj ? proj.name : 'Sans projet')}</span>
+              <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;">Facturé ${formatNum(tot)} · Payé <span style="color:var(--green);font-weight:700;">${formatNum(paye)}</span> · Reste <span style="color:${reste > 0 ? 'var(--red)' : 'var(--green)'};font-weight:800;">${formatNum(reste)} MAD</span></span>
+            </div>
+          </td></tr>` + list.map(invRow).join('');
+      }).join('');
+    } else {
+      rows = invList.map(invRow).join('');
+    }
 
     return `
     <div class="inv-client-group" style="margin-bottom:12px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">

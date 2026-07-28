@@ -2958,7 +2958,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-28.9 — vraies icones partout, plus d emojis cote client';
+const S33_BUILD = '2026-07-29.1 — dashboard allege : activite et projets recents retires';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3196,23 +3196,9 @@ const S33_BUILD = '2026-07-28.9 — vraies icones partout, plus d emojis cote cl
         <div class="card" id="dash-alerts" style="padding:0;overflow:hidden;"></div>
       </div>
 
-      <!-- Fil d'activité -->
-      <div style="margin-bottom:28px;">
-        <div class="section-title" style="margin-bottom:14px;">Activité récente</div>
-        <div class="card" id="dash-activity" style="padding:0;overflow:hidden;">
-          <div style="padding:20px;text-align:center;color:var(--text-faint);font-size:13px;">Chargement…</div>
-        </div>
-      </div>
-
-      <div class="grid-2">
-        <div>
-          <div class="section-title">Projets récents</div>
-          <div class="card" id="dash-projects"></div>
-        </div>
-        <div>
-          <div class="section-title">Tâches urgentes</div>
-          <div class="card" id="dash-tasks"></div>
-        </div>
+      <div>
+        <div class="section-title">Tâches urgentes</div>
+        <div class="card" id="dash-tasks"></div>
       </div>
     </div>
 
@@ -7009,9 +6995,11 @@ function renderDashboard() {
     }
   }
 
-  // Recent projects (active only)
+  // Recent projects (active only) — section retirée du dashboard, garde-fou si absente
   const dp = document.getElementById('dash-projects');
-  if (activeProjects.length === 0) {
+  if (!dp) {
+    /* section supprimée */
+  } else if (activeProjects.length === 0) {
     dp.innerHTML = emptyStateHTML('Aucun projet actif', { icon: 'folder_open', sub: 'Créez votre premier projet.', btnLabel: 'Nouveau projet', btnAction: "navigate('projects')" });
   } else {
     dp.innerHTML = activeProjects.slice(0, 4).map(p => {

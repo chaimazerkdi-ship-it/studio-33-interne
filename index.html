@@ -2958,7 +2958,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-29.1 — dashboard allege : activite et projets recents retires';
+const S33_BUILD = '2026-07-29.2 — generateurs ouverts a toute l equipe';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -16994,7 +16994,7 @@ function _calTimeToMin(t) {
 }
 
 function _renderProjectGeneratedDocs(projectId) {
-  if (!currentUser || currentUser.role !== 'admin') return '';
+  if (!currentUser) return '';
   const docs = (db.generatedDocs || []).filter(function(d) { return String(d.project_id || '') === String(projectId); });
   if (!docs.length) {
     return '<div style="margin-top:32px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
@@ -17553,11 +17553,6 @@ function _genTypeInfo(t) { return GEN_TYPES[t] || GEN_TYPES.cps; }
 
 function renderGenerateurs() {
   if (!currentUser) return;
-  if (currentUser.role !== 'admin') {
-    document.getElementById('generateurs-content').innerHTML =
-      '<div class="card" style="padding:48px 24px;text-align:center;color:var(--text-faint);">Accès réservé à l\'administrateur.</div>';
-    return;
-  }
 
   const projects = (db.projects || []).filter(function(p) { return !p.archived; })
     .slice().sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
@@ -19082,8 +19077,8 @@ function updateUIForUser() {
   if (_canSee('administratif')) _setVis(['nav-administratif','mnav-more-administratif'], true);
   if (_canSee('mediatheque'))   _setVis(['nav-mediatheque','mnav-more-mediatheque'], true);
   if (_canSee('library'))       _setVis(['nav-library','mnav-more-library'], true);
-  // Générateurs : admin uniquement (pour l'instant)
-  _setVis(['nav-generateurs','mnav-more-generateurs'], !!isAdmin);
+  // Générateurs : toute l'équipe
+  _setVis(['nav-generateurs','mnav-more-generateurs'], true);
 
   // Section headers
   const showFinSec = _canSee('finance') || _canSee('invoices') || _canSee('devis');

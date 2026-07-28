@@ -2957,7 +2957,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-28.2 — fournisseurs proposes Maroc separes des votres';
+const S33_BUILD = '2026-07-28.3 — outils du cabinet, dictee, mode reunion, photos horodatees';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -4489,7 +4489,10 @@ const S33_BUILD = '2026-07-28.2 — fournisseurs proposes Maroc separes des votr
 
           <div>
             <label style="font-size:12px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:6px;">NOM DE LA TÂCHE *</label>
-            <input id="at-name" type="text" placeholder="Ex : Préparer les plans d'exécution" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;font-size:14px;border-radius:var(--radius-sm);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;box-sizing:border-box;" onkeydown="if(event.key==='Enter')saveNewTask()">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="at-name" type="text" placeholder="Ex : Préparer les plans d'exécution" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;font-size:14px;border-radius:var(--radius-sm);font-family:'Inter',system-ui,-apple-system,sans-serif;outline:none;box-sizing:border-box;" onkeydown="if(event.key==='Enter')saveNewTask()">
+              <button type="button" class="s33-mic-btn" onclick="s33Dicter('at-name', this)" title="Dicter au lieu de taper"><span class="mi">mic</span></button>
+            </div>
           </div>
 
           <div style="display:flex;gap:12px;">
@@ -5040,8 +5043,8 @@ const S33_BUILD = '2026-07-28.2 — fournisseurs proposes Maroc separes des votr
       </div>
     </div>
     <div class="form-row">
-      <label>Notes</label>
-      <textarea id="p-notes" placeholder="Informations, remarques..."></textarea>
+      <label style="display:flex;align-items:center;gap:8px;">Notes <button type="button" class="s33-mic-btn s33-mic-sm" onclick="s33Dicter('p-notes', this)" title="Dicter au lieu de taper"><span class="mi">mic</span></button></label>
+      <textarea id="p-notes" placeholder="Informations, remarques... (ou dictez avec le micro)"></textarea>
     </div>
     <div class="form-row">
       <label>Lien (Google Drive, etc.)</label>
@@ -6663,6 +6666,7 @@ function renderProjectDetailPage() {
       ${p.archived ? `<span style="padding:6px 14px;background:#f0f4ff;color:#4a6fa5;border-radius:var(--radius-pill);font-size:11px;font-weight:700;letter-spacing:.05em;"><span class="mi mi-sm">inventory_2</span> ARCHIVÉ</span>` : ''}
       <button onclick="openVisitReport(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">assignment</span> Rapport visite</button>
       ${isAdmin ? `<button onclick="openClientPortalShare(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">share</span> Espace client</button>` : ''}
+      ${isAdmin ? `<button onclick="s33ModeReunion(${p.id})" title="Affiche uniquement la vue client de ce projet — rien de confidentiel à l'écran" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">co_present</span> Mode réunion</button>` : ''}
       ${isAdmin ? `
         <button onclick="applyTemplateFromProject(${p.id})" style="padding:9px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">bolt</span> Template</button>
         <button onclick="editProject(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">edit</span> Éditer</button>
@@ -21845,7 +21849,12 @@ function escHTML(str) {
       const rawData = e.target.result;
       const isImage = file.type !== 'application/pdf';
 
-      const finalize = (data, finalSize) => {
+      const finalize = (data, finalSize, stamped) => {
+        // Photos de chantier : incruster date/heure/projet (preuve datée en cas de litige)
+        if (isImage && !stamped && window._s33UploadFolder === 'Photos de chantier' && typeof s33StampChantier === 'function') {
+          s33StampChantier(data).then(d2 => finalize(d2, finalSize, true));
+          return;
+        }
         window._s33UploadData = data;
         window._s33UploadMime = file.type;
         window._s33UploadSize = formatSize(file.size);
@@ -21992,6 +22001,11 @@ function escHTML(str) {
           setProgress(i, valid.length, file.name, 'compression…');
           const cmp = await new Promise(res => s33CompressImage(rawData, file.type, S33_MAX_IMG_BYTES * 1.33, (c, b) => res({ c, b })));
           data = cmp.c; finalBytes = cmp.b;
+        }
+        if (isImage && window._s33UploadFolder === 'Photos de chantier' && typeof s33StampChantier === 'function') {
+          setProgress(i, valid.length, file.name, 'horodatage…');
+          data = await s33StampChantier(data);
+          finalBytes = Math.round(data.length * 0.75);
         }
         setProgress(i, valid.length, file.name, 'envoi…');
         // Upload to Storage
@@ -35673,6 +35687,554 @@ window.addEventListener('appinstalled', () => {
   };
 
   console.log('✓ Questionnaire client par lien chargé');
+})();
+</script>
+
+<!-- ═══ OUTILS DU CABINET : calculatrices, papiers du cabinet, mémo réglementaire
+     + dictée vocale + horodatage photos chantier + mode réunion ═══ -->
+<script>
+(function() {
+  'use strict';
+
+  const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
+  const isAdm = () => window.currentUser && (currentUser.role === 'admin' || (currentUser.permissions || {}).is_co_admin === true);
+
+  // ════════════════ DICTÉE VOCALE (reconnaissance du navigateur, gratuite) ════════════════
+  window.s33Dicter = function(targetId, btn) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { toast('Dictée non disponible sur ce navigateur — utilise le micro du clavier du téléphone'); return; }
+    if (window._s33Rec) { try { window._s33Rec.stop(); } catch(_) {} return; }
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const rec = new SR();
+    rec.lang = 'fr-FR';
+    rec.interimResults = false;
+    rec.continuous = true;
+    window._s33Rec = rec;
+    if (btn) btn.classList.add('s33-mic-on');
+    rec.onresult = e => {
+      let txt = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) txt += e.results[i][0].transcript;
+      }
+      txt = txt.trim();
+      if (txt) {
+        el.value = (el.value ? el.value.replace(/\s+$/, '') + ' ' : '') + txt;
+        try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch(_) {}
+      }
+    };
+    rec.onend = () => { window._s33Rec = null; if (btn) btn.classList.remove('s33-mic-on'); };
+    rec.onerror = ev => {
+      window._s33Rec = null;
+      if (btn) btn.classList.remove('s33-mic-on');
+      if (ev && ev.error === 'not-allowed') toast('Autorise le micro dans le navigateur pour dicter');
+    };
+    try { rec.start(); toast('Je t écoute — parle, puis retape le micro pour arrêter'); } catch(_) {}
+  };
+
+  // ════════════════ HORODATAGE DES PHOTOS DE CHANTIER ════════════════
+  window.s33StampChantier = function(dataUrl) {
+    return new Promise(resolve => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const c = document.createElement('canvas');
+            c.width = img.width; c.height = img.height;
+            const x = c.getContext('2d');
+            x.drawImage(img, 0, 0);
+            const now = new Date();
+            const dt = now.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+                       ' · ' + now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            const proj = (window.db && db.projects || []).find(pp => pp.id === window._s33UploadProjId);
+            const line2 = (proj && proj.name ? String(proj.name) : '').slice(0, 60);
+            const fs = Math.max(15, Math.round(c.width * 0.024));
+            const fs2 = Math.round(fs * 0.82);
+            const pad = Math.round(fs * 0.55);
+            x.font = '700 ' + fs + 'px Arial, sans-serif';
+            const w1 = x.measureText(dt).width;
+            x.font = '400 ' + fs2 + 'px Arial, sans-serif';
+            const w2 = line2 ? x.measureText(line2).width : 0;
+            const bw = Math.min(c.width - pad * 2, Math.max(w1, w2) + pad * 2);
+            const bh = line2 ? (fs + fs2 + pad * 2.3) : (fs + pad * 1.7);
+            const bx = pad, by = c.height - bh - pad;
+            x.fillStyle = 'rgba(0,0,0,.55)';
+            if (typeof x.roundRect === 'function') {
+              x.beginPath(); x.roundRect(bx, by, bw, bh, Math.round(pad * 0.8)); x.fill();
+            } else {
+              x.fillRect(bx, by, bw, bh);
+            }
+            x.fillStyle = '#ffffff';
+            x.textBaseline = 'top';
+            x.font = '700 ' + fs + 'px Arial, sans-serif';
+            x.fillText(dt, bx + pad, by + pad * 0.85);
+            if (line2) {
+              x.font = '400 ' + fs2 + 'px Arial, sans-serif';
+              x.fillText(line2, bx + pad, by + pad * 0.85 + fs * 1.18);
+            }
+            resolve(c.toDataURL('image/jpeg', 0.85));
+          } catch(_) { resolve(dataUrl); }
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      } catch(_) { resolve(dataUrl); }
+    });
+  };
+
+  // ════════════════ MODE RÉUNION CLIENT ════════════════
+  window.s33ModeReunion = async function(pid) {
+    const p = (db.projects || []).find(x => x.id === pid);
+    if (!p) return;
+    if (!p.portal_token) {
+      toast('Création du lien de la vue client…');
+      try { await s33PortalGenerate(pid); } catch(_) {}
+      const ov = document.getElementById('s33-portal-modal');
+      if (ov) ov.remove();
+    }
+    const p2 = (db.projects || []).find(x => x.id === pid);
+    if (!p2 || !p2.portal_token) { toast('Impossible de créer la vue client — réessaie'); return; }
+    window.open(location.origin + location.pathname + '?portal=' + p2.portal_token, '_blank');
+  };
+
+  // ════════════════ OUTILS DU CABINET (page) ════════════════
+  let _docs = [], _memos = [], _loaded = false, _memoQ = '', _memoOpen = {};
+
+  const DOC_TYPES = ['Assurance décennale', 'RC professionnelle', 'Patente / taxe professionnelle', 'Cotisation Ordre des architectes', 'Registre de commerce', 'CNSS', 'Contrat', 'Bail du local', 'Autre'];
+
+  function injectCSS() {
+    if (document.getElementById('s33-outils-css')) return;
+    const st = document.createElement('style');
+    st.id = 's33-outils-css';
+    st.textContent =
+      '.s33-mic-btn{width:40px;height:40px;flex:0 0 auto;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}' +
+      '.s33-mic-btn .mi{font-size:19px;}' +
+      '.s33-mic-btn.s33-mic-sm{width:28px;height:28px;border-radius:8px;}' +
+      '.s33-mic-btn.s33-mic-sm .mi{font-size:15px;}' +
+      '.s33-mic-btn.s33-mic-on{background:#e53935;border-color:#e53935;color:#fff;animation:s33micpulse 1.1s infinite;}' +
+      '@keyframes s33micpulse{0%,100%{box-shadow:0 0 0 0 rgba(229,57,53,.45);}50%{box-shadow:0 0 0 7px rgba(229,57,53,0);}}' +
+      '.out-sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;}' +
+      '.out-sec h3{margin:0 0 4px;font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;gap:7px;flex-wrap:wrap;}' +
+      '.out-sec .out-sub{font-size:12px;color:var(--text-faint);margin-bottom:14px;}' +
+      '.out-calc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;}' +
+      '.out-calc-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px 14px;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:border-color .15s;}' +
+      '.out-calc-card:hover{border-color:var(--gold);}' +
+      '.out-calc-card .mi{font-size:28px;color:var(--gold);}' +
+      '.out-calc-card b{font-size:13.5px;color:var(--text);}' +
+      '.out-calc-card span.d{font-size:11px;color:var(--text-dim);line-height:1.35;}' +
+      '.out-field{margin-bottom:10px;}' +
+      '.out-field label{font-size:11px;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px;}' +
+      '.out-field input,.out-field select,.out-field textarea{width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:9px 10px;font-size:14px;border-radius:8px;font-family:inherit;outline:none;}' +
+      '.out-res{background:rgba(201,169,110,.09);border:1px solid rgba(201,169,110,.35);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--text);line-height:1.55;}' +
+      '.out-doc-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);flex-wrap:wrap;}' +
+      '.out-chip{font-size:10.5px;font-weight:800;border-radius:99px;padding:3px 10px;white-space:nowrap;}' +
+      '.out-memo{border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;background:var(--surface2);}' +
+      '.out-memo pre{white-space:pre-wrap;font-family:inherit;font-size:12.5px;color:var(--text);line-height:1.6;margin:10px 0 0;}' +
+      '@media(max-width:640px){.out-calc-grid{grid-template-columns:1fr 1fr;}}';
+    document.head.appendChild(st);
+  }
+
+  function injectNav() {
+    if (!document.getElementById('nav-outils')) {
+      const ref = document.getElementById('nav-materiaux');
+      if (ref) ref.insertAdjacentHTML('afterend',
+        '<div class="nav-item" id="nav-outils" onclick="navigate(\'outils\')">' +
+          '<span class="nav-icon"><span class="mi">handyman</span></span><span class="nav-text">Outils du cabinet</span>' +
+          '<span id="nav-outils-badge" style="display:none;margin-left:auto;background:#ef4444;color:#fff;font-size:10px;font-weight:800;border-radius:99px;min-width:18px;height:18px;align-items:center;justify-content:center;padding:0 5px;">0</span>' +
+        '</div>');
+    }
+    if (!document.getElementById('mnav-more-outils')) {
+      const ref = document.getElementById('mnav-more-materiaux');
+      if (ref) ref.insertAdjacentHTML('afterend',
+        '<div class="mobile-more-item" id="mnav-more-outils" onclick="mobileNavigate(\'outils\'); closeMobileMore()">' +
+          '<span class="mnav-icon"><span class="mi">handyman</span></span> Outils du cabinet' +
+          '<span id="mnav-outils-badge" style="display:none;margin-left:auto;background:#ef4444;color:#fff;font-size:10px;font-weight:800;border-radius:99px;min-width:18px;height:18px;align-items:center;justify-content:center;padding:0 5px;">0</span>' +
+        '</div>');
+    }
+  }
+
+  function injectPage() {
+    if (document.getElementById('page-outils')) return;
+    const anyPage = document.querySelector('.page');
+    if (!anyPage || !anyPage.parentElement) return;
+    anyPage.parentElement.insertAdjacentHTML('beforeend',
+      '<div class="page" id="page-outils">' +
+        '<div class="page-header"><div><div class="page-title">Outils du cabinet</div><div class="page-subtitle">Calculatrices · papiers du cabinet · mémo réglementaire</div></div></div>' +
+        '<div class="out-sec">' +
+          '<h3><span class="mi" style="color:var(--gold);">calculate</span> Calculatrices</h3>' +
+          '<div class="out-sub">Tape 2 ou 3 chiffres, le résultat se calcule tout seul.</div>' +
+          '<div class="out-calc-grid">' +
+            '<div class="out-calc-card" onclick="s33OutilCalc(\'esc\')"><span class="mi">stairs</span><b>Escalier</b><span class="d">Nombre de marches, hauteur, giron — formule de Blondel</span></div>' +
+            '<div class="out-calc-card" onclick="s33OutilCalc(\'pmr\')"><span class="mi">accessible</span><b>Rampe PMR</b><span class="d">Pente en % et verdict de conformité</span></div>' +
+            '<div class="out-calc-card" onclick="s33OutilCalc(\'beton\')"><span class="mi">foundation</span><b>Béton</b><span class="d">Volume, sacs de ciment, sable et gravier</span></div>' +
+            '<div class="out-calc-card" onclick="s33OutilCalc(\'carr\')"><span class="mi">grid_on</span><b>Carrelage</b><span class="d">Quantité à commander avec les chutes</span></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="out-sec" id="out-docs-sec" style="display:none;">' +
+          '<h3><span class="mi" style="color:var(--gold);">verified_user</span> Papiers du cabinet' +
+            '<button class="btn btn-gold" style="margin-left:auto;padding:7px 14px;font-size:12px;" onclick="s33OutDocModal()"><span class="mi mi-sm">add</span> Ajouter</button></h3>' +
+          '<div class="out-sub">Décennale, patente, cotisation de l Ordre… L app te prévient avant chaque échéance.</div>' +
+          '<div id="out-docs-list"></div>' +
+        '</div>' +
+        '<div class="out-sec">' +
+          '<h3><span class="mi" style="color:var(--gold);">menu_book</span> Mémo réglementaire' +
+            '<span id="out-memo-addwrap" style="margin-left:auto;display:none;"><button class="btn btn-gold" style="padding:7px 14px;font-size:12px;" onclick="s33OutMemoModal()"><span class="mi mi-sm">add</span> Fiche</button></span></h3>' +
+          '<div class="out-sub">Normes et règles fréquentes, cherchables. Clique sur une fiche pour la lire.</div>' +
+          '<input class="search-input" id="out-memo-q" placeholder="Rechercher une règle (escalier, PMR, parking…)" oninput="s33OutMemoSearch(this.value)" style="width:100%;box-sizing:border-box;margin-bottom:12px;">' +
+          '<div id="out-memos-list"></div>' +
+        '</div>' +
+      '</div>');
+  }
+
+  async function loadOutils(force) {
+    if (_loaded && !force) return;
+    const [docs, memos] = await Promise.all([
+      sbGet('cabinet_docs', '?order=expiry_date.asc.nullslast').catch(() => []),
+      sbGet('memo_regles', '?order=title').catch(() => [])
+    ]);
+    _docs = Array.isArray(docs) ? docs : [];
+    _memos = Array.isArray(memos) ? memos : [];
+    _loaded = true;
+    updateBadge();
+  }
+
+  function docDays(d) {
+    if (!d.expiry_date) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const exp = new Date(String(d.expiry_date).slice(0, 10) + 'T00:00');
+    return Math.round((exp - today) / 86400000);
+  }
+
+  function updateBadge() {
+    const n = _docs.filter(d => { const j = docDays(d); return j !== null && j <= (parseInt(d.alert_days) || 30); }).length;
+    ['nav-outils-badge', 'mnav-outils-badge'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) { b.textContent = n; b.style.display = (n > 0 && isAdm()) ? 'inline-flex' : 'none'; }
+    });
+  }
+
+  // ── Papiers du cabinet ──
+  function renderDocs() {
+    const sec = document.getElementById('out-docs-sec');
+    if (!sec) return;
+    sec.style.display = isAdm() ? '' : 'none';
+    if (!isAdm()) return;
+    const list = document.getElementById('out-docs-list');
+    if (!list) return;
+    if (!_docs.length) {
+      list.innerHTML = '<div style="font-size:12.5px;color:var(--text-faint);padding:10px 0;">Aucun document suivi. Ajoute ta décennale, ta patente, ta cotisation de l Ordre… et l app te préviendra avant l échéance.</div>';
+      return;
+    }
+    list.innerHTML = _docs.map(d => {
+      const j = docDays(d);
+      let chip;
+      if (j === null) chip = '<span class="out-chip" style="background:var(--surface2);color:var(--text-dim);">Sans échéance</span>';
+      else if (j < 0) chip = '<span class="out-chip" style="background:rgba(239,68,68,.14);color:#dc2626;">Expiré depuis ' + Math.abs(j) + ' j</span>';
+      else if (j <= (parseInt(d.alert_days) || 30)) chip = '<span class="out-chip" style="background:rgba(245,158,11,.15);color:#b45309;">Dans ' + j + ' j</span>';
+      else chip = '<span class="out-chip" style="background:rgba(34,197,94,.13);color:#16a34a;">OK — ' + j + ' j</span>';
+      const dateTxt = d.expiry_date ? new Date(String(d.expiry_date).slice(0, 10) + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+      return '<div class="out-doc-row">' +
+        '<div style="flex:1;min-width:180px;"><b style="font-size:13.5px;color:var(--text);">' + esc(d.name) + '</b>' +
+          '<div style="font-size:11.5px;color:var(--text-dim);">' + esc(d.doc_type || '') + (d.ref ? ' · ' + esc(d.ref) : '') + ' · échéance : ' + dateTxt + '</div>' +
+          (d.notes ? '<div style="font-size:11px;color:var(--text-faint);font-style:italic;">' + esc(d.notes) + '</div>' : '') + '</div>' +
+        chip +
+        '<button class="s33-mic-btn s33-mic-sm" title="Modifier" onclick="s33OutDocModal(' + d.id + ')"><span class="mi">edit</span></button>' +
+        '<button class="s33-mic-btn s33-mic-sm" title="Supprimer" style="color:#ef4444;" onclick="s33OutDocDel(' + d.id + ')"><span class="mi">delete</span></button>' +
+      '</div>';
+    }).join('');
+  }
+
+  window.s33OutDocModal = function(id) {
+    const d = id ? _docs.find(x => x.id === id) : null;
+    let ov = document.getElementById('s33-outdoc-modal');
+    if (ov) ov.remove();
+    ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 's33-outdoc-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    ov.innerHTML = '<div class="modal" style="max-width:480px;" onclick="event.stopPropagation()">' +
+      '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '<div class="modal-title">' + (d ? 'Modifier le document' : 'Nouveau document du cabinet') + '</div>' +
+      '<div class="out-field"><label>TYPE</label><select id="od-type">' + DOC_TYPES.map(t => '<option' + (d && d.doc_type === t ? ' selected' : '') + '>' + t + '</option>').join('') + '</select></div>' +
+      '<div class="out-field"><label>NOM / DESCRIPTION *</label><input id="od-name" value="' + esc(d ? d.name : '') + '" placeholder="Ex : Décennale AXA police n° 12345"></div>' +
+      '<div style="display:flex;gap:10px;"><div class="out-field" style="flex:1;"><label>N° / RÉFÉRENCE</label><input id="od-ref" value="' + esc(d ? d.ref || '' : '') + '"></div>' +
+      '<div class="out-field" style="flex:1;"><label>DATE D ÉCHÉANCE</label><input type="date" id="od-date" value="' + esc(d && d.expiry_date ? String(d.expiry_date).slice(0, 10) : '') + '"></div></div>' +
+      '<div class="out-field"><label>ME PRÉVENIR</label><select id="od-alert">' + [15, 30, 60, 90].map(n => '<option value="' + n + '"' + ((d ? parseInt(d.alert_days) || 30 : 30) === n ? ' selected' : '') + '>' + n + ' jours avant</option>').join('') + '</select></div>' +
+      '<div class="out-field"><label>NOTES</label><input id="od-notes" value="' + esc(d ? d.notes || '' : '') + '" placeholder="Ex : renouvellement auto, contacter M. X"></div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">' +
+        '<button class="btn" onclick="this.closest(\'.modal-overlay\').remove()">Annuler</button>' +
+        '<button class="btn btn-gold" onclick="s33OutDocSave(' + (d ? d.id : 'null') + ')">Enregistrer</button></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+  };
+
+  window.s33OutDocSave = async function(id) {
+    const name = (document.getElementById('od-name').value || '').trim();
+    if (!name) { toast('Le nom est obligatoire'); return; }
+    const obj = {
+      name,
+      doc_type: document.getElementById('od-type').value,
+      ref: (document.getElementById('od-ref').value || '').trim() || null,
+      expiry_date: document.getElementById('od-date').value || null,
+      alert_days: parseInt(document.getElementById('od-alert').value) || 30,
+      notes: (document.getElementById('od-notes').value || '').trim() || null
+    };
+    if (id) {
+      await sbUpdate('cabinet_docs', id, obj);
+      _docs = _docs.map(x => x.id === id ? { ...x, ...obj } : x);
+      toast('Document modifié');
+    } else {
+      try {
+        const r = await sbInsertOrThrow('cabinet_docs', obj);
+        if (Array.isArray(r) && r[0]) _docs.push(r[0]);
+        toast('Document ajouté — je te préviendrai avant l échéance');
+      } catch(e) { toast('Enregistrement impossible — vérifie la connexion'); return; }
+    }
+    _docs.sort((a, b) => String(a.expiry_date || '9999').localeCompare(String(b.expiry_date || '9999')));
+    const ov = document.getElementById('s33-outdoc-modal');
+    if (ov) ov.remove();
+    renderDocs(); updateBadge();
+  };
+
+  window.s33OutDocDel = async function(id) {
+    const d = _docs.find(x => x.id === id);
+    if (!d || !confirm('Supprimer « ' + d.name + ' » du suivi ?')) return;
+    await sbDelete('cabinet_docs', id);
+    _docs = _docs.filter(x => x.id !== id);
+    renderDocs(); updateBadge();
+    toast('Document retiré du suivi');
+  };
+
+  // ── Mémo réglementaire ──
+  function renderMemos() {
+    const list = document.getElementById('out-memos-list');
+    if (!list) return;
+    const aw = document.getElementById('out-memo-addwrap');
+    if (aw) aw.style.display = isAdm() ? '' : 'none';
+    const q = _memoQ.toLowerCase();
+    const filtered = !q ? _memos : _memos.filter(m =>
+      (m.title || '').toLowerCase().includes(q) || (m.content || '').toLowerCase().includes(q) ||
+      (m.tags || '').toLowerCase().includes(q) || (m.zone || '').toLowerCase().includes(q));
+    if (!filtered.length) {
+      list.innerHTML = '<div style="font-size:12.5px;color:var(--text-faint);padding:10px 0;">' + (_memos.length ? 'Aucune fiche ne correspond à la recherche.' : 'Aucune fiche pour le moment.') + '</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(m => {
+      const open = !!_memoOpen[m.id];
+      return '<div class="out-memo" onclick="s33OutMemoToggle(' + m.id + ')">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          '<b style="font-size:13.5px;color:var(--text);flex:1;min-width:150px;">' + esc(m.title) + '</b>' +
+          (m.zone ? '<span class="out-chip" style="background:rgba(201,169,110,.14);color:var(--gold);">' + esc(m.zone) + '</span>' : '') +
+          '<span class="mi" style="font-size:18px;color:var(--text-faint);">' + (open ? 'expand_less' : 'expand_more') + '</span>' +
+        '</div>' +
+        (open ? '<pre>' + esc(m.content || '') + '</pre>' +
+          (m.tags ? '<div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;">🏷 ' + esc(m.tags) + '</div>' : '') +
+          (isAdm() ? '<div style="display:flex;gap:8px;margin-top:10px;" onclick="event.stopPropagation()">' +
+            '<button class="s33-mic-btn s33-mic-sm" title="Modifier" onclick="s33OutMemoModal(' + m.id + ')"><span class="mi">edit</span></button>' +
+            '<button class="s33-mic-btn s33-mic-sm" title="Supprimer" style="color:#ef4444;" onclick="s33OutMemoDel(' + m.id + ')"><span class="mi">delete</span></button></div>' : '')
+        : '') +
+      '</div>';
+    }).join('');
+  }
+
+  window.s33OutMemoToggle = function(id) { _memoOpen[id] = !_memoOpen[id]; renderMemos(); };
+  window.s33OutMemoSearch = function(v) { _memoQ = v || ''; renderMemos(); };
+
+  window.s33OutMemoModal = function(id) {
+    const m = id ? _memos.find(x => x.id === id) : null;
+    let ov = document.getElementById('s33-outmemo-modal');
+    if (ov) ov.remove();
+    ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 's33-outmemo-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    ov.innerHTML = '<div class="modal" style="max-width:560px;" onclick="event.stopPropagation()">' +
+      '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '<div class="modal-title">' + (m ? 'Modifier la fiche' : 'Nouvelle fiche réglementaire') + '</div>' +
+      '<div class="out-field"><label>TITRE *</label><input id="om-title" value="' + esc(m ? m.title : '') + '" placeholder="Ex : Retraits zone villas Founty"></div>' +
+      '<div style="display:flex;gap:10px;"><div class="out-field" style="flex:1;"><label>ZONE / VILLE</label><input id="om-zone" value="' + esc(m ? m.zone || '' : '') + '" placeholder="Ex : Agadir — Founty"></div>' +
+      '<div class="out-field" style="flex:1;"><label>MOTS-CLÉS</label><input id="om-tags" value="' + esc(m ? m.tags || '' : '') + '" placeholder="retrait, hauteur, ces"></div></div>' +
+      '<div class="out-field"><label style="display:flex;align-items:center;gap:8px;">CONTENU <button type="button" class="s33-mic-btn s33-mic-sm" onclick="s33Dicter(\'om-content\', this)" title="Dicter"><span class="mi">mic</span></button></label>' +
+      '<textarea id="om-content" rows="7" placeholder="La règle, les valeurs, la source…">' + esc(m ? m.content || '' : '') + '</textarea></div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">' +
+        '<button class="btn" onclick="this.closest(\'.modal-overlay\').remove()">Annuler</button>' +
+        '<button class="btn btn-gold" onclick="s33OutMemoSave(' + (m ? m.id : 'null') + ')">Enregistrer</button></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+  };
+
+  window.s33OutMemoSave = async function(id) {
+    const title = (document.getElementById('om-title').value || '').trim();
+    if (!title) { toast('Le titre est obligatoire'); return; }
+    const obj = {
+      title,
+      zone: (document.getElementById('om-zone').value || '').trim() || null,
+      tags: (document.getElementById('om-tags').value || '').trim() || null,
+      content: (document.getElementById('om-content').value || '').trim() || null,
+      updated_at: new Date().toISOString()
+    };
+    if (id) {
+      await sbUpdate('memo_regles', id, obj);
+      _memos = _memos.map(x => x.id === id ? { ...x, ...obj } : x);
+      toast('Fiche modifiée');
+    } else {
+      try {
+        const r = await sbInsertOrThrow('memo_regles', obj);
+        if (Array.isArray(r) && r[0]) _memos.push(r[0]);
+        toast('Fiche ajoutée');
+      } catch(e) { toast('Enregistrement impossible — vérifie la connexion'); return; }
+    }
+    _memos.sort((a, b) => String(a.title).localeCompare(String(b.title), 'fr'));
+    const ov = document.getElementById('s33-outmemo-modal');
+    if (ov) ov.remove();
+    renderMemos();
+  };
+
+  window.s33OutMemoDel = async function(id) {
+    const m = _memos.find(x => x.id === id);
+    if (!m || !confirm('Supprimer la fiche « ' + m.title + ' » ?')) return;
+    await sbDelete('memo_regles', id);
+    _memos = _memos.filter(x => x.id !== id);
+    renderMemos();
+    toast('Fiche supprimée');
+  };
+
+  // ── Calculatrices ──
+  window.s33OutilCalc = function(type) {
+    let ov = document.getElementById('s33-calc-modal');
+    if (ov) ov.remove();
+    ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 's33-calc-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    const TITLES = { esc: 'Escalier — formule de Blondel', pmr: 'Rampe PMR', beton: 'Béton — volume et dosage', carr: 'Carrelage — quantité à commander' };
+    let fields = '';
+    if (type === 'esc') {
+      fields =
+        '<div style="display:flex;gap:10px;"><div class="out-field" style="flex:1;"><label>HAUTEUR SOL À SOL (cm)</label><input type="number" id="cx-h" value="300" oninput="s33OutilCalcMaj(\'esc\')"></div>' +
+        '<div class="out-field" style="flex:1;"><label>RECULEMENT DISPO (cm, optionnel)</label><input type="number" id="cx-rec" placeholder="Ex : 450" oninput="s33OutilCalcMaj(\'esc\')"></div></div>';
+    } else if (type === 'pmr') {
+      fields =
+        '<div style="display:flex;gap:10px;"><div class="out-field" style="flex:1;"><label>HAUTEUR À FRANCHIR (cm)</label><input type="number" id="cx-h" value="40" oninput="s33OutilCalcMaj(\'pmr\')"></div>' +
+        '<div class="out-field" style="flex:1;"><label>LONGUEUR DISPONIBLE (m)</label><input type="number" step="0.1" id="cx-l" value="6" oninput="s33OutilCalcMaj(\'pmr\')"></div></div>';
+    } else if (type === 'beton') {
+      fields =
+        '<div style="display:flex;gap:10px;"><div class="out-field" style="flex:1;"><label>LONGUEUR (m)</label><input type="number" step="0.1" id="cx-lo" value="5" oninput="s33OutilCalcMaj(\'beton\')"></div>' +
+        '<div class="out-field" style="flex:1;"><label>LARGEUR (m)</label><input type="number" step="0.1" id="cx-la" value="4" oninput="s33OutilCalcMaj(\'beton\')"></div>' +
+        '<div class="out-field" style="flex:1;"><label>ÉPAISSEUR (cm)</label><input type="number" id="cx-ep" value="15" oninput="s33OutilCalcMaj(\'beton\')"></div></div>' +
+        '<div class="out-field"><label>DOSAGE CIMENT</label><select id="cx-dos" onchange="s33OutilCalcMaj(\'beton\')">' +
+          '<option value="250">250 kg/m³ — propreté</option><option value="300">300 kg/m³ — dallage</option>' +
+          '<option value="350" selected>350 kg/m³ — dalle / structure courante</option><option value="400">400 kg/m³ — poteaux / poutres</option></select></div>';
+    } else {
+      fields =
+        '<div style="display:flex;gap:10px;"><div class="out-field" style="flex:1;"><label>LONGUEUR PIÈCE (m)</label><input type="number" step="0.1" id="cx-lo" value="5" oninput="s33OutilCalcMaj(\'carr\')"></div>' +
+        '<div class="out-field" style="flex:1;"><label>LARGEUR PIÈCE (m)</label><input type="number" step="0.1" id="cx-la" value="4" oninput="s33OutilCalcMaj(\'carr\')"></div></div>' +
+        '<div style="display:flex;gap:10px;"><div class="out-field" style="flex:1;"><label>FORMAT CARREAU</label><select id="cx-fmt" onchange="s33OutilCalcMaj(\'carr\')">' +
+          ['20x20', '25x40', '30x30', '40x40', '45x45', '60x60', '60x120', '80x80'].map(f => '<option' + (f === '60x60' ? ' selected' : '') + '>' + f + '</option>').join('') + '</select></div>' +
+        '<div class="out-field" style="flex:1;"><label>CHUTES</label><select id="cx-ch" onchange="s33OutilCalcMaj(\'carr\')">' +
+          '<option value="5">5 % — pose simple</option><option value="10" selected>10 % — standard</option><option value="15">15 % — pose en diagonale</option></select></div></div>' +
+        '<div class="out-field"><label>M² PAR BOÎTE (optionnel — voir l emballage)</label><input type="number" step="0.01" id="cx-bo" placeholder="Ex : 1.44" oninput="s33OutilCalcMaj(\'carr\')"></div>';
+    }
+    ov.innerHTML = '<div class="modal" style="max-width:520px;" onclick="event.stopPropagation()">' +
+      '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '<div class="modal-title">' + TITLES[type] + '</div>' + fields +
+      '<div class="out-res" id="cx-res">…</div></div>';
+    document.body.appendChild(ov);
+    s33OutilCalcMaj(type);
+  };
+
+  window.s33OutilCalcMaj = function(type) {
+    const V = id => parseFloat((document.getElementById(id) || {}).value) || 0;
+    const R = document.getElementById('cx-res');
+    if (!R) return;
+    const fmt1 = n => (Math.round(n * 10) / 10).toLocaleString('fr-FR');
+    if (type === 'esc') {
+      const h = V('cx-h'), rec = V('cx-rec');
+      if (h < 50) { R.innerHTML = 'Entre la hauteur sol à sol en centimètres.'; return; }
+      const base = Math.max(2, Math.round(h / 17));
+      const rows = [base - 1, base, base + 1].filter(n => n >= 2).map(n => {
+        const hm = h / n;
+        const gIdeal = Math.min(32, Math.max(24, 63 - 2 * hm));
+        const g = rec ? rec / (n - 1) : gIdeal;
+        const blondel = 2 * hm + g;
+        const okH = hm >= 16 && hm <= 18.5;
+        const okB = blondel >= 60 && blondel <= 64;
+        const verdict = okH && okB ? '✅ confortable' : (blondel > 64 || hm > 18.5 ? '⚠️ raide' : '⚠️ à ajuster');
+        return '<b>' + n + ' marches</b> : hauteur ' + fmt1(hm) + ' cm · giron ' + fmt1(g) + ' cm' + (rec ? '' : ' (idéal)') +
+          ' · Blondel 2h+g = ' + fmt1(blondel) + ' cm → ' + verdict +
+          (rec ? '' : ' · reculement ≈ ' + fmt1((n - 1) * g) + ' cm');
+      });
+      R.innerHTML = rows.join('<br>') + '<br><span style="font-size:11px;color:var(--text-dim);">Confort : hauteur 16–18 cm, Blondel entre 60 et 64 cm. Échappée mini 1,90 m.</span>';
+    } else if (type === 'pmr') {
+      const h = V('cx-h'), l = V('cx-l');
+      if (!h || !l) { R.innerHTML = 'Entre la hauteur et la longueur.'; return; }
+      const pente = (h / (l * 100)) * 100;
+      let verdict;
+      if (pente <= 5) verdict = '✅ Conforme (≤ 5 %)';
+      else if (pente <= 8 && l <= 2) verdict = '🟠 Toléré (≤ 8 % sur maximum 2 m)';
+      else if (pente <= 10 && l <= 0.5) verdict = '🟠 Toléré (≤ 10 % sur maximum 0,50 m)';
+      else verdict = '❌ Non conforme — trop raide';
+      R.innerHTML = 'Pente : <b>' + fmt1(pente) + ' %</b> → ' + verdict +
+        '<br>Longueur nécessaire pour 5 % : <b>' + fmt1(h / 5) + ' m</b>' +
+        '<br><span style="font-size:11px;color:var(--text-dim);">Palier de repos 1,40 m tous les 10 m. Largeur mini 1,20 m. Garde-corps si dénivelé > 40 cm.</span>';
+    } else if (type === 'beton') {
+      const v = V('cx-lo') * V('cx-la') * V('cx-ep') / 100;
+      if (!v) { R.innerHTML = 'Entre les dimensions.'; return; }
+      const dos = V('cx-dos') || 350;
+      const vM = v * 1.05;
+      R.innerHTML = 'Volume : <b>' + fmt1(v) + ' m³</b> (+5 % de marge : ' + fmt1(vM) + ' m³)' +
+        '<br>Ciment : <b>' + Math.ceil(vM * dos / 50) + ' sacs de 50 kg</b> (' + Math.round(vM * dos) + ' kg à ' + dos + ' kg/m³)' +
+        '<br>Sable : ≈ <b>' + fmt1(vM * 0.45) + ' m³</b> · Gravier : ≈ <b>' + fmt1(vM * 0.85) + ' m³</b> · Eau : ≈ ' + Math.round(vM * 175) + ' L' +
+        '<br><span style="font-size:11px;color:var(--text-dim);">Au-delà de 3 m³, comparer avec le béton prêt à l emploi livré en toupie.</span>';
+    } else {
+      const surf = V('cx-lo') * V('cx-la');
+      if (!surf) { R.innerHTML = 'Entre les dimensions de la pièce.'; return; }
+      const fmt = (document.getElementById('cx-fmt') || {}).value || '60x60';
+      const dims = fmt.split('x').map(Number);
+      const aire = (dims[0] * dims[1]) / 10000;
+      const ch = V('cx-ch') || 10;
+      const total = surf * (1 + ch / 100);
+      const bo = V('cx-bo');
+      R.innerHTML = 'Surface : <b>' + fmt1(surf) + ' m²</b> → à commander avec ' + ch + ' % de chutes : <b>' + fmt1(total) + ' m²</b>' +
+        '<br>Soit environ <b>' + Math.ceil(total / aire) + ' carreaux</b> de ' + fmt.replace('x', '×') + ' cm' +
+        (bo ? '<br>Boîtes de ' + bo + ' m² : <b>' + Math.ceil(total / bo) + ' boîtes</b>' : '') +
+        '<br><span style="font-size:11px;color:var(--text-dim);">Garde toujours 1 boîte d avance pour les réparations futures (même bain de couleur).</span>';
+    }
+  };
+
+  // ── Navigation + init ──
+  function initOutils() {
+    injectCSS(); injectNav(); injectPage();
+    loadOutils(true).then(() => { renderDocs(); renderMemos(); });
+  }
+
+  const _navO = navigate;
+  navigate = function(page) {
+    if (page === 'outils') {
+      injectCSS(); injectNav(); injectPage();
+      _navO(page);
+      loadOutils(false).then(() => { renderDocs(); renderMemos(); });
+      return;
+    }
+    _navO(page);
+  };
+
+  // Injection au chargement + badge d alerte échéances (une fois connecté)
+  injectCSS(); injectNav(); injectPage();
+  let _tries = 0;
+  const _t = setInterval(() => {
+    _tries++;
+    if (window.currentUser && isAdm()) {
+      clearInterval(_t);
+      sbGet('cabinet_docs', '?order=expiry_date.asc.nullslast').then(rows => {
+        _docs = Array.isArray(rows) ? rows : [];
+        updateBadge();
+        const urg = _docs.filter(d => { const j = docDays(d); return j !== null && j <= (parseInt(d.alert_days) || 30); });
+        if (urg.length) toast('⚠️ ' + urg.length + ' papier(s) du cabinet arrivent à échéance — voir Outils du cabinet');
+      }).catch(() => {});
+    } else if (_tries > 60) clearInterval(_t);
+  }, 3000);
+
+  console.log('✓ Outils du cabinet chargés');
 })();
 </script>
 

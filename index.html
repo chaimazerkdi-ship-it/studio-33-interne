@@ -2958,7 +2958,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-28.6 — plans PDF commentables page par page';
+const S33_BUILD = '2026-07-28.7 — pastille prochaine etape sous le titre';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -29790,8 +29790,8 @@ window.addEventListener('appinstalled', () => {
                 return '<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid #f5f2ea;flex-wrap:wrap;' + (e.status === 'a_venir' ? 'opacity:.6;' : '') + (e.status === 'attente' ? 'background:#FFF8EE;' : '') + '">' +
                   '<span class="mi" style="font-size:17px;color:' + iconColor + ';flex-shrink:0;">' + icon + '</span>' +
                   '<div style="flex:1;min-width:130px;">' +
-                    '<div style="font-size:12.5px;font-weight:600;">' + esc(e.label || '') +
-                      (e.status === 'attente' && !lateE ? ' <span style="font-size:9.5px;font-weight:800;background:#F97316;color:#fff;border-radius:99px;padding:2px 8px;vertical-align:1px;">' + t.nextToPay + '</span>' : '') + '</div>' +
+                    '<div style="font-size:12.5px;font-weight:600;">' + esc(e.label || '') + '</div>' +
+                    (e.status === 'attente' && !lateE ? '<div style="margin:4px 0 2px;"><span style="display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;background:#F97316;color:#fff;border-radius:99px;padding:3px 10px;white-space:nowrap;">' + t.nextToPay + '</span></div>' : '') +
                     '<div style="font-size:10.5px;color:' + (lateE ? '#dc2626' : '#999') + ';' + (lateE ? 'font-weight:700;' : '') + '">' + stTxt + '</div>' +
                   '</div>' +
                   '<span style="font-size:13px;font-weight:800;color:' + (paidE ? '#16a34a' : '#1a1a1a') + ';white-space:nowrap;">' + money(e.montant) + ' ' + t.mad + '</span>' +

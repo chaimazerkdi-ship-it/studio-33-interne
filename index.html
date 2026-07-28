@@ -2958,7 +2958,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-28.4 — signature PV et espace entreprise';
+const S33_BUILD = '2026-07-28.5 — experience client : frise, plans commentables, rapport mensuel';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5042,6 +5042,10 @@ const S33_BUILD = '2026-07-28.4 — signature PV et espace entreprise';
         <label>N° dossier Rokhass</label>
         <input type="text" id="p-num-rokhass" placeholder="ex: 2024/12345">
       </div>
+    </div>
+    <div class="form-row">
+      <label>Livraison prévue <span style="font-weight:400;color:var(--text-faint);">(affiche un compte à rebours au client)</span></label>
+      <input type="date" id="p-livraison">
     </div>
     <div class="form-row">
       <label style="display:flex;align-items:center;gap:8px;">Notes <button type="button" class="s33-mic-btn s33-mic-sm" onclick="s33Dicter('p-notes', this)" title="Dicter au lieu de taper"><span class="mi">mic</span></button></label>
@@ -7669,6 +7673,11 @@ async function setTaskStatus(projId, taskId, currentStatus) {
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
   else openProjectDetail(projId);
+  // Jalon terminé : proposer d'annoncer la bonne nouvelle au client (admin)
+  if (newStatus === 'done' && task && typeof window.s33JalonAnnonce === 'function' &&
+      currentUser && (currentUser.role === 'admin' || currentUser?.permissions?.is_co_admin === true)) {
+    try { window.s33JalonAnnonce(projId, task, freshTasks); } catch(_) {}
+  }
 }
 
 async function toggleTask(projId, taskId) {
@@ -8196,6 +8205,7 @@ async function saveProject() {
     type: document.getElementById('p-type')?.value || 'Autre',
     budget: parseFloat(document.getElementById('p-budget').value) || 0,
     contract_date: document.getElementById('p-contract-date').value || null,
+    livraison_date: document.getElementById('p-livraison')?.value || null,
     num_rokhass: document.getElementById('p-num-rokhass').value.trim() || null,
     ville: (document.getElementById('p-ville')?.value || '').trim() || null,
     assigned_to: getSelectedResponsables(),
@@ -8272,6 +8282,8 @@ function editProject(id) {
   if (document.getElementById('p-type')) document.getElementById('p-type').value = p.type || '';
   document.getElementById('p-budget').value = p.budget || '';
   document.getElementById('p-contract-date').value = p.contract_date || p.contractDate || '';
+  const pLivEl = document.getElementById('p-livraison');
+  if (pLivEl) pLivEl.value = p.livraison_date || '';
   document.getElementById('p-num-rokhass').value = p.num_rokhass || '';
   if (document.getElementById('p-ville')) document.getElementById('p-ville').value = p.ville || '';
   s33FillVilleDatalist();
@@ -13189,6 +13201,11 @@ function renderClientPortalShare(projectId) {
       html += '</div>';
     }
     html += '<p style="font-size:11px;color:var(--text-faint);margin-top:10px;line-height:1.5;">Cochez un dossier pour tout partager, ou dépliez-le pour choisir document par document. Le client voit toujours : l\'avancement, le calendrier, ses messages, et le règlement de ses honoraires (montant payé / budget du projet — jamais le détail de vos finances).</p>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">' +
+      '<button class="btn" style="background:#25d366;color:#fff;" onclick="s33WelcomeWa(' + p.id + ')"><span class="mi mi-sm">waving_hand</span> Message de bienvenue</button>' +
+      '<button class="btn btn-gold" onclick="s33RapportMensuel(' + p.id + ')"><span class="mi mi-sm">summarize</span> Rapport mensuel PDF</button>' +
+    '</div>' +
+    '<div id="s33-portal-plancoms" style="margin-top:14px;"></div>';
   }
   body.innerHTML = html;
   // Cases « dossier » à moitié cochées quand une partie seulement est partagée
@@ -13196,6 +13213,7 @@ function renderClientPortalShare(projectId) {
     inp.indeterminate = !!(window._s33ShareSome || [])[parseInt(inp.dataset.fgroup)];
   });
   s33PortalLoadVisits(projectId);
+  if (typeof s33PortalLoadPlanComs === 'function') s33PortalLoadPlanComs(projectId);
 }
 
 // Journal des visites du client sur son espace
@@ -29516,8 +29534,13 @@ window.addEventListener('appinstalled', () => {
       feesPct: 'du budget d\'honoraires réglé', remaining: 'reste', settled: 'solde réglé, merci !', mad: 'MAD',
       feesDetail: 'Voir le détail des paiements', invPaid: 'Payée le', invDue: 'À régler avant le', invLate: 'Échéance dépassée depuis le',
       echeTitle: 'Échéancier des honoraires', stepPaid: 'Réglée', stepDue: 'À régler', stepUpcoming: 'À venir',
-      totalPaid: 'Réglé', totalLeft: 'Reste à régler',
+      totalPaid: 'Réglé', totalLeft: 'Reste à régler', nextToPay: 'Prochaine étape à régler',
       folderOther: 'Autres documents',
+      welcome: 'Bienvenue', welcomeTxt: 'Voici votre espace projet personnel : suivez l\'avancement en direct, consultez vos documents et plans, et écrivez-nous à tout moment.',
+      jalonsTitle: 'Les étapes de votre projet', delivery: 'Livraison prévue', daysLeft: 'jours restants', deliveryPassed: 'Livraison en cours de finalisation',
+      planComment: 'Commenter', planTitle: 'Vos remarques sur ce plan', planHint: 'Touchez le plan à l\'endroit précis de votre remarque, puis écrivez-la.',
+      planSend: 'Envoyer la remarque', planPlaced: 'Remarque envoyée à votre architecte — merci !', planFail: 'Envoi impossible — vérifiez votre connexion.',
+      planDone: 'Traité', planWrite: 'Votre remarque…', close: 'Fermer',
       piecesTitle: 'Documents à nous fournir', piecesHint: 'Photographiez chaque document ou choisissez un fichier PDF — il arrive directement dans votre dossier.',
       pieceDone: 'Reçu, merci !', pieceSend: 'Envoyer', pieceFail: 'Envoi impossible — vérifiez votre connexion et réessayez.', pieceTooBig: 'Fichier trop volumineux — préférez une photo.',
       video: 'VIDÉO',
@@ -29547,8 +29570,13 @@ window.addEventListener('appinstalled', () => {
       feesPct: 'من ميزانية الأتعاب تم أداؤها', remaining: 'المتبقي', settled: 'تم أداء كامل المبلغ، شكرًا لكم!', mad: 'درهم',
       feesDetail: 'عرض تفاصيل الأداءات', invPaid: 'تم الأداء في', invDue: 'يُرجى الأداء قبل', invLate: 'تجاوز أجل الأداء منذ',
       echeTitle: 'جدول أداء الأتعاب', stepPaid: 'تم الأداء', stepDue: 'مستحقّة الأداء', stepUpcoming: 'قادمة',
-      totalPaid: 'تم أداؤه', totalLeft: 'المتبقي للأداء',
+      totalPaid: 'تم أداؤه', totalLeft: 'المتبقي للأداء', nextToPay: 'الدفعة القادمة',
       folderOther: 'وثائق أخرى',
+      welcome: 'مرحبًا', welcomeTxt: 'هذا فضاء مشروعكم الخاص : تابعوا تقدّم الأشغال مباشرة، اطّلعوا على وثائقكم وتصاميمكم، وراسلونا في أي وقت.',
+      jalonsTitle: 'مراحل مشروعكم', delivery: 'التسليم المتوقع', daysLeft: 'يومًا متبقيًا', deliveryPassed: 'التسليم في مراحله الأخيرة',
+      planComment: 'إضافة ملاحظة', planTitle: 'ملاحظاتكم على هذا التصميم', planHint: 'المسوا التصميم في المكان المطلوب ثم اكتبوا ملاحظتكم.',
+      planSend: 'إرسال الملاحظة', planPlaced: 'وصلت ملاحظتكم إلى مهندسكم — شكرًا لكم!', planFail: 'تعذّر الإرسال — تحقّقوا من الاتصال.',
+      planDone: 'تمت المعالجة', planWrite: 'ملاحظتكم…', close: 'إغلاق',
       piecesTitle: 'وثائق مطلوبة منكم', piecesHint: 'صوّروا كل وثيقة أو اختاروا ملف PDF — تصل مباشرة إلى ملفكم.',
       pieceDone: 'تم التوصل، شكرًا!', pieceSend: 'إرسال', pieceFail: 'تعذّر الإرسال — تحقّقوا من الاتصال وحاولوا مجددًا.', pieceTooBig: 'الملف كبير جدًا — الأفضل إرسال صورة.',
       video: 'فيديو',
@@ -29682,15 +29710,53 @@ window.addEventListener('appinstalled', () => {
       '<div style="font-size:11px;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">' + t.subtitle + '</div>' +
     '</div>';
 
+    // Bienvenue (accueil chaleureux, première impression)
+    html += '<div style="background:linear-gradient(135deg,#FFF7EE,#FFEEDD);border:1px solid #ffe3c8;border-radius:16px;padding:16px 20px;margin-bottom:14px;">' +
+      '<div style="font-size:15px;font-weight:800;color:#1a1a1a;">' + t.welcome + (p.clientName ? ' ' + esc(p.clientName) : '') + ' 👋</div>' +
+      '<div style="font-size:12px;color:#8a6d4e;margin-top:4px;line-height:1.5;">' + t.welcomeTxt + '</div>' +
+    '</div>';
+
     // Carte projet : avancement + règlement des honoraires
     html += '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,.05);margin-bottom:20px;">' +
       '<div style="font-size:22px;font-weight:800;line-height:1.2;">' + esc(p.name || 'Projet') + '</div>' +
       (p.clientName ? '<div style="font-size:13px;color:#888;margin-top:3px;">' + esc(p.clientName) + '</div>' : '') +
-      (phaseNice ? '<div style="display:inline-block;margin-top:12px;background:#FFF1E6;color:#E4640B;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">' + t.phase + esc(phaseNice) + '</div>' : '') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">' +
+      (phaseNice ? '<div style="display:inline-block;background:#FFF1E6;color:#E4640B;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">' + t.phase + esc(phaseNice) + '</div>' : '') +
+      (function() {
+        if (!p.livraison) return '';
+        try {
+          const days = Math.ceil((new Date(p.livraison + 'T00:00') - new Date()) / 86400000);
+          const fdL = new Date(p.livraison + 'T00:00').toLocaleDateString(t.locale, { day: 'numeric', month: 'long', year: 'numeric' });
+          if (days > 0) return '<div style="display:inline-flex;align-items:center;gap:6px;background:#1a1a1a;color:#fff;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:800;">🏁 J-' + days + '<span style="font-weight:400;color:#ccc;">· ' + t.delivery + ' ' + fdL + '</span></div>';
+          return '<div style="display:inline-block;background:#f0fdf4;color:#16a34a;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">🏁 ' + t.deliveryPassed + '</div>';
+        } catch(_) { return ''; }
+      })() +
+      '</div>' +
       '<div style="margin-top:20px;">' +
         '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:6px;"><span>' + t.progress + '</span><span style="font-weight:800;color:#F97316;">' + prog + '%</span></div>' +
         '<div style="height:10px;background:#f0f0f0;border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + prog + '%;background:linear-gradient(90deg,#F97316,#FB923C);border-radius:99px;"></div></div>' +
       '</div>' +
+      // Frise des jalons : le voyage du projet, étape par étape
+      (Array.isArray(p.jalons) && p.jalons.length ? (function() {
+        let firstTodo = p.jalons.findIndex(function(j) { return !j.done; });
+        return '<div style="margin-top:18px;">' +
+          '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#a58a3c;margin-bottom:10px;">' + t.jalonsTitle + '</div>' +
+          p.jalons.map(function(j, i) {
+            const current = i === firstTodo;
+            const iconJ = j.done ? 'check_circle' : current ? 'radio_button_checked' : 'radio_button_unchecked';
+            const colJ = j.done ? '#16a34a' : current ? '#F97316' : '#d6d0c4';
+            return '<div style="display:flex;gap:10px;align-items:flex-start;position:relative;">' +
+              '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">' +
+                '<span class="mi" style="font-size:19px;color:' + colJ + ';">' + iconJ + '</span>' +
+                (i < p.jalons.length - 1 ? '<div style="width:2px;flex:1;min-height:14px;background:' + (j.done ? '#bbe3c8' : '#eee8db') + ';"></div>' : '') +
+              '</div>' +
+              '<div style="padding-bottom:12px;font-size:13px;' + (current ? 'font-weight:800;color:#1a1a1a;' : j.done ? 'color:#555;' : 'color:#b5afa3;') + '">' + esc(j.name) +
+                (current ? ' <span style="font-size:10px;font-weight:800;background:#FFF1E6;color:#E4640B;border-radius:99px;padding:2px 8px;vertical-align:1px;">' + (LANG === 'ar' ? 'جارية' : 'en cours') + '</span>' : '') +
+              '</div>' +
+            '</div>';
+          }).join('') +
+        '</div>';
+      })() : '') +
       (function() {
         const f = data.finance;
         if (!f || !(f.budget > 0)) return '';
@@ -29721,10 +29787,11 @@ window.addEventListener('appinstalled', () => {
                   : e.status === 'attente'
                     ? (lateE ? t.invLate + ' ' + fd(e.due_date) : t.stepDue + (e.due_date ? ' · ' + t.invDue + ' ' + fd(e.due_date) : ''))
                     : t.stepUpcoming;
-                return '<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid #f5f2ea;flex-wrap:wrap;' + (e.status === 'a_venir' ? 'opacity:.6;' : '') + '">' +
+                return '<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid #f5f2ea;flex-wrap:wrap;' + (e.status === 'a_venir' ? 'opacity:.6;' : '') + (e.status === 'attente' ? 'background:#FFF8EE;' : '') + '">' +
                   '<span class="mi" style="font-size:17px;color:' + iconColor + ';flex-shrink:0;">' + icon + '</span>' +
                   '<div style="flex:1;min-width:130px;">' +
-                    '<div style="font-size:12.5px;font-weight:600;">' + esc(e.label || '') + '</div>' +
+                    '<div style="font-size:12.5px;font-weight:600;">' + esc(e.label || '') +
+                      (e.status === 'attente' && !lateE ? ' <span style="font-size:9.5px;font-weight:800;background:#F97316;color:#fff;border-radius:99px;padding:2px 8px;vertical-align:1px;">' + t.nextToPay + '</span>' : '') + '</div>' +
                     '<div style="font-size:10.5px;color:' + (lateE ? '#dc2626' : '#999') + ';' + (lateE ? 'font-weight:700;' : '') + '">' + stTxt + '</div>' +
                   '</div>' +
                   '<span style="font-size:13px;font-weight:800;color:' + (paidE ? '#16a34a' : '#1a1a1a') + ';white-space:nowrap;">' + money(e.montant) + ' ' + t.mad + '</span>' +
@@ -29813,6 +29880,11 @@ window.addEventListener('appinstalled', () => {
           (!dc.approved_at && dc.id
             ? '<button onclick="s33pApprove(' + dc.id + ')" style="background:#fff;border:1.5px solid #16a34a;color:#16a34a;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;"><span class="mi" style="font-size:13px;vertical-align:-2px;">task_alt</span> ' + t.approve + '</button>'
             : '') +
+          (function() {
+            if (!dc.isImg || !dc.src || !dc.id) return '';
+            const nCom = ((_lastData && _lastData.plan_comments) || []).filter(function(c) { return c.media_id === dc.id; }).length;
+            return '<button onclick="s33pPlanOpen(' + dc.id + ')" style="background:#fff;border:1.5px solid #F97316;color:#F97316;border-radius:99px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;"><span class="mi" style="font-size:13px;vertical-align:-2px;">push_pin</span> ' + t.planComment + (nCom ? ' (' + nCom + ')' : '') + '</button>';
+          })() +
           '<a href="' + (dc.src || '#') + '" target="_blank" rel="noopener" style="font-size:12px;color:#F97316;font-weight:700;flex-shrink:0;text-decoration:none;">' + t.open + '</a>' +
         '</div>';
       };
@@ -29948,6 +30020,109 @@ window.addEventListener('appinstalled', () => {
   window.s33pToggleFactures = function(btn) {
     const box = document.getElementById('s33p-factures');
     if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+  };
+
+  // ── Plan interactif : le client épingle ses remarques sur le plan ──
+  let _planPin = null; // {x_pct, y_pct} en attente d'envoi
+  window.s33pPlanOpen = function(mediaId) {
+    const t = L();
+    const dc = ((_lastData && _lastData.docs) || []).find(function(d) { return d.id === mediaId; });
+    if (!dc || !dc.src) return;
+    _planPin = null;
+    const old = document.getElementById('s33p-plan-ov'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 's33p-plan-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:#faf8f3;z-index:10000;overflow-y:auto;';
+    document.body.appendChild(ov);
+    document.body.style.overflow = 'hidden';
+    s33pPlanRender(mediaId);
+  };
+  window.s33pPlanClose = function() {
+    const ov = document.getElementById('s33p-plan-ov'); if (ov) ov.remove();
+    document.body.style.overflow = '';
+    if (_lastData) render(_lastData); // rafraîchit le compteur de remarques
+  };
+  window.s33pPlanRender = function(mediaId) {
+    const t = L();
+    const ov = document.getElementById('s33p-plan-ov');
+    const dc = ((_lastData && _lastData.docs) || []).find(function(d) { return d.id === mediaId; });
+    if (!ov || !dc) return;
+    const coms = ((_lastData && _lastData.plan_comments) || []).filter(function(c) { return c.media_id === mediaId; });
+    ov.innerHTML = '<div dir="' + (LANG === 'ar' ? 'rtl' : 'ltr') + '" style="max-width:860px;margin:0 auto;padding:16px 14px 60px;font-family:Inter,system-ui,sans-serif;color:#1a1a1a;">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">' +
+        '<div style="flex:1;"><div style="font-size:15px;font-weight:800;">' + esc(dc.name) + '</div>' +
+        '<div style="font-size:11px;color:#999;">' + t.planHint + '</div></div>' +
+        '<button onclick="s33pPlanClose()" style="background:#fff;border:1px solid #eee;border-radius:99px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">' + t.close + ' ×</button>' +
+      '</div>' +
+      '<div id="s33p-plan-wrap" style="position:relative;border-radius:12px;overflow:hidden;border:1px solid #eee;background:#fff;cursor:crosshair;">' +
+        '<img src="' + esc(dc.src) + '" alt="" style="width:100%;display:block;" onclick="s33pPlanTap(event,' + mediaId + ')">' +
+        coms.map(function(c, i) {
+          const done = !!c.done_at;
+          return '<div title="' + esc(c.body) + '" style="position:absolute;left:' + c.x_pct + '%;top:' + c.y_pct + '%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:' + (done ? '#16a34a' : '#F97316') + ';color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none;">' + (i + 1) + '</div>';
+        }).join('') +
+        (_planPin ? '<div style="position:absolute;left:' + _planPin.x_pct + '%;top:' + _planPin.y_pct + '%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:#1a1a1a;color:#fff;font-size:14px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;">+</div>' : '') +
+      '</div>' +
+      (_planPin
+        ? '<div style="background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;margin-top:10px;">' +
+            '<textarea id="s33p-plan-txt" rows="2" placeholder="' + t.planWrite + '" style="width:100%;box-sizing:border-box;border:1px solid #e5e5e5;border-radius:10px;padding:10px 12px;font-family:inherit;font-size:14px;resize:none;outline:none;"></textarea>' +
+            '<button id="s33p-plan-send" onclick="s33pPlanSend(' + mediaId + ')" style="margin-top:8px;width:100%;background:#F97316;color:#fff;border:none;border-radius:99px;padding:12px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;">' + t.planSend + '</button>' +
+          '</div>'
+        : '') +
+      (coms.length
+        ? '<div style="background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;margin-top:10px;">' +
+            '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#a58a3c;margin-bottom:6px;">' + t.planTitle + ' (' + coms.length + ')</div>' +
+            coms.map(function(c, i) {
+              return '<div style="display:flex;gap:9px;padding:8px 0;border-top:1px solid #f5f2ea;align-items:flex-start;">' +
+                '<span style="flex-shrink:0;width:20px;height:20px;border-radius:50%;background:' + (c.done_at ? '#16a34a' : '#F97316') + ';color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;">' + (i + 1) + '</span>' +
+                '<div style="flex:1;font-size:12.5px;">' + esc(c.body) +
+                  '<div style="font-size:10.5px;color:#999;margin-top:2px;">' + esc(c.author_name || '') + (c.done_at ? ' · <b style="color:#16a34a;">' + t.planDone + '</b>' : '') + '</div>' +
+                '</div>' +
+              '</div>';
+            }).join('') +
+          '</div>'
+        : '') +
+    '</div>';
+    if (_planPin) { const ta = document.getElementById('s33p-plan-txt'); if (ta) setTimeout(function() { ta.focus(); }, 120); }
+  };
+  window.s33pPlanTap = function(ev, mediaId) {
+    const img = ev.target;
+    const r = img.getBoundingClientRect();
+    _planPin = {
+      x_pct: Math.round(((ev.clientX - r.left) / r.width) * 1000) / 10,
+      y_pct: Math.round(((ev.clientY - r.top) / r.height) * 1000) / 10
+    };
+    const txtEl = document.getElementById('s33p-plan-txt');
+    const saved = txtEl ? txtEl.value : '';
+    s33pPlanRender(mediaId);
+    const ta = document.getElementById('s33p-plan-txt');
+    if (ta && saved) ta.value = saved;
+  };
+  window.s33pPlanSend = async function(mediaId) {
+    const t = L();
+    const ta = document.getElementById('s33p-plan-txt');
+    const body = ta ? ta.value.trim() : '';
+    if (!body || !_planPin) { if (ta) ta.focus(); return; }
+    const btn = document.getElementById('s33p-plan-send');
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    try {
+      const r = await fetch(FN_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'plan_comment', media_id: mediaId, x_pct: _planPin.x_pct, y_pct: _planPin.y_pct, body })
+      });
+      const j = await r.json().catch(function() { return null; });
+      if (r.ok && j && j.ok && j.comment) {
+        if (_lastData) { _lastData.plan_comments = _lastData.plan_comments || []; _lastData.plan_comments.push(j.comment); }
+        _planPin = null;
+        s33pPlanRender(mediaId);
+        alert(t.planPlaced);
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = t.planSend; }
+        alert(t.planFail);
+      }
+    } catch(_) {
+      if (btn) { btn.disabled = false; btn.textContent = t.planSend; }
+      alert(t.planFail);
+    }
   };
 
   window.s33pAccToggle = function(head, key) {
@@ -36557,6 +36732,234 @@ window.addEventListener('appinstalled', () => {
   }
 
   console.log('✓ Signature PV + espace entreprise chargés');
+})();
+</script>
+
+<!-- ═══ EXPÉRIENCE CLIENT : bienvenue, annonce de jalon, remarques plans, rapport mensuel ═══ -->
+<script>
+(function() {
+  'use strict';
+  const qpX = new URLSearchParams(location.search);
+  if (qpX.has('portal') || qpX.has('sign') || qpX.has('pvsign') || qpX.has('ent')) return;
+
+  const clientOf = p => (db.clients || []).find(c => c.id === (p.clientId ?? p.client_id));
+  const waIntl = c => {
+    const digits = c && c.phone ? String(c.phone).replace(/\D/g, '') : '';
+    return digits ? (digits.startsWith('0') ? '212' + digits.slice(1) : digits) : '';
+  };
+
+  /* ── Message de bienvenue (après signature / création de l espace) ── */
+  window.s33WelcomeWa = function(pid) {
+    const p = (db.projects || []).find(x => x.id === pid);
+    if (!p) return;
+    if (!p.portal_token) { toast('Génère d abord le lien de l espace client'); return; }
+    const c = clientOf(p);
+    const link = location.origin + location.pathname + '?portal=' + p.portal_token;
+    const nom = c ? c.name : '';
+    const msg = encodeURIComponent(
+      'Bonjour ' + nom + ',\n\n' +
+      'Bienvenue chez Studio 33 Architects ! 🏛\n' +
+      'Nous sommes ravis de vous accompagner pour votre projet « ' + p.name + ' ».\n\n' +
+      'Voici votre espace projet personnel — gardez ce lien précieusement :\n' + link + '\n' +
+      'Vous y suivrez l avancement en direct, vos documents, vos plans et vos règlements, et vous pouvez nous y écrire à tout moment.\n\n' +
+      'مرحباً بكم في Studio 33 Architects! يسعدنا مرافقتكم في مشروعكم « ' + p.name + ' ».\n' +
+      'هذا فضاء مشروعكم الخاص — عبر الرابط أعلاه تتابعون تقدم الأشغال والوثائق والتصاميم، ويمكنكم مراسلتنا في أي وقت.\n\n' +
+      'À très vite,\nStudio 33 Architects — Agadir');
+    window.open('https://wa.me/' + waIntl(c) + '?text=' + msg, '_blank');
+  };
+
+  /* ── Annonce de jalon terminé au client ── */
+  window.s33JalonAnnonce = function(projId, task, allTasks) {
+    const p = (db.projects || []).find(x => x.id === projId);
+    if (!p) return;
+    const c = clientOf(p);
+    const next = (allTasks || []).find(t => t && t !== task && !(t.done === true || t.status === 'done' || t.status === 'termine'));
+    const tName = task.name || task.label || task.text || 'Étape';
+    const link = p.portal_token ? (location.origin + location.pathname + '?portal=' + p.portal_token) : '';
+    const msgFR = '🎉 Bonne nouvelle ' + (c ? c.name : '') + ' !\n' +
+      'L étape « ' + tName + ' » de votre projet « ' + p.name + ' » est terminée.' +
+      (next ? '\nProchaine étape : « ' + (next.name || next.label || '') + ' ».' : '\nToutes les étapes sont terminées !') +
+      (link ? '\n\nSuivez tout en direct sur votre espace : ' + link : '');
+    const msgAR = '🎉 خبر سار! أُنجزت مرحلة « ' + tName + ' » من مشروعكم « ' + p.name + ' ».' +
+      (next ? '\nالمرحلة القادمة : « ' + (next.name || next.label || '') + ' ».' : '\nاكتملت جميع المراحل!');
+    const full = msgFR + '\n\n' + msgAR + '\n\nStudio 33 Architects';
+    let ov = document.getElementById('s33-jalon-modal');
+    if (ov) ov.remove();
+    ov = document.createElement('div');
+    ov.className = 'modal-overlay open';
+    ov.id = 's33-jalon-modal';
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    ov.innerHTML = '<div class="modal" style="max-width:520px;" onclick="event.stopPropagation()">' +
+      '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+      '<div class="modal-title">🎉 Étape terminée — prévenir le client ?</div>' +
+      '<div style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;">« ' + escHTML(tName) + ' » est cochée sur « ' + escHTML(p.name) + ' ». Le message est prêt (modifiable) :</div>' +
+      '<textarea id="s33-jalon-txt" rows="8" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 12px;font-size:12.5px;border-radius:10px;font-family:inherit;resize:vertical;">' + escHTML(full) + '</textarea>' +
+      '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">' +
+        '<button class="btn" onclick="this.closest(\'.modal-overlay\').remove()">Plus tard</button>' +
+        '<button class="btn" style="background:#25d366;color:#fff;" onclick="s33JalonWaSend(' + projId + ')"><span class="mi mi-sm">send</span> Envoyer par WhatsApp</button>' +
+      '</div></div>';
+    document.body.appendChild(ov);
+  };
+  window.s33JalonWaSend = function(projId) {
+    const p = (db.projects || []).find(x => x.id === projId);
+    const c = p ? clientOf(p) : null;
+    const txt = (document.getElementById('s33-jalon-txt') || {}).value || '';
+    window.open('https://wa.me/' + waIntl(c) + '?text=' + encodeURIComponent(txt), '_blank');
+    const ov = document.getElementById('s33-jalon-modal');
+    if (ov) ov.remove();
+  };
+
+  /* ── Remarques du client sur les plans (vue interne) ── */
+  window.s33PortalLoadPlanComs = async function(projectId) {
+    const box = document.getElementById('s33-portal-plancoms');
+    if (!box) return;
+    const rows = await sbGet('portal_plan_comments', '?project_id=eq.' + projectId + '&order=id.desc&limit=100').catch(() => []);
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) { box.innerHTML = ''; return; }
+    const open = list.filter(r => !r.done_at);
+    const fmt = iso => { try { const d = new Date(iso); return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' · ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); } catch(_) { return ''; } };
+    box.innerHTML =
+      '<div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px;"><span class="mi" style="font-size:13px;vertical-align:-2px;">push_pin</span> Remarques du client sur les plans — ' + open.length + ' à traiter</div>' +
+      list.map(r => {
+        const med = (db.media || []).find(m => parseInt(m.id) === parseInt(r.media_id));
+        return '<div style="display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--border);">' +
+          '<span class="mi" style="font-size:15px;color:' + (r.done_at ? '#16a34a' : 'var(--gold)') + ';flex-shrink:0;margin-top:1px;">' + (r.done_at ? 'check_circle' : 'push_pin') + '</span>' +
+          '<div style="flex:1;min-width:0;font-size:12.5px;color:var(--text);">' + escHTML(r.body) +
+            '<div style="font-size:10.5px;color:var(--text-faint);margin-top:2px;">' + escHTML(r.author_name || 'Client') + ' · ' + fmt(r.created_at) + (med ? ' · sur « ' + escHTML(med.name) + ' »' : '') + (r.done_at ? ' · traité par ' + escHTML(r.done_by || '') : '') + '</div>' +
+          '</div>' +
+          (!r.done_at ? '<button class="btn" style="padding:5px 12px;font-size:11px;flex-shrink:0;" onclick="s33PlanComDone(' + r.id + ',' + projectId + ')">Marquer traité</button>' : '') +
+        '</div>';
+      }).join('');
+  };
+  window.s33PlanComDone = async function(id, projectId) {
+    await sbUpdate('portal_plan_comments', id, { done_at: new Date().toISOString(), done_by: (currentUser && currentUser.name) || '' });
+    s33PortalLoadPlanComs(projectId);
+    toast('Remarque marquée traitée — le client voit la pastille passer au vert');
+  };
+
+  /* ── Rapport mensuel PDF ── */
+  window.s33RapportMensuel = async function(pid) {
+    const p = (db.projects || []).find(x => x.id === pid);
+    if (!p) return;
+    toast('Préparation du rapport…');
+    try {
+      if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const W = 595, M = 46;
+      const c = clientOf(p);
+      const now = new Date();
+      const mois = now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+      // Bandeau
+      doc.setFillColor(20, 20, 20); doc.rect(0, 0, W, 92, 'F');
+      doc.setTextColor(201, 169, 110); doc.setFont('helvetica', 'bold'); doc.setFontSize(19);
+      doc.text('STUDIO 33', M, 40);
+      doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+      doc.text('A R C H I T E C T S   —   AGADIR', M, 55);
+      doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+      doc.text('RAPPORT MENSUEL — ' + mois.toUpperCase(), W - M, 40, { align: 'right' });
+      doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+      doc.text('Édité le ' + now.toLocaleDateString('fr-FR'), W - M, 55, { align: 'right' });
+
+      let y = 122;
+      doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+      if (typeof s33PdfMixed === 'function') { s33PdfMixed(doc, String(p.name || ''), M, y, { size: 15, bold: true, maxW: W - 2 * M }); } else { doc.text(String(p.name || ''), M, y); }
+      y += 18;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(110, 110, 110);
+      if (c) { if (typeof s33PdfMixed === 'function') { s33PdfMixed(doc, 'Client : ' + c.name, M, y, { size: 10, maxW: W - 2 * M }); } else { doc.text('Client : ' + c.name, M, y); } y += 16; }
+
+      // Avancement
+      const tasks = Array.isArray(p.tasks) ? p.tasks : [];
+      const isDone = t => t && (t.done === true || t.status === 'done' || t.status === 'termine');
+      const nDone = tasks.filter(isDone).length;
+      const pct = tasks.length ? Math.round(nDone / tasks.length * 100) : 0;
+      y += 14;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(165, 129, 60);
+      doc.text('AVANCEMENT DU PROJET', M, y); y += 12;
+      doc.setFillColor(240, 240, 240); doc.roundedRect(M, y, W - 2 * M, 12, 6, 6, 'F');
+      doc.setFillColor(201, 169, 110); if (pct > 0) doc.roundedRect(M, y, Math.max(14, (W - 2 * M) * pct / 100), 12, 6, 6, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(20, 20, 20);
+      doc.text(pct + ' %', W - M, y + 10, { align: 'right' });
+      y += 30;
+      doc.setFontSize(9.5);
+      tasks.slice(0, 14).forEach(t => {
+        const dn = isDone(t);
+        doc.setDrawColor(dn ? 22 : 200, dn ? 163 : 200, dn ? 74 : 200);
+        doc.setFillColor(dn ? 22 : 255, dn ? 163 : 255, dn ? 74 : 255);
+        doc.circle(M + 4, y - 3, 3.4, dn ? 'F' : 'S');
+        doc.setFont('helvetica', dn ? 'normal' : 'normal');
+        doc.setTextColor(dn ? 90 : 30, dn ? 90 : 30, dn ? 90 : 30);
+        doc.text(String(t.name || t.label || '').slice(0, 90), M + 14, y);
+        y += 15;
+      });
+
+      // Finances du projet
+      const invs = (db.invoices || []).filter(i => String(i.projectId ?? i.project_id) === String(p.id) && !i.deleted_at);
+      if (invs.length || parseFloat(p.budget) > 0) {
+        y += 10;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(165, 129, 60);
+        doc.text('HONORAIRES', M, y); y += 15;
+        const amt = i => parseFloat(i.amount) || 0;
+        const facture = invs.reduce((s, i) => s + amt(i), 0);
+        const paye = invs.reduce((s, i) => s + (i.status === 'Payée' ? amt(i) : (parseFloat(i.paid_amount) || 0)), 0);
+        const fmtN = n => (Math.round(n) || 0).toLocaleString('fr-MA') + ' MAD';
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30, 30, 30);
+        doc.text('Honoraires du projet : ' + fmtN(parseFloat(p.budget) || 0), M, y); y += 14;
+        doc.text('Facturé : ' + fmtN(facture) + '    ·    Réglé : ' + fmtN(paye) + '    ·    Reste : ' + fmtN(facture - paye), M, y); y += 14;
+      }
+
+      // Photos récentes du chantier
+      const photos = (db.media || []).filter(m =>
+        String(m.projectId ?? m.project_id) === String(p.id) && !m.deleted_at &&
+        (m.doc_type === 'photo_chantier' || /photos?\s*(de)?\s*chantier/i.test(String(m.folder || ''))) &&
+        !(m.mime && String(m.mime).startsWith('video/'))
+      ).slice(-6).reverse();
+      const imgs = [];
+      for (const m of photos) {
+        let src = m.thumb || m.data || null;
+        if (!src && m.file_path && typeof getMediaData === 'function') {
+          try {
+            const u = await getMediaData(m.id);
+            if (u && typeof u === 'string') {
+              if (u.startsWith('data:')) src = u;
+              else {
+                const bl = await fetch(u).then(r => r.blob());
+                src = await new Promise(res => { const rd = new FileReader(); rd.onload = () => res(rd.result); rd.readAsDataURL(bl); });
+              }
+            }
+          } catch(_) {}
+        }
+        if (src && String(src).startsWith('data:image')) imgs.push(src);
+        if (imgs.length >= 6) break;
+      }
+      if (imgs.length) {
+        y += 10;
+        if (y > 620) { doc.addPage(); y = 60; }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(165, 129, 60);
+        doc.text('PHOTOS DU CHANTIER', M, y); y += 12;
+        const iw = (W - 2 * M - 20) / 3, ih = iw * 0.72;
+        imgs.forEach((src, i) => {
+          const col = i % 3, row = Math.floor(i / 3);
+          try { doc.addImage(src, 'JPEG', M + col * (iw + 10), y + row * (ih + 10), iw, ih); } catch(_) {}
+        });
+        y += Math.ceil(imgs.length / 3) * (ih + 10) + 6;
+      }
+
+      // Pied de page
+      doc.setFontSize(8.5); doc.setTextColor(150, 150, 150); doc.setFont('helvetica', 'normal');
+      doc.text('Studio 33 Architects — Agadir, Maroc · Rapport généré automatiquement depuis le suivi du projet', M, 812);
+
+      const safe = String(p.name || 'projet').replace(/[^a-zA-Z0-9À-ÿ _-]/g, '').slice(0, 40);
+      doc.save('Rapport-' + safe + '-' + now.toISOString().slice(0, 7) + '.pdf');
+      toast('Rapport téléchargé — envoie-le au client par WhatsApp ou email');
+    } catch(e) {
+      console.error('rapport mensuel', e);
+      toast('Génération impossible — réessaie');
+    }
+  };
+
+  console.log('✓ Expérience client chargée');
 })();
 </script>
 

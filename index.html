@@ -2957,7 +2957,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-22.7 — scan de carte de visite';
+const S33_BUILD = '2026-07-22.8 — bouton scan sur la page fournisseurs';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3380,6 +3380,7 @@ const S33_BUILD = '2026-07-22.7 — scan de carte de visite';
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <input class="search-input" placeholder="Rechercher..." oninput="renderMateriaux()" id="mat-search" style="width:200px;">
+          <button id="mat-scan-btn" onclick="s33CarteScanNouveau()" title="Photographier une carte de visite pour créer la fiche" style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:rgba(201,169,110,.1);border:1px dashed var(--gold);border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:700;color:var(--gold);cursor:pointer;white-space:nowrap;"><span class="mi" style="font-size:15px;">photo_camera</span> Scanner une carte</button>
           <button class="btn btn-gold" id="mat-add-btn" onclick="openMaterialModal()">+ Matériau</button>
         </div>
       </div>
@@ -8340,6 +8341,8 @@ function switchMatTab(tab) {
   if (tabMat) { tabMat.style.borderBottomColor = tab==='materiaux'?'var(--gold)':'transparent'; tabMat.style.color = tab==='materiaux'?'var(--gold)':'var(--text-dim)'; tabMat.style.fontWeight = tab==='materiaux'?'700':'600'; }
   if (tabSup) { tabSup.style.borderBottomColor = tab==='fournisseurs'?'var(--gold)':'transparent'; tabSup.style.color = tab==='fournisseurs'?'var(--gold)':'var(--text-dim)'; tabSup.style.fontWeight = tab==='fournisseurs'?'700':'600'; }
   if (addBtn) { addBtn.textContent = tab==='materiaux'?'+ Matériau':'+ Fournisseur'; addBtn.onclick = tab==='materiaux' ? ()=>openMaterialModal() : ()=>openSupplierModal(); }
+  const scanBtn = document.getElementById('mat-scan-btn');
+  if (scanBtn) scanBtn.style.display = tab==='fournisseurs' ? 'flex' : 'none';
   renderMateriaux();
 }
 
@@ -8583,6 +8586,12 @@ function s33CarteParse(txt) {
   if (adr) out.address = adr;
   return out;
 }
+// Depuis la page : ouvre une fiche fournisseur vierge et lance la caméra
+window.s33CarteScanNouveau = function() {
+  if (typeof switchMatTab === 'function' && _matTab !== 'fournisseurs') switchMatTab('fournisseurs');
+  openSupplierModal();
+  setTimeout(function() { s33CarteScan(); }, 150);
+};
 window.s33CarteScan = function() {
   const input = document.createElement('input');
   input.type = 'file';

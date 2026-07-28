@@ -2958,7 +2958,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-29.2 — generateurs ouverts a toute l equipe';
+const S33_BUILD = '2026-07-29.3 — bouton devis du dashboard selon les permissions reelles';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6887,11 +6887,20 @@ function renderDashboard() {
   // ── Actions rapides ──────────────────────────────────────────
   const scEl = document.getElementById('dash-shortcuts');
   if (scEl) {
-    const navVisible = id => { const n = document.getElementById(id); return !n || n.style.display !== 'none'; };
+    // Permissions réelles (pas l'état du menu, qui peut ne pas encore être appliqué
+    // au premier rendu — sinon un bouton apparaît puis disparaît selon le moment)
+    const canSee = key => {
+      if (!currentUser) return false;
+      const perms = currentUser.permissions || {};
+      if (currentUser.role === 'admin') return true;
+      const sec = perms.sections || {};
+      if (perms.is_co_admin === true) return sec[key] !== false;
+      return sec[key] === true;
+    };
     const SHORTCUTS = [
       { icon: 'person_add',     color: '#8b5cf6', label: 'Ajouter un prospect',        action: "openProspectModal()" },
-      { icon: 'request_quote',  color: '#c9a96e', label: 'Générer un devis',           action: "navigate('devis')",           nav: 'nav-devis' },
-      { icon: 'contacts',       color: '#3b82f6', label: 'Ajouter un contact pro',     action: "openContactModal()",          nav: 'nav-contacts' },
+      { icon: 'request_quote',  color: '#c9a96e', label: 'Générer un devis',           action: "navigate('devis')",           perm: 'devis' },
+      { icon: 'contacts',       color: '#3b82f6', label: 'Ajouter un contact pro',     action: "openContactModal()",          perm: 'contacts' },
       { icon: 'local_shipping', color: '#f59e0b', label: 'Ajouter un fournisseur',     action: "openSupplierModal()" },
       { icon: 'fact_check',     color: '#10b981', label: 'PV de chantier',             action: "navigate('pvchantier')" },
       { icon: 'assignment',     color: '#0ea5e9', label: 'PV de réunion',              action: "navigate('pv')" },
@@ -6901,7 +6910,7 @@ function renderDashboard() {
       { icon: 'report_problem', color: '#e74c3c', label: 'Signaler un problème',       action: "openIncidentModal()" }
     ];
     scEl.innerHTML = SHORTCUTS
-      .filter(s => !s.nav || navVisible(s.nav))
+      .filter(s => !s.perm || canSee(s.perm))
       .map(s =>
         '<button class="dash-sc" onclick="' + s.action.replace(/"/g, '&quot;') + '">' +
           '<span class="sc-ic" style="background:' + s.color + '1f;color:' + s.color + ';"><span class="mi">' + s.icon + '</span></span>' +

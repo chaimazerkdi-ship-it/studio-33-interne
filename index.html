@@ -2957,7 +2957,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-22.8 — bouton scan sur la page fournisseurs';
+const S33_BUILD = '2026-07-28.1 — catalogue materiaux Maroc prerempli (90 articles)';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5064,17 +5064,18 @@ const S33_BUILD = '2026-07-22.8 — bouton scan sur la page fournisseurs';
       <div class="form-row" style="margin-bottom:0">
         <label>Catégorie</label>
         <select id="mat-category">
-          <option>Revêtement sol</option>
-          <option>Revêtement mur</option>
-          <option>Menuiserie</option>
-          <option>Faux plafond</option>
+          <option>Marbre & pierre</option>
+          <option>Carrelage & zellige</option>
+          <option>Bois & parquet</option>
+          <option>MDF & panneaux</option>
+          <option>Verre & miroir</option>
+          <option>Aluminium</option>
+          <option>Plâtre & staff</option>
+          <option>Peinture & enduits</option>
+          <option>Gros œuvre</option>
+          <option>Isolation & étanchéité</option>
           <option>Plomberie</option>
           <option>Électricité</option>
-          <option>Structure</option>
-          <option>Peinture</option>
-          <option>Isolation</option>
-          <option>Toiture</option>
-          <option>Façade</option>
           <option>Autre</option>
         </select>
       </div>
@@ -8322,9 +8323,9 @@ function toggleArchivedClientsView() {
 // MATÉRIAUX & FOURNISSEURS
 // ══════════════════════════════════════════
 
-const MAT_CATEGORIES = ['Revêtement sol','Revêtement mur','Menuiserie','Faux plafond','Plomberie','Électricité','Structure','Peinture','Isolation','Toiture','Façade','Autre'];
-const MAT_CAT_EMOJI  = {'Revêtement sol':'<span class="mi">grid_on</span>','Revêtement mur':'<span class="mi">texture</span>','Menuiserie':'<span class="mi">meeting_room</span>','Faux plafond':'<span class="mi">grid_view</span>','Plomberie':'<span class="mi">plumbing</span>','Électricité':'<span class="mi">bolt</span>','Structure':'<span class="mi">foundation</span>','Peinture':'<span class="mi">format_paint</span>','Isolation':'<span class="mi">thermostat</span>','Toiture':'<span class="mi">roofing</span>','Façade':'<span class="mi">apartment</span>','Autre':'<span class="mi">inventory_2</span>'};
-const MAT_CAT_CLASS  = {'Revêtement sol':'mcat-sol','Revêtement mur':'mcat-mur','Menuiserie':'mcat-men','Faux plafond':'mcat-plaf','Plomberie':'mcat-plomb','Électricité':'mcat-elec','Structure':'mcat-struct','Peinture':'mcat-peinture','Isolation':'mcat-isol','Toiture':'mcat-toiture','Façade':'mcat-facade'};
+const MAT_CATEGORIES = ['Marbre & pierre','Carrelage & zellige','Bois & parquet','MDF & panneaux','Verre & miroir','Aluminium','Plâtre & staff','Peinture & enduits','Gros œuvre','Isolation & étanchéité','Plomberie','Électricité','Autre'];
+const MAT_CAT_EMOJI  = {'Marbre & pierre':'<span class="mi">diamond</span>','Carrelage & zellige':'<span class="mi">grid_on</span>','Bois & parquet':'<span class="mi">forest</span>','MDF & panneaux':'<span class="mi">layers</span>','Verre & miroir':'<span class="mi">window</span>','Aluminium':'<span class="mi">door_sliding</span>','Plâtre & staff':'<span class="mi">grid_view</span>','Peinture & enduits':'<span class="mi">format_paint</span>','Gros œuvre':'<span class="mi">foundation</span>','Isolation & étanchéité':'<span class="mi">thermostat</span>','Plomberie':'<span class="mi">plumbing</span>','Électricité':'<span class="mi">bolt</span>','Autre':'<span class="mi">inventory_2</span>'};
+const MAT_CAT_CLASS  = {'Marbre & pierre':'mcat-mur','Carrelage & zellige':'mcat-sol','Bois & parquet':'mcat-men','MDF & panneaux':'mcat-toiture','Verre & miroir':'mcat-elec','Aluminium':'mcat-facade','Plâtre & staff':'mcat-plaf','Peinture & enduits':'mcat-peinture','Gros œuvre':'mcat-struct','Isolation & étanchéité':'mcat-isol','Plomberie':'mcat-plomb','Électricité':'mcat-elec'};
 
 let _matTab      = 'fournisseurs'; // 'fournisseurs' | 'materiaux'
 let _matActiveCat = 'Tous';
@@ -8493,7 +8494,13 @@ function openMaterialModal(id) {
   const m = id ? (db.matMaterials||[]).find(x=>x.id===id) : null;
   document.getElementById('mat-edit-id').value = id||'';
   document.getElementById('material-modal-title').textContent = id?'Modifier le matériau':'Nouveau matériau';
-  document.getElementById('mat-category').value = m?.category||'Revêtement sol';
+  const matCatSel = document.getElementById('mat-category');
+  matCatSel.value = m?.category||'Marbre & pierre';
+  if (m && m.category && matCatSel.value !== m.category) {
+    // catégorie absente de la liste (ancienne donnée) : on l'ajoute pour ne pas l'écraser
+    const o = document.createElement('option'); o.textContent = m.category;
+    matCatSel.appendChild(o); matCatSel.value = m.category;
+  }
   document.getElementById('mat-name').value = m?.name||'';
   document.getElementById('mat-reference').value = m?.reference||'';
   document.getElementById('mat-price').value = m?.price||'';

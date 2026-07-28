@@ -2871,6 +2871,13 @@
   #page-taches .page-header button { display: none !important; }
   #page-taches .page-title { font-size: 26px; }
 
+  /* Dossiers fournisseurs : 2 colonnes compactes (tout visible sans scroller) */
+  .s33-fgrid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+  .s33-fgrid > div { padding: 14px 12px !important; gap: 4px !important; }
+  .s33-fgrid > div > .mi { font-size: 24px !important; }
+  .s33-fgrid > div > div:nth-child(2) { font-size: 12.5px !important; }
+  .s33-fgrid > div > div:nth-child(3) { font-size: 10.5px !important; }
+
   /* Ajout express : champ sur toute la largeur, puis Projet / Pour / Ajouter sur une ligne */
   #s33-qa-name { flex: 1 1 100% !important; min-width: 0 !important; }
   #s33-qa-proj, #s33-qa-who { flex: 1 1 0 !important; max-width: none !important; min-width: 0 !important; }
@@ -2950,7 +2957,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-22.5 — fournisseurs en dossiers et sous-dossiers';
+const S33_BUILD = '2026-07-22.6 — dossiers fournisseurs en 2 colonnes';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -8436,7 +8443,7 @@ function renderMateriaux() {
     if (!window._matSupCat) {
       const cats = [...new Set(sups.map(su=>(su.specialty||'Autre').trim()||'Autre'))].sort((a,b)=>a.localeCompare(b,'fr'));
       window._matSupCats = cats;
-      grid.innerHTML = `<div class="mat-grid">${cats.map((c,i)=>{
+      grid.innerHTML = `<div class="mat-grid s33-fgrid">${cats.map((c,i)=>{
         const n = sups.filter(su=>((su.specialty||'Autre').trim()||'Autre')===c).length;
         const nsub = new Set(sups.filter(su=>((su.specialty||'Autre').trim()||'Autre')===c).map(su=>(su.subcat||'').trim()).filter(Boolean)).size;
         return folderCard(c, nsub?nsub+' sous-dossier'+(nsub>1?'s':''):'', n, `window._matSupCat=window._matSupCats[${i}];window._matSupSub=null;renderMateriaux()`);
@@ -8453,7 +8460,7 @@ function renderMateriaux() {
     if (!window._matSupSub && subs.length) {
       window._matSupSubs = subs;
       grid.innerHTML = backBar('Catégories', "window._matSupCat=null;window._matSupSub=null;renderMateriaux()", cat) +
-        `<div class="mat-grid">` +
+        `<div class="mat-grid s33-fgrid">` +
         folderCard('Tous', '', inCat.length, "window._matSupSub='__tous__';renderMateriaux()", 'folder_copy') +
         subs.map((sb,i)=>folderCard(sb, '', inCat.filter(su=>(su.subcat||'').trim()===sb).length, `window._matSupSub=window._matSupSubs[${i}];renderMateriaux()`)).join('') +
         (sansSub ? folderCard('Autres', '', sansSub, "window._matSupSub='__autres__';renderMateriaux()") : '') +

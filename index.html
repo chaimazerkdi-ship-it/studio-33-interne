@@ -2858,6 +2858,24 @@
 <!-- Emblème officiel du Royaume du Maroc (embarqué en base64) -->
 <!-- defer = ne bloque pas le parsing ; asynchrone = pas de blocage si fichier manquant -->
 <script src="assets/royaume-maroc.svg.js" defer onerror="console.warn('[emblem] assets/royaume-maroc.svg.js non chargé — un placeholder sera utilisé')"></script>
+<style id="s33-taches-mobile">
+/* ── Vue téléphone : onglet Tâches compacté + zone sûre iPhone ── */
+@media (max-width: 767px) {
+  /* Le contenu ne passe plus sous l'heure/encoche (viewport-fit=cover) */
+  .page { padding-top: max(20px, calc(env(safe-area-inset-top) + 8px)) !important; }
+
+  /* En-tête Tâches : les 2 filtres côte à côte, bouton doublon masqué
+     (l'ajout express juste en dessous fait la même chose) */
+  #page-taches .page-header > div:last-child { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+  #page-taches .page-header select { width: 100%; min-width: 0; }
+  #page-taches .page-header button { display: none !important; }
+  #page-taches .page-title { font-size: 26px; }
+
+  /* Ajout express : champ sur toute la largeur, puis Projet / Pour / Ajouter sur une ligne */
+  #s33-qa-name { flex: 1 1 100% !important; min-width: 0 !important; }
+  #s33-qa-proj, #s33-qa-who { flex: 1 1 0 !important; max-width: none !important; min-width: 0 !important; }
+}
+</style>
 </head>
 <body>
 
@@ -2932,7 +2950,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-22.3 — facturation separee par projet';
+const S33_BUILD = '2026-07-22.4 — onglet taches range sur iPhone';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;

@@ -2950,7 +2950,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-22.4 — onglet taches range sur iPhone';
+const S33_BUILD = '2026-07-22.5 — fournisseurs en dossiers et sous-dossiers';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3089,6 +3089,9 @@ const S33_BUILD = '2026-07-22.4 — onglet taches range sur iPhone';
         <div class="nav-item" id="nav-contacts" onclick="navigate('contacts')">
           <span class="nav-icon"><span class="mi">contacts</span></span><span class="nav-text">Contacts Pro</span>
         </div>
+        <div class="nav-item" id="nav-materiaux" onclick="navigate('materiaux')">
+          <span class="nav-icon"><span class="mi">storefront</span></span><span class="nav-text">Fournisseurs</span>
+        </div>
         <div class="nav-item" id="nav-administratif" onclick="navigate('administratif')">
           <span class="nav-icon"><span class="mi">admin_panel_settings</span></span><span class="nav-text">Administratif</span>
         </div>
@@ -3100,9 +3103,6 @@ const S33_BUILD = '2026-07-22.4 — onglet taches range sur iPhone';
         </div>
         <div class="nav-item" id="nav-generateurs" style="display:none;" onclick="navigate('generateurs')">
           <span class="nav-icon"><span class="mi">auto_awesome</span></span><span class="nav-text">Générateurs</span>
-        </div>
-        <div class="nav-item" id="nav-materiaux" onclick="navigate('materiaux')">
-          <span class="nav-icon"><span class="mi">layers</span></span><span class="nav-text">Matériaux</span>
         </div>
         <div class="nav-item" id="nav-signalements" onclick="navigate('signalements')">
           <span class="nav-icon"><span class="mi">warning</span></span><span class="nav-text">Signalements</span>
@@ -3368,7 +3368,7 @@ const S33_BUILD = '2026-07-22.4 — onglet taches range sur iPhone';
     <div class="page" id="page-materiaux">
       <div class="page-header">
         <div>
-          <div class="page-title">Matériaux <span>&amp; Fournisseurs</span></div>
+          <div class="page-title">Fournisseurs <span>&amp; Matériaux</span></div>
           <div class="page-subtitle">Fiches techniques · Prix · Projets d'utilisation</div>
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
@@ -5134,7 +5134,7 @@ const S33_BUILD = '2026-07-22.4 — onglet taches range sur iPhone';
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
         <label>Spécialité</label>
-        <select id="sup-specialty">
+        <select id="sup-specialty" onchange="_supFillSubcatList()">
           <option>Carrelage &amp; revêtement</option>
           <option>Menuiserie bois</option>
           <option>Menuiserie aluminium</option>
@@ -5151,6 +5151,11 @@ const S33_BUILD = '2026-07-22.4 — onglet taches range sur iPhone';
         <label>Nom société</label>
         <input type="text" id="sup-name" placeholder="Ex: Maroc Carrelage...">
       </div>
+    </div>
+    <div class="form-row">
+      <label>Sous-dossier (sous-catégorie)</label>
+      <input type="text" id="sup-subcat" list="sup-subcat-list" placeholder="Ex : Zellige, Papier peint, Marbre, Bois…">
+      <datalist id="sup-subcat-list"></datalist>
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
@@ -6609,7 +6614,7 @@ function renderPage(page) {
   if (page === 'panneau') { if (typeof window.initPanneauChantier === 'function') window.initPanneauChantier(); }
   if (page === 'pv') initPVChantier();
   if (page === 'contacts') renderContacts();
-  if (page === 'materiaux') renderMateriaux();
+  if (page === 'materiaux') switchMatTab(_matTab);
   if (page === 'signalements') renderSignalements();
   if (page === 'concours') renderConcours();
 }
@@ -8312,12 +8317,14 @@ const MAT_CATEGORIES = ['Revêtement sol','Revêtement mur','Menuiserie','Faux p
 const MAT_CAT_EMOJI  = {'Revêtement sol':'<span class="mi">grid_on</span>','Revêtement mur':'<span class="mi">texture</span>','Menuiserie':'<span class="mi">meeting_room</span>','Faux plafond':'<span class="mi">grid_view</span>','Plomberie':'<span class="mi">plumbing</span>','Électricité':'<span class="mi">bolt</span>','Structure':'<span class="mi">foundation</span>','Peinture':'<span class="mi">format_paint</span>','Isolation':'<span class="mi">thermostat</span>','Toiture':'<span class="mi">roofing</span>','Façade':'<span class="mi">apartment</span>','Autre':'<span class="mi">inventory_2</span>'};
 const MAT_CAT_CLASS  = {'Revêtement sol':'mcat-sol','Revêtement mur':'mcat-mur','Menuiserie':'mcat-men','Faux plafond':'mcat-plaf','Plomberie':'mcat-plomb','Électricité':'mcat-elec','Structure':'mcat-struct','Peinture':'mcat-peinture','Isolation':'mcat-isol','Toiture':'mcat-toiture','Façade':'mcat-facade'};
 
-let _matTab      = 'materiaux'; // 'materiaux' | 'fournisseurs'
+let _matTab      = 'fournisseurs'; // 'fournisseurs' | 'materiaux'
 let _matActiveCat = 'Tous';
 
 function switchMatTab(tab) {
   _matTab = tab;
   _matActiveCat = 'Tous';
+  window._matSupCat = null;
+  window._matSupSub = null;
   // Style onglets
   const tabMat = document.getElementById('mat-tab-mat');
   const tabSup = document.getElementById('mat-tab-sup');
@@ -8377,26 +8384,17 @@ function renderMateriaux() {
     }).join('')}</div>`;
 
   } else {
-    // ── FOURNISSEURS ──
+    // ── FOURNISSEURS : grands dossiers (spécialités) → sous-dossiers → liste ──
     const sups = db.matSuppliers || [];
-    const specs = ['Tous', ...new Set(sups.map(s=>s.specialty).filter(Boolean).sort())];
-    if (tabs) tabs.innerHTML = specs.map(c=>`<button class="mat-cat-filter-tab${_matActiveCat===c?' active':''}" onclick="_matActiveCat='${c}';renderMateriaux()">${c}${c!=='Tous'?` <span style="opacity:.6;font-weight:400">(${sups.filter(x=>x.specialty===c).length})</span>`:''}</button>`).join('');
+    if (tabs) tabs.innerHTML = '';
 
-    const filtered = sups.filter(s => {
-      const okCat = _matActiveCat==='Tous' || s.specialty===_matActiveCat;
-      const okQ   = !q || (s.name||'').toLowerCase().includes(q) || (s.contact_name||'').toLowerCase().includes(q) || (s.phone||'').includes(q);
-      return okCat && okQ;
-    });
-
-    if (!filtered.length) { grid.innerHTML=emptyStateHTML(sups.length?'Aucun fournisseur correspond':'Aucun fournisseur', { icon:'local_shipping', sub:sups.length?'Modifiez la recherche.':'Ajoutez votre premier fournisseur.', btnLabel:sups.length?'':'Nouveau fournisseur', btnAction:"openSupModal()" }); return; }
-
-    grid.innerHTML = `<div class="mat-grid">${filtered.map(s=>{
+    const supCard = s => {
       const mats   = (db.matMaterials||[]).filter(m=>parseInt(m.supplier_id)===s.id);
       const projSet = new Set(mats.flatMap(m=>Array.isArray(m.project_ids)?m.project_ids:[]));
       const projs  = [...projSet].map(id=>(db.projects||[]).find(p=>p.id===parseInt(id))).filter(Boolean);
       return `<div class="sup-card">
-        <div class="sup-specialty-badge">${escHTML(s.specialty||'Autre')}</div>
-        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;">${escHTML(s.name)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><div class="sup-specialty-badge">${escHTML(s.specialty||'Autre')}</div>${s.subcat?`<span style="font-size:10px;font-weight:700;background:rgba(201,169,110,.14);color:var(--gold);border-radius:99px;padding:3px 10px;">${escHTML(s.subcat)}</span>`:''}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin:6px 0 2px;">${escHTML(s.name)}</div>
         ${s.contact_name?`<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">${escHTML(s.contact_name)}</div>`:'<div style="margin-bottom:10px;"></div>'}
         <div class="contact-info">
           ${s.phone?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">phone</span><a href="tel:${s.phone}">${escHTML(s.phone)}</a></div>`:''}
@@ -8412,7 +8410,70 @@ function renderMateriaux() {
           <button onclick="deleteSupplier(${s.id})" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:#ef4444;display:flex;align-items:center;"><span class="mi mi-sm">delete</span></button>
         </div>
       </div>`;
-    }).join('')}</div>`;
+    };
+    const folderCard = (label, sub, count, onclick, icon) => `
+      <div onclick="${onclick}" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 18px;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:border-color .15s;" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'">
+        <span class="mi" style="font-size:34px;color:var(--gold);">${icon||'folder'}</span>
+        <div style="font-size:14.5px;font-weight:800;color:var(--text);line-height:1.25;">${escHTML(label)}</div>
+        <div style="font-size:11.5px;color:var(--text-dim);">${count} fournisseur${count>1?'s':''}${sub?' · '+sub:''}</div>
+      </div>`;
+    const backBar = (label, onclick, titre) => `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+        <button onclick="${onclick}" style="display:flex;align-items:center;gap:5px;padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:12px;font-weight:700;color:var(--text);cursor:pointer;">← ${label}</button>
+        <div style="font-size:15px;font-weight:800;color:var(--text);"><span class="mi" style="font-size:17px;vertical-align:-3px;color:var(--gold);">folder_open</span> ${escHTML(titre)}</div>
+      </div>`;
+
+    // Recherche : accès direct à la liste, sans passer par les dossiers
+    if (q) {
+      const filtered = sups.filter(su => (su.name||'').toLowerCase().includes(q) || (su.contact_name||'').toLowerCase().includes(q) || (su.phone||'').includes(q) || (su.subcat||'').toLowerCase().includes(q) || (su.specialty||'').toLowerCase().includes(q));
+      grid.innerHTML = filtered.length ? `<div class="mat-grid">${filtered.map(supCard).join('')}</div>`
+        : emptyStateHTML('Aucun fournisseur correspond', { icon:'local_shipping', sub:'Modifiez la recherche.' });
+      return;
+    }
+    if (!sups.length) { grid.innerHTML = emptyStateHTML('Aucun fournisseur', { icon:'local_shipping', sub:'Ajoutez votre premier fournisseur.', btnLabel:'Nouveau fournisseur', btnAction:'openSupplierModal()' }); return; }
+
+    // Niveau 1 : les grandes catégories en grands dossiers
+    if (!window._matSupCat) {
+      const cats = [...new Set(sups.map(su=>(su.specialty||'Autre').trim()||'Autre'))].sort((a,b)=>a.localeCompare(b,'fr'));
+      window._matSupCats = cats;
+      grid.innerHTML = `<div class="mat-grid">${cats.map((c,i)=>{
+        const n = sups.filter(su=>((su.specialty||'Autre').trim()||'Autre')===c).length;
+        const nsub = new Set(sups.filter(su=>((su.specialty||'Autre').trim()||'Autre')===c).map(su=>(su.subcat||'').trim()).filter(Boolean)).size;
+        return folderCard(c, nsub?nsub+' sous-dossier'+(nsub>1?'s':''):'', n, `window._matSupCat=window._matSupCats[${i}];window._matSupSub=null;renderMateriaux()`);
+      }).join('')}</div>`;
+      return;
+    }
+
+    const cat = window._matSupCat;
+    const inCat = sups.filter(su=>((su.specialty||'Autre').trim()||'Autre')===cat);
+    const subs = [...new Set(inCat.map(su=>(su.subcat||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
+    const sansSub = inCat.filter(su=>!(su.subcat||'').trim()).length;
+
+    // Niveau 2 : les sous-dossiers de la catégorie
+    if (!window._matSupSub && subs.length) {
+      window._matSupSubs = subs;
+      grid.innerHTML = backBar('Catégories', "window._matSupCat=null;window._matSupSub=null;renderMateriaux()", cat) +
+        `<div class="mat-grid">` +
+        folderCard('Tous', '', inCat.length, "window._matSupSub='__tous__';renderMateriaux()", 'folder_copy') +
+        subs.map((sb,i)=>folderCard(sb, '', inCat.filter(su=>(su.subcat||'').trim()===sb).length, `window._matSupSub=window._matSupSubs[${i}];renderMateriaux()`)).join('') +
+        (sansSub ? folderCard('Autres', '', sansSub, "window._matSupSub='__autres__';renderMateriaux()") : '') +
+        `</div>`;
+      return;
+    }
+
+    // Niveau 3 : la liste des fournisseurs
+    const sub = window._matSupSub;
+    let list = inCat;
+    let titre = cat;
+    if (sub && sub !== '__tous__') {
+      if (sub === '__autres__') { list = inCat.filter(su=>!(su.subcat||'').trim()); titre = cat + ' · Autres'; }
+      else { list = inCat.filter(su=>(su.subcat||'').trim()===sub); titre = cat + ' · ' + sub; }
+    }
+    const backTo = subs.length ? "window._matSupSub=null;renderMateriaux()" : "window._matSupCat=null;window._matSupSub=null;renderMateriaux()";
+    const backLbl = subs.length ? cat : 'Catégories';
+    grid.innerHTML = backBar(backLbl, backTo, titre) +
+      (list.length ? `<div class="mat-grid">${list.map(supCard).join('')}</div>`
+        : emptyStateHTML('Aucun fournisseur ici', { icon:'local_shipping', sub:'Ajoutez-en un avec « + Fournisseur ».' }));
   }
 }
 
@@ -8484,11 +8545,33 @@ async function deleteMaterial(id) {
 function editMaterial(id) { openMaterialModal(id); }
 
 // ── Fournisseur CRUD ──
+const SUP_SUBCAT_SUGG = {
+  'Carrelage & revêtement': ['Carrelage', 'Zellige', 'Papier peint', 'Bois', 'Marbre', 'Parquet', 'Pierre naturelle', 'Moquette'],
+  'Menuiserie bois': ['Portes', 'Cuisines', 'Dressing', 'Escaliers', 'Meubles sur mesure'],
+  'Menuiserie aluminium': ['Fenêtres', 'Baies vitrées', 'Garde-corps', 'Pergolas'],
+  'Plomberie & sanitaire': ['Robinetterie', 'Sanitaires', 'Baignoires & douches', 'Chauffe-eau'],
+  'Électricité': ['Luminaires', 'Appareillage', 'Domotique'],
+  'Peinture': ['Peinture intérieure', 'Enduits décoratifs', 'Façades'],
+  'Matériaux de construction': ['Ciment & agrégats', 'Acier', 'Isolation', 'Étanchéité'],
+  'Décoration': ['Mobilier', 'Luminaires', 'Textile', 'Tapis', 'Tableaux'],
+  'Quincaillerie': ['Poignées', 'Serrures', 'Visserie'],
+  'Autre': []
+};
+function _supFillSubcatList() {
+  const spec = document.getElementById('sup-specialty').value;
+  const exist = (db.matSuppliers||[]).filter(x=>(x.specialty||'Autre')===spec).map(x=>(x.subcat||'').trim()).filter(Boolean);
+  const all = [...new Set([...(SUP_SUBCAT_SUGG[spec]||[]), ...exist])].sort((a,b)=>a.localeCompare(b,'fr'));
+  const dl = document.getElementById('sup-subcat-list');
+  if (dl) dl.innerHTML = all.map(x=>`<option value="${escHTML(x)}">`).join('');
+}
+
 function openSupplierModal(id) {
   const s = id ? (db.matSuppliers||[]).find(x=>x.id===id) : null;
   document.getElementById('sup-edit-id').value = id||'';
   document.getElementById('supplier-modal-title').textContent = id?'Modifier le fournisseur':'Nouveau fournisseur';
   document.getElementById('sup-specialty').value = s?.specialty||'Carrelage & revêtement';
+  document.getElementById('sup-subcat').value = s?.subcat||'';
+  _supFillSubcatList();
   document.getElementById('sup-name').value = s?.name||'';
   document.getElementById('sup-contact-name').value = s?.contact_name||'';
   document.getElementById('sup-phone').value = s?.phone||'';
@@ -8503,6 +8586,7 @@ async function saveSupplier() {
   if (!name) { toast('Le nom est obligatoire'); return; }
   const obj = {
     specialty:    document.getElementById('sup-specialty').value,
+    subcat:       document.getElementById('sup-subcat').value.trim()||null,
     name,
     contact_name: document.getElementById('sup-contact-name').value.trim()||null,
     phone:        document.getElementById('sup-phone').value.trim()||null,
@@ -13965,6 +14049,9 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     <div class="mobile-more-item" id="mnav-more-contacts" style="display:none;" onclick="mobileNavigate('contacts'); closeMobileMore()">
       <span class="mnav-icon"><span class="mi">contacts</span></span> Contacts Pro
     </div>
+    <div class="mobile-more-item" id="mnav-more-materiaux" onclick="mobileNavigate('materiaux'); closeMobileMore()">
+      <span class="mnav-icon"><span class="mi">storefront</span></span> Fournisseurs
+    </div>
     <div class="mobile-more-item" id="mnav-more-administratif" onclick="mobileNavigate('administratif'); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v4H4z"/><path d="M4 10h16v10H4z"/><path d="M9 14h6"/></svg></span> Administratif
     </div>
@@ -13976,9 +14063,6 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     </div>
     <div class="mobile-more-item" id="mnav-more-generateurs" style="display:none;" onclick="mobileNavigate('generateurs'); closeMobileMore()">
       <span class="mnav-icon"><span class="mi">auto_awesome</span></span> Générateurs
-    </div>
-    <div class="mobile-more-item" id="mnav-more-materiaux" onclick="mobileNavigate('materiaux'); closeMobileMore()">
-      <span class="mnav-icon"><span class="mi">layers</span></span> Matériaux
     </div>
     <div class="mobile-more-item" id="mnav-more-signalements" onclick="mobileNavigate('signalements'); closeMobileMore()">
       <span class="mnav-icon"><span class="mi">warning</span></span> Signalements

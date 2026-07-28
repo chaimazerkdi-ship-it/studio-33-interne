@@ -2958,7 +2958,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-28.8 — titre Messages avec le bureau';
+const S33_BUILD = '2026-07-28.9 — vraies icones partout, plus d emojis cote client';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -29544,7 +29544,7 @@ window.addEventListener('appinstalled', () => {
       piecesTitle: 'Documents à nous fournir', piecesHint: 'Photographiez chaque document ou choisissez un fichier PDF — il arrive directement dans votre dossier.',
       pieceDone: 'Reçu, merci !', pieceSend: 'Envoyer', pieceFail: 'Envoi impossible — vérifiez votre connexion et réessayez.', pieceTooBig: 'Fichier trop volumineux — préférez une photo.',
       video: 'VIDÉO',
-      nextSteps: 'Prochaines étapes', docs: 'Documents partagés', photos: 'Photos du chantier', messages: '💬 Messages avec le bureau',
+      nextSteps: 'Prochaines étapes', docs: 'Documents partagés', photos: 'Photos du chantier', messages: 'Messages avec le bureau',
       open: 'Ouvrir →', event: 'Événement', approve: 'Valider', approvedOn: 'Validé le',
       confirmApprove: 'Confirmer votre accord sur ce document ?\n\nVotre validation sera enregistrée avec votre nom, la date et l\'heure.',
       approveDone: 'Merci ! Votre validation a bien été enregistrée.',
@@ -29580,7 +29580,7 @@ window.addEventListener('appinstalled', () => {
       piecesTitle: 'وثائق مطلوبة منكم', piecesHint: 'صوّروا كل وثيقة أو اختاروا ملف PDF — تصل مباشرة إلى ملفكم.',
       pieceDone: 'تم التوصل، شكرًا!', pieceSend: 'إرسال', pieceFail: 'تعذّر الإرسال — تحقّقوا من الاتصال وحاولوا مجددًا.', pieceTooBig: 'الملف كبير جدًا — الأفضل إرسال صورة.',
       video: 'فيديو',
-      nextSteps: 'المواعيد القادمة', docs: 'الوثائق المشتركة', photos: 'صور الورش', messages: '💬 رسائلكم مع المكتب',
+      nextSteps: 'المواعيد القادمة', docs: 'الوثائق المشتركة', photos: 'صور الورش', messages: 'رسائلكم مع المكتب',
       open: 'فتح', event: 'موعد', approve: 'مصادقة', approvedOn: 'تمت المصادقة في',
       confirmApprove: 'هل تؤكدون موافقتكم على هذه الوثيقة؟\n\nستُسجَّل المصادقة باسمكم مع التاريخ والوقت.',
       approveDone: 'شكرًا لكم! تم تسجيل مصادقتكم.',
@@ -29712,7 +29712,7 @@ window.addEventListener('appinstalled', () => {
 
     // Bienvenue (accueil chaleureux, première impression)
     html += '<div style="background:linear-gradient(135deg,#FFF7EE,#FFEEDD);border:1px solid #ffe3c8;border-radius:16px;padding:16px 20px;margin-bottom:14px;">' +
-      '<div style="font-size:15px;font-weight:800;color:#1a1a1a;">' + t.welcome + (p.clientName ? ' ' + esc(p.clientName) : '') + ' 👋</div>' +
+      '<div style="font-size:15px;font-weight:800;color:#1a1a1a;display:flex;align-items:center;gap:8px;"><span class="mi" style="font-size:19px;color:#E4640B;">waving_hand</span>' + t.welcome + (p.clientName ? ' ' + esc(p.clientName) : '') + '</div>' +
       '<div style="font-size:12px;color:#8a6d4e;margin-top:4px;line-height:1.5;">' + t.welcomeTxt + '</div>' +
     '</div>';
 
@@ -29727,8 +29727,8 @@ window.addEventListener('appinstalled', () => {
         try {
           const days = Math.ceil((new Date(p.livraison + 'T00:00') - new Date()) / 86400000);
           const fdL = new Date(p.livraison + 'T00:00').toLocaleDateString(t.locale, { day: 'numeric', month: 'long', year: 'numeric' });
-          if (days > 0) return '<div style="display:inline-flex;align-items:center;gap:6px;background:#1a1a1a;color:#fff;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:800;">🏁 J-' + days + '<span style="font-weight:400;color:#ccc;">· ' + t.delivery + ' ' + fdL + '</span></div>';
-          return '<div style="display:inline-block;background:#f0fdf4;color:#16a34a;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;">🏁 ' + t.deliveryPassed + '</div>';
+          if (days > 0) return '<div style="display:inline-flex;align-items:center;gap:6px;background:#1a1a1a;color:#fff;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:800;"><span class="mi" style="font-size:14px;color:#C9A96E;">flag</span>J-' + days + '<span style="font-weight:400;color:#ccc;">· ' + t.delivery + ' ' + fdL + '</span></div>';
+          return '<div style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;color:#16a34a;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;"><span class="mi" style="font-size:14px;">flag</span>' + t.deliveryPassed + '</div>';
         } catch(_) { return ''; }
       })() +
       '</div>' +
@@ -29945,7 +29945,7 @@ window.addEventListener('appinstalled', () => {
         '<textarea id="s33p-msg-input" rows="2" placeholder="' + t.msgPlaceholder + '" style="flex:1;border:1px solid #e5e5e5;border-radius:12px;padding:10px 12px;font-family:inherit;font-size:14px;resize:none;outline:none;box-sizing:border-box;"></textarea>' +
         '<button id="s33p-msg-send" onclick="s33pSendMsg()" style="background:#F97316;color:#fff;border:none;border-radius:12px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">' + t.send + '</button>' +
       '</div>' +
-      '<div style="font-size:10.5px;color:#bbb;margin-top:6px;">' + t.msgNote + '</div>', { open: true, count: (data.messages || []).length });
+      '<div style="font-size:10.5px;color:#bbb;margin-top:6px;">' + t.msgNote + '</div>', { open: true, count: (data.messages || []).length, icon: 'forum' });
 
     html += '<div style="text-align:center;margin-top:34px;font-size:11px;color:#bbb;">' + t.footer + '<br>' + t.footer2 + '</div>';
     host.innerHTML = shell(html);
@@ -29989,6 +29989,7 @@ window.addEventListener('appinstalled', () => {
     try { const v = localStorage.getItem(key); if (v !== null) open = v === '1'; } catch(_) {}
     return '<div style="margin-bottom:12px;">' +
       '<div onclick="s33pAccToggle(this,\'' + key + '\')" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #eee;border-radius:14px;padding:13px 16px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.05);user-select:none;">' +
+        (opts.icon ? '<span class="mi" style="font-size:18px;color:#F97316;flex-shrink:0;">' + opts.icon + '</span>' : '') +
         '<span style="flex:1;font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#F97316;">' + esc(title) + '</span>' +
         (opts.count != null ? '<span style="font-size:11.5px;color:#999;font-weight:700;flex-shrink:0;">' + opts.count + '</span>' : '') +
         '<span class="mi s33p-chev" style="font-size:20px;color:#bbb;flex-shrink:0;transition:transform .2s;transform:rotate(' + (open ? 180 : 0) + 'deg);">expand_more</span>' +
@@ -31090,7 +31091,7 @@ window.addEventListener('appinstalled', () => {
     return '<div class="ch-item"' + (open ? '' : ' style="opacity:.65;"') + '>' +
       '<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
         '<span class="ch-badge ' + (open ? 'ouverte' : 'levee') + '">' + (open ? 'OUVERTE' : 'LEVÉE') + '</span>' +
-        (open && r.entreprise_signale_at ? '<span class="ch-chip" style="background:rgba(22,163,74,.13);color:#16a34a;font-weight:800;" title="L entreprise dit avoir corrigé — vérifier sur place avant de lever">🔔 signalée corrigée</span>' : '') +
+        (open && r.entreprise_signale_at ? '<span class="ch-chip" style="background:rgba(22,163,74,.13);color:#16a34a;font-weight:800;" title="L entreprise dit avoir corrigé — vérifier sur place avant de lever"><span class="mi" style="font-size:12px;vertical-align:-2px;">notifications_active</span> signalée corrigée</span>' : '') +
         '<div style="flex:1;min-width:160px;">' +
           '<div style="font-size:12.5px;color:var(--text);white-space:pre-wrap;">' + esc(r.description) + '</div>' +
           '<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">' +
@@ -36319,7 +36320,7 @@ window.addEventListener('appinstalled', () => {
           '<span class="mi" style="font-size:18px;color:var(--text-faint);">' + (open ? 'expand_less' : 'expand_more') + '</span>' +
         '</div>' +
         (open ? '<pre>' + esc(m.content || '') + '</pre>' +
-          (m.tags ? '<div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;">🏷 ' + esc(m.tags) + '</div>' : '') +
+          (m.tags ? '<div style="font-size:10.5px;color:var(--text-faint);margin-top:8px;"><span class="mi" style="font-size:12px;vertical-align:-2px;">sell</span> ' + esc(m.tags) + '</div>' : '') +
           (isAdm() ? '<div style="display:flex;gap:8px;margin-top:10px;" onclick="event.stopPropagation()">' +
             '<button class="s33-mic-btn s33-mic-sm" title="Modifier" onclick="s33OutMemoModal(' + m.id + ')"><span class="mi">edit</span></button>' +
             '<button class="s33-mic-btn s33-mic-sm" title="Supprimer" style="color:#ef4444;" onclick="s33OutMemoDel(' + m.id + ')"><span class="mi">delete</span></button></div>' : '')
@@ -36744,17 +36745,17 @@ window.addEventListener('appinstalled', () => {
           '<div style="font-size:12px;color:#888;margin-top:2px;">Plans à jour et points à corriger — mis à jour par Studio 33.</div>' +
         '</div>' +
         '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:22px;box-shadow:0 4px 20px rgba(0,0,0,.05);margin-bottom:16px;">' +
-          '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#a58a3c;margin-bottom:10px;">📐 Plans à jour (' + plans.length + ')</div>' +
+          '<div style="display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#a58a3c;margin-bottom:10px;"><span class="mi" style="font-size:16px;">architecture</span>Plans à jour (' + plans.length + ')</div>' +
           (plans.length ? plans.map(p =>
             '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f5f2ea;">' +
-              '<span style="font-size:18px;">' + (p.is_pdf ? '📄' : '🖼') + '</span>' +
+              '<span class="mi" style="font-size:19px;color:#a58a3c;">' + (p.is_pdf ? 'picture_as_pdf' : 'image') + '</span>' +
               '<span style="flex:1;font-size:13px;color:#1a1a1a;">' + escT(p.name || 'Plan') + (p.added_at ? '<br><span style="font-size:10.5px;color:#aaa;">ajouté le ' + escT(p.added_at) + '</span>' : '') + '</span>' +
               (p.url ? '<a href="' + escT(p.url) + '" target="_blank" rel="noopener" style="background:#F97316;color:#fff;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;">Ouvrir</a>' : '<span style="font-size:11px;color:#bbb;">indisponible</span>') +
             '</div>').join('')
           : '<div style="font-size:12.5px;color:#999;">Aucun plan partagé pour le moment.</div>') +
         '</div>' +
         '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:22px;box-shadow:0 4px 20px rgba(0,0,0,.05);">' +
-          '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#e53935;margin-bottom:10px;">🛠 Réserves à corriger (' + res.length + ')</div>' +
+          '<div style="display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#e53935;margin-bottom:10px;"><span class="mi" style="font-size:16px;">build</span>Réserves à corriger (' + res.length + ')</div>' +
           (res.length ? res.map(r => {
             const g = GRAVL[r.gravite] || null;
             return '<div style="padding:12px 0;border-top:1px solid #f5f2ea;">' +
@@ -36823,7 +36824,7 @@ window.addEventListener('appinstalled', () => {
     const nom = c ? c.name : '';
     const msg = encodeURIComponent(
       'Bonjour ' + nom + ',\n\n' +
-      'Bienvenue chez Studio 33 Architects ! 🏛\n' +
+      'Bienvenue chez Studio 33 Architects !\n' +
       'Nous sommes ravis de vous accompagner pour votre projet « ' + p.name + ' ».\n\n' +
       'Voici votre espace projet personnel — gardez ce lien précieusement :\n' + link + '\n' +
       'Vous y suivrez l avancement en direct, vos documents, vos plans et vos règlements, et vous pouvez nous y écrire à tout moment.\n\n' +
@@ -36841,11 +36842,11 @@ window.addEventListener('appinstalled', () => {
     const next = (allTasks || []).find(t => t && t !== task && !(t.done === true || t.status === 'done' || t.status === 'termine'));
     const tName = task.name || task.label || task.text || 'Étape';
     const link = p.portal_token ? (location.origin + location.pathname + '?portal=' + p.portal_token) : '';
-    const msgFR = '🎉 Bonne nouvelle ' + (c ? c.name : '') + ' !\n' +
+    const msgFR = 'Bonne nouvelle ' + (c ? c.name : '') + ' !\n' +
       'L étape « ' + tName + ' » de votre projet « ' + p.name + ' » est terminée.' +
       (next ? '\nProchaine étape : « ' + (next.name || next.label || '') + ' ».' : '\nToutes les étapes sont terminées !') +
       (link ? '\n\nSuivez tout en direct sur votre espace : ' + link : '');
-    const msgAR = '🎉 خبر سار! أُنجزت مرحلة « ' + tName + ' » من مشروعكم « ' + p.name + ' ».' +
+    const msgAR = 'خبر سار! أُنجزت مرحلة « ' + tName + ' » من مشروعكم « ' + p.name + ' ».' +
       (next ? '\nالمرحلة القادمة : « ' + (next.name || next.label || '') + ' ».' : '\nاكتملت جميع المراحل!');
     const full = msgFR + '\n\n' + msgAR + '\n\nStudio 33 Architects';
     let ov = document.getElementById('s33-jalon-modal');
@@ -36856,7 +36857,7 @@ window.addEventListener('appinstalled', () => {
     ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
     ov.innerHTML = '<div class="modal" style="max-width:520px;" onclick="event.stopPropagation()">' +
       '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
-      '<div class="modal-title">🎉 Étape terminée — prévenir le client ?</div>' +
+      '<div class="modal-title"><span class="mi" style="vertical-align:-3px;color:var(--gold);">celebration</span> Étape terminée — prévenir le client ?</div>' +
       '<div style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;">« ' + escHTML(tName) + ' » est cochée sur « ' + escHTML(p.name) + ' ». Le message est prêt (modifiable) :</div>' +
       '<textarea id="s33-jalon-txt" rows="8" style="width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 12px;font-size:12.5px;border-radius:10px;font-family:inherit;resize:vertical;">' + escHTML(full) + '</textarea>' +
       '<div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;">' +

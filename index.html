@@ -2957,7 +2957,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-28.1 — catalogue materiaux Maroc prerempli (90 articles)';
+const S33_BUILD = '2026-07-28.2 — fournisseurs proposes Maroc separes des votres';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -8396,16 +8396,22 @@ function renderMateriaux() {
     }).join('')}</div>`;
 
   } else {
-    // ── FOURNISSEURS : grands dossiers (spécialités) → sous-dossiers → liste ──
-    const sups = db.matSuppliers || [];
-    if (tabs) tabs.innerHTML = '';
+    // ── FOURNISSEURS : Mes fournisseurs / Proposés, puis dossiers → sous-dossiers → liste ──
+    const allSups = db.matSuppliers || [];
+    if (!window._matSupSrc) window._matSupSrc = 'mine';
+    const nMine = allSups.filter(su=>!su.suggested).length;
+    const nSugg = allSups.filter(su=>su.suggested).length;
+    if (tabs) tabs.innerHTML =
+      `<button class="mat-cat-filter-tab${window._matSupSrc==='mine'?' active':''}" onclick="window._matSupSrc='mine';window._matSupCat=null;window._matSupSub=null;renderMateriaux()"><span class="mi" style="font-size:14px;vertical-align:-2px;">handshake</span> Mes fournisseurs <span style="opacity:.6;font-weight:400">(${nMine})</span></button>`+
+      `<button class="mat-cat-filter-tab${window._matSupSrc==='sugg'?' active':''}" onclick="window._matSupSrc='sugg';window._matSupCat=null;window._matSupSub=null;renderMateriaux()"><span class="mi" style="font-size:14px;vertical-align:-2px;">auto_awesome</span> Proposés — Maroc <span style="opacity:.6;font-weight:400">(${nSugg})</span></button>`;
+    const sups = allSups.filter(su=>window._matSupSrc==='sugg' ? su.suggested : !su.suggested);
 
     const supCard = s => {
       const mats   = (db.matMaterials||[]).filter(m=>parseInt(m.supplier_id)===s.id);
       const projSet = new Set(mats.flatMap(m=>Array.isArray(m.project_ids)?m.project_ids:[]));
       const projs  = [...projSet].map(id=>(db.projects||[]).find(p=>p.id===parseInt(id))).filter(Boolean);
       return `<div class="sup-card">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><div class="sup-specialty-badge">${escHTML(s.specialty||'Autre')}</div>${s.subcat?`<span style="font-size:10px;font-weight:700;background:rgba(201,169,110,.14);color:var(--gold);border-radius:99px;padding:3px 10px;">${escHTML(s.subcat)}</span>`:''}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><div class="sup-specialty-badge">${escHTML(s.specialty||'Autre')}</div>${s.subcat?`<span style="font-size:10px;font-weight:700;background:rgba(201,169,110,.14);color:var(--gold);border-radius:99px;padding:3px 10px;">${escHTML(s.subcat)}</span>`:''}${s.suggested?`<span style="font-size:10px;font-weight:700;background:rgba(34,197,94,.13);color:#16a34a;border-radius:99px;padding:3px 10px;">Proposé</span>`:''}</div>
         <div style="font-size:14px;font-weight:700;color:var(--text);margin:6px 0 2px;">${escHTML(s.name)}</div>
         ${s.contact_name?`<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">${escHTML(s.contact_name)}</div>`:'<div style="margin-bottom:10px;"></div>'}
         <div class="contact-info">
@@ -8418,7 +8424,8 @@ function renderMateriaux() {
         ${projs.length?`<div class="mat-proj-chips" style="margin-top:8px;">${projs.map(p=>`<span class="mat-proj-chip" onclick="openProjectDetail(${p.id})">${escHTML(p.name)}</span>`).join('')}</div>`:''}
         ${s.notes?`<div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-style:italic;">${escHTML(s.notes)}</div>`:''}
         <div class="mat-card-actions">
-          <button onclick="editSupplier(${s.id})" style="flex:1;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;gap:4px;"><span class="mi mi-sm">edit</span> Modifier</button>
+          ${s.suggested?`<button onclick="s33SupAdopt(${s.id})" style="flex:1;padding:6px;background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.4);border-radius:var(--radius-sm);font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;color:#16a34a;display:flex;align-items:center;justify-content:center;gap:4px;"><span class="mi mi-sm">add_circle</span> Ajouter à mes fournisseurs</button>`
+          :`<button onclick="editSupplier(${s.id})" style="flex:1;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;gap:4px;"><span class="mi mi-sm">edit</span> Modifier</button>`}
           <button onclick="deleteSupplier(${s.id})" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:#ef4444;display:flex;align-items:center;"><span class="mi mi-sm">delete</span></button>
         </div>
       </div>`;
@@ -8435,14 +8442,14 @@ function renderMateriaux() {
         <div style="font-size:15px;font-weight:800;color:var(--text);"><span class="mi" style="font-size:17px;vertical-align:-3px;color:var(--gold);">folder_open</span> ${escHTML(titre)}</div>
       </div>`;
 
-    // Recherche : accès direct à la liste, sans passer par les dossiers
+    // Recherche : accès direct à la liste (les deux groupes), sans passer par les dossiers
     if (q) {
-      const filtered = sups.filter(su => (su.name||'').toLowerCase().includes(q) || (su.contact_name||'').toLowerCase().includes(q) || (su.phone||'').includes(q) || (su.subcat||'').toLowerCase().includes(q) || (su.specialty||'').toLowerCase().includes(q));
+      const filtered = allSups.filter(su => (su.name||'').toLowerCase().includes(q) || (su.contact_name||'').toLowerCase().includes(q) || (su.phone||'').includes(q) || (su.subcat||'').toLowerCase().includes(q) || (su.specialty||'').toLowerCase().includes(q));
       grid.innerHTML = filtered.length ? `<div class="mat-grid">${filtered.map(supCard).join('')}</div>`
         : emptyStateHTML('Aucun fournisseur correspond', { icon:'local_shipping', sub:'Modifiez la recherche.' });
       return;
     }
-    if (!sups.length) { grid.innerHTML = emptyStateHTML('Aucun fournisseur', { icon:'local_shipping', sub:'Ajoutez votre premier fournisseur.', btnLabel:'Nouveau fournisseur', btnAction:'openSupplierModal()' }); return; }
+    if (!sups.length) { grid.innerHTML = emptyStateHTML(window._matSupSrc==='sugg'?'Aucun fournisseur proposé':'Aucun fournisseur', { icon:'local_shipping', sub:window._matSupSrc==='sugg'?'Toutes les propositions ont été adoptées ou supprimées.':'Ajoutez votre premier fournisseur, ou piochez dans « Proposés — Maroc ».', btnLabel:window._matSupSrc==='sugg'?'':'Nouveau fournisseur', btnAction:'openSupplierModal()' }); return; }
 
     // Niveau 1 : les grandes catégories en grands dossiers
     if (!window._matSupCat) {
@@ -8701,6 +8708,13 @@ async function saveSupplier() {
     toast('Fournisseur ajouté');
   }
   closeModal('supplier-modal'); renderMateriaux();
+}
+async function s33SupAdopt(id) {
+  await sbUpdate('mat_suppliers', id, { suggested: false });
+  db.matSuppliers = (db.matSuppliers||[]).map(s=>s.id===id?{...s,suggested:false}:s);
+  toast('Ajouté à vos fournisseurs — complète ses coordonnées quand tu veux');
+  window._matSupSrc = 'mine'; window._matSupCat = null; window._matSupSub = null;
+  renderMateriaux();
 }
 async function deleteSupplier(id) {
   const s = (db.matSuppliers||[]).find(x=>x.id===id);

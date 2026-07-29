@@ -9,6 +9,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Studio 33">
   <meta name="theme-color" content="#ffffff">
+  <!-- Empêche le « mode sombre forcé » de Chrome/Samsung Android d'inverser les
+       couleurs du site (clignotements + zones blanches sur tablettes Samsung).
+       Le thème sombre INTERNE de l'app (html.dark) reste géré par l'app elle-même. -->
+  <meta name="color-scheme" content="only light">
+  <style>
+    :root { color-scheme: only light; }
+    html.dark { color-scheme: dark; }
+  </style>
   <!-- Espace client : détection précoce du jeton pour masquer l'app avant tout affichage -->
   <script>
     try {
@@ -2958,7 +2966,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-29.3 — bouton devis du dashboard selon les permissions reelles';
+const S33_BUILD = '2026-07-29.4 — protection contre le mode sombre force de Chrome Android';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;

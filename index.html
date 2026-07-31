@@ -2966,7 +2966,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-29.4 — protection contre le mode sombre force de Chrome Android';
+const S33_BUILD = '2026-07-30.1 — suspension d acces au portail client (impaye ou litige)';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -13152,6 +13152,15 @@ function renderClientPortalShare(projectId) {
       '<button onclick="s33PortalRevoke(' + p.id + ')" style="padding:8px 12px;background:#fff0f0;border:1px solid #f5c6cb;border-radius:var(--radius-pill);font-size:11px;font-weight:600;color:#c0392b;cursor:pointer;font-family:inherit;" title="Désactiver le lien">Révoquer</button>' +
     '</div>';
 
+    // Suspension d'accès (impayé / litige) — réversible, message explicite côté client
+    html += p.portal_revoked_at
+      ? '<div style="display:flex;align-items:center;gap:10px;background:#fff0f0;border:1px solid #f5c6cb;border-radius:10px;padding:10px 12px;margin-bottom:14px;flex-wrap:wrap;">' +
+          '<span class="mi" style="color:#c0392b;font-size:18px;">block</span>' +
+          '<span style="flex:1;min-width:160px;font-size:12px;color:#c0392b;font-weight:700;">Accès suspendu depuis le ' + new Date(p.portal_revoked_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) + ' — en ouvrant son lien, le client voit « le cabinet a suspendu l\'accès ».</span>' +
+          '<button onclick="s33PortalSuspend(' + p.id + ', false)" class="btn" style="padding:6px 14px;font-size:11px;background:#16a34a;color:#fff;border:none;">Réactiver l\'accès</button>' +
+        '</div>'
+      : '<button onclick="s33PortalSuspend(' + p.id + ', true)" style="width:100%;margin-bottom:14px;padding:9px;background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--radius-pill);font-size:11.5px;font-weight:700;color:#c2410c;cursor:pointer;font-family:inherit;" title="Le lien reste le même mais s\'ouvre sur un message « accès suspendu par le cabinet ». Réversible à tout moment."><span class="mi" style="font-size:14px;vertical-align:-2px;">block</span> Suspendre l\'accès du client (impayé / litige) — réversible</button>';
+
     // Visites du client (journal rempli par la fonction client-portal)
     html += '<div id="s33-portal-visits" style="margin-bottom:16px;"></div>';
 
@@ -13299,6 +13308,18 @@ async function s33PortalGenerate(projectId, regen) {
   p.portal_token = token;
   renderClientPortalShare(projectId);
   toast(regen ? 'Nouveau lien généré' : 'Lien client créé');
+}
+
+async function s33PortalSuspend(projectId, suspend) {
+  const p = db.projects.find(x => x.id === projectId);
+  if (!p) return;
+  if (suspend && !confirm('Suspendre l\'accès du client à son espace ?\n\nEn ouvrant son lien, il verra :\n« Le cabinet Studio 33 Architects a suspendu l\'accès à cet espace. »\n\nTu pourras réactiver à tout moment (le même lien remarchera).')) return;
+  const val = suspend ? new Date().toISOString() : null;
+  const ok = await sbUpdate('projects', projectId, { portal_revoked_at: val });
+  if (ok === false) { toast('Erreur — réessayez'); return; }
+  p.portal_revoked_at = val;
+  renderClientPortalShare(projectId);
+  toast(suspend ? 'Accès suspendu — le client ne peut plus ouvrir son espace' : 'Accès réactivé — le même lien fonctionne à nouveau');
 }
 
 async function s33PortalRevoke(projectId) {
@@ -29528,6 +29549,7 @@ window.addEventListener('appinstalled', () => {
       subtitle: 'Espace client · Suivi de projet', loading: 'Chargement de votre espace projet…',
       linkUnavailable: 'Lien indisponible',
       linkInvalid: 'Ce lien n\'est plus valide. Contactez Studio 33 pour en obtenir un nouveau.',
+      linkRevoked: 'Le cabinet Studio 33 Architects a suspendu l\'accès à cet espace. Pour toute question, contactez directement le cabinet.',
       cantShow: 'Impossible d\'afficher ce projet pour le moment.',
       checkConnection: 'Vérifiez votre connexion internet et réessayez.',
       phase: 'Phase : ', progress: 'Avancement', fees: 'Règlement des honoraires',
@@ -29564,6 +29586,7 @@ window.addEventListener('appinstalled', () => {
       subtitle: 'فضاء العميل · تتبع المشروع', loading: 'جارٍ تحميل فضاء مشروعكم…',
       linkUnavailable: 'الرابط غير متاح',
       linkInvalid: 'هذا الرابط لم يعد صالحًا. تواصلوا مع Studio 33 للحصول على رابط جديد.',
+      linkRevoked: 'قام مكتب Studio 33 Architects بتعليق الوصول إلى هذا الفضاء. لأي استفسار، يرجى التواصل مع المكتب مباشرة.',
       cantShow: 'تعذّر عرض هذا المشروع حاليًا.',
       checkConnection: 'تحقّقوا من اتصالكم بالإنترنت وحاولوا مجددًا.',
       phase: 'المرحلة : ', progress: 'تقدّم الأشغال', fees: 'أداء الأتعاب',
@@ -29631,7 +29654,9 @@ window.addEventListener('appinstalled', () => {
     .then(r => r.json().then(j => ({ ok: r.ok, j })))
     .then(({ ok, j }) => {
       if (!ok || !j || j.error) {
-        errorView(j && j.error === 'not_found' ? L().linkInvalid : L().cantShow);
+        errorView(j && j.error === 'revoked' ? L().linkRevoked
+          : j && j.error === 'not_found' ? L().linkInvalid
+          : L().cantShow);
         return;
       }
       render(j);

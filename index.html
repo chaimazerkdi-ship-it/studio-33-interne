@@ -2966,7 +2966,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-30.1 — suspension d acces au portail client (impaye ou litige)';
+const S33_BUILD = '2026-07-31.1 — bouton quitter le mode reunion';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -29649,6 +29649,19 @@ window.addEventListener('appinstalled', () => {
   loading();
   document.title = 'Espace projet — Studio 33';
 
+  // Mode réunion (ouvert depuis l'app interne) : bouton pour revenir à l'app
+  // sans fermer/rouvrir — jamais présent sur le lien envoyé au client.
+  try {
+    if (new URLSearchParams(location.search).get('reunion') === '1' && !document.getElementById('s33p-quit-reunion')) {
+      const b = document.createElement('button');
+      b.id = 's33p-quit-reunion';
+      b.innerHTML = '<span class="mi" style="font-size:16px;vertical-align:-3px;">logout</span> Quitter le mode réunion';
+      b.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:11000;background:#1a1a1a;color:#fff;border:none;border-radius:99px;padding:12px 22px;font-family:Inter,system-ui,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 6px 24px rgba(0,0,0,.35);';
+      b.onclick = function() { location.href = location.origin + location.pathname; };
+      document.body.appendChild(b);
+    }
+  } catch(_) {}
+
   const FN_URL = 'https://yjxcqptgugatrxeyzrdc.supabase.co/functions/v1/client-portal?token=' + encodeURIComponent(token);
   fetch(FN_URL)
     .then(r => r.json().then(j => ({ ok: r.ok, j })))
@@ -36111,7 +36124,8 @@ window.addEventListener('appinstalled', () => {
     }
     const p2 = (db.projects || []).find(x => x.id === pid);
     if (!p2 || !p2.portal_token) { toast('Impossible de créer la vue client — réessaie'); return; }
-    window.open(location.origin + location.pathname + '?portal=' + p2.portal_token, '_blank');
+    // &reunion=1 : affiche un bouton « Quitter » (jamais présent sur le lien envoyé au client)
+    window.open(location.origin + location.pathname + '?portal=' + p2.portal_token + '&reunion=1', '_blank');
   };
 
   // ════════════════ OUTILS DU CABINET (page) ════════════════

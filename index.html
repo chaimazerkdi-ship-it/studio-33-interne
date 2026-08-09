@@ -2966,7 +2966,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-31.1 — bouton quitter le mode reunion';
+const S33_BUILD = '2026-07-31.2 — photos PV depuis la phototheque';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -32473,7 +32473,7 @@ window.addEventListener('appinstalled', () => {
           '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
             '<button class="pvch-btn" style="background:var(--gold);color:#fff;" onclick="document.getElementById(\'pvch-file\').click()"><span class="mi" style="font-size:14px;">add_a_photo</span> Ajouter des photos</button>' +
             '<button class="pvch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33PvPlanPick()"><span class="mi" style="font-size:14px;">map</span> Annoter un plan (PDF)</button>' +
-            '<input type="file" id="pvch-file" accept="image/*" capture="environment" multiple style="display:none;" onchange="s33PvAddPhotos(this)">' +
+            '<input type="file" id="pvch-file" accept="image/*" multiple style="display:none;" onchange="s33PvAddPhotos(this)">' +
           '</div>' +
           '<div style="font-size:11px;color:var(--text-faint);margin-top:8px;">Touchez une photo pour dessiner dessus (cercle, flèche, texte) — chaque annotation peut devenir une réserve numérotée.</div></div>' +
         '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">report_problem</span> Réserves de ce PV</h3>' + reservesHTML +

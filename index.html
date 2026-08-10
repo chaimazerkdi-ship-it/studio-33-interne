@@ -2966,7 +2966,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-07-31.2 — photos PV depuis la phototheque';
+const S33_BUILD = '2026-08-10.1 — generation PV renforcee : erreurs precises, CDN de secours, repli upload';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -9951,7 +9951,7 @@ function pvLoadScript(url) {
     s.src = url;
     s.setAttribute('data-pv-cdn', url);
     s.onload = resolve;
-    s.onerror = reject;
+    s.onerror = function() { s.remove(); reject(new Error('chargement impossible : ' + url.split('/').pop())); };
     document.head.appendChild(s);
   });
 }
@@ -32927,10 +32927,12 @@ window.addEventListener('appinstalled', () => {
     if (!_cur.visit_date) { toast('Indiquez la date de visite'); return; }
     if (!confirm('Terminer le PV ' + _cur.ref + ' ?\n\nLe PDF sera généré et le PV passera « En attente de validation » du directeur. Il ne sera PAS diffusé avant validation.')) return;
     toast('Génération du PV en cours…');
+    let step = 'enregistrement du brouillon';
     try {
       await saveCur();
 
       // 1. Créer / mettre à jour les réserves en base
+      step = 'création des réserves';
       const drafts = collectDraftReserves();
       for (const d of drafts) {
         const a = d.a;
@@ -32963,26 +32965,38 @@ window.addEventListener('appinstalled', () => {
       }
 
       // 3. PDF
+      step = 'génération du PDF';
       const pdfBlob = await buildPdf();
 
       // 4. Archivage dans la médiathèque du projet
+      step = 'envoi du PDF';
       const path = 'proj/' + _cur.project_id + '/PV_de_chantier/' + _cur.ref + '_' + Date.now() + '.pdf';
+      let storedPath = path, pdfDataUrl = null;
       const up = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + path, {
         method: 'POST',
         headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/pdf', 'x-upsert': 'true' },
         body: pdfBlob
-      });
-      if (!up.ok) throw new Error('upload PDF');
+      }).catch(() => null);
+      if (!up || !up.ok) {
+        // Repli : le PDF part en base64 dans la base plutôt que d'échouer
+        if (pdfBlob.size <= 4500000) {
+          pdfDataUrl = await new Promise((res, rej) => { const rd = new FileReader(); rd.onload = () => res(rd.result); rd.onerror = rej; rd.readAsDataURL(pdfBlob); });
+          storedPath = null;
+        } else {
+          throw new Error('envoi refusé (HTTP ' + (up ? up.status : 'réseau') + ') et PDF trop lourd pour le repli');
+        }
+      }
+      step = 'enregistrement du document';
       let mediaId = _cur.pdf_media_id || null;
       const mediaBody = {
         name: _cur.ref + ' — PV de chantier du ' + fmtD(_cur.visit_date),
         doc_type: 'pv_chantier', folder: 'PV de chantier',
         is_project_doc: true, is_pdf: true, mime: 'application/pdf',
-        file_path: path, data: null, project_id: _cur.project_id,
+        file_path: storedPath, data: pdfDataUrl, project_id: _cur.project_id,
         added_by: myName(), added_at: new Date().toLocaleDateString('fr-MA')
       };
       if (mediaId) {
-        await sbUpdate('media', mediaId, { file_path: path });
+        await sbUpdate('media', mediaId, { file_path: storedPath, data: pdfDataUrl });
       } else {
         let ins = null;
         try { ins = await sbInsertOrThrow('media', mediaBody); }
@@ -32991,6 +33005,7 @@ window.addEventListener('appinstalled', () => {
       }
 
       // 5. Statut « en attente de validation » + historique
+      step = 'mise à jour du PV';
       _cur.statut = 'attente';
       _cur.validation_history.push({ action: 'soumis', by: myName(), at: new Date().toISOString() });
       _cur.pdf_media_id = mediaId;
@@ -33018,14 +33033,22 @@ window.addEventListener('appinstalled', () => {
       toast('PV terminé — en attente de validation du directeur');
     } catch(e) {
       console.error('finish PV', e);
-      toast('Erreur pendant la génération — le brouillon est conservé, réessayez');
+      toast('Erreur — étape « ' + step + ' »' + (e && e.message ? ' : ' + String(e.message).slice(0, 110) : '') + '. Le brouillon est conservé, réessayez.');
     }
   };
 
   // ── PDF professionnel ───────────────────────────────────────────
   async function buildPdf() {
-    if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
-    if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    // Deux CDN : si cdnjs est injoignable (réseau capricieux), on tente jsdelivr
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      try { await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); }
+      catch(_) { await pvLoadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); }
+    }
+    if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('librairie PDF introuvable — vérifie la connexion');
+    if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) {
+      try { await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'); }
+      catch(_) { await pvLoadScript('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'); }
+    }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const W = 210, M = 15;

@@ -2940,6 +2940,28 @@
     var r = ev.reason;
     showBoot('promesse : ' + (r && r.message ? r.message : String(r).slice(0, 200)));
   });
+  // ?safe=1 (mémorisé sur l'appareil) : retire ombres, filtres, animations et
+  // coins arrondis — certains GPU Android (Galaxy A) ne peignent pas les
+  // surfaces avec ombres portées. ?safe=0 pour désactiver.
+  try {
+    if (location.search.indexOf('safe=1') !== -1) localStorage.setItem('s33_safe_paint', '1');
+    if (location.search.indexOf('safe=0') !== -1) localStorage.removeItem('s33_safe_paint');
+    if (localStorage.getItem('s33_safe_paint') === '1') {
+      var ss = document.createElement('style');
+      ss.textContent = '*, *::before, *::after { box-shadow: none !important; filter: none !important; backdrop-filter: none !important; text-shadow: none !important; transition: none !important; animation: none !important; }';
+      document.head.appendChild(ss);
+    }
+  } catch(e) {}
+  // ?debug=1 : console de diagnostic mobile (eruda) pour voir erreurs et réseau
+  // directement sur le téléphone.
+  try {
+    if (location.search.indexOf('debug=1') !== -1) {
+      var es = document.createElement('script');
+      es.src = 'https://cdn.jsdelivr.net/npm/eruda@3/eruda.js';
+      es.onload = function() { try { window.eruda.init(); } catch(e) {} };
+      document.head.appendChild(es);
+    }
+  } catch(e) {}
   // Certains Android (dont des Galaxy A) peignent mal le premier rendu :
   // le contenu statique reste invisible tant que rien ne force un repaint.
   // On force un repaint de l'écran de connexion juste après le chargement.
@@ -3031,7 +3053,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-08-10.4 — mode secours, erreurs visibles, repaint ecran de connexion';
+const S33_BUILD = '2026-08-10.5 — mode sans effets safe=1 et console de diagnostic debug=1';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;

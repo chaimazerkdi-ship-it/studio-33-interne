@@ -2933,12 +2933,20 @@
       b.appendChild(line);
     } catch(e) {}
   }
+  window.__s33Errs = [];
+  function bufErr(msg) {
+    try { if (window.__s33Errs.length < 30) window.__s33Errs.push(String(msg).slice(0, 300)); } catch(e) {}
+  }
   window.addEventListener('error', function(ev) {
-    showBoot((ev.message || 'erreur script') + (ev.filename ? ' — ' + String(ev.filename).split('/').pop() + ':' + ev.lineno : ''));
+    var m = (ev.message || 'erreur script') + (ev.filename ? ' — ' + String(ev.filename).split('/').pop() + ':' + ev.lineno : '');
+    bufErr(m);
+    showBoot(m);
   });
   window.addEventListener('unhandledrejection', function(ev) {
     var r = ev.reason;
-    showBoot('promesse : ' + (r && r.message ? r.message : String(r).slice(0, 200)));
+    var m = 'promesse : ' + (r && r.message ? r.message : String(r).slice(0, 200));
+    bufErr(m);
+    showBoot(m);
   });
   // ?safe=1 (mémorisé sur l'appareil) : retire ombres, filtres, animations et
   // coins arrondis — certains GPU Android (Galaxy A) ne peignent pas les
@@ -2948,7 +2956,7 @@
     if (location.search.indexOf('safe=0') !== -1) localStorage.removeItem('s33_safe_paint');
     if (localStorage.getItem('s33_safe_paint') === '1') {
       var ss = document.createElement('style');
-      ss.textContent = '*, *::before, *::after { box-shadow: none !important; filter: none !important; backdrop-filter: none !important; text-shadow: none !important; transition: none !important; animation: none !important; }';
+      ss.textContent = '*, *::before, *::after { box-shadow: none !important; filter: none !important; backdrop-filter: none !important; text-shadow: none !important; transition: none !important; animation: none !important; will-change: auto !important; }';
       document.head.appendChild(ss);
     }
   } catch(e) {}
@@ -3053,7 +3061,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-08-10.5 — mode sans effets safe=1 et console de diagnostic debug=1';
+const S33_BUILD = '2026-08-10.6 — repaint force apres chaque page et rapport diagnostic auto';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6525,6 +6533,8 @@ async function login() {
     // Rapports saisis hors-ligne : afficher l'indicateur et tenter la synchro
     if (typeof s33UpdateOfflineBadge === 'function') s33UpdateOfflineBadge();
     if (typeof s33FlushOfflineReports === 'function') s33FlushOfflineReports();
+    s33PaintNudge();
+    setTimeout(() => s33SendDiag('apres-connexion'), 5000);
   }
 }
 
@@ -6701,6 +6711,55 @@ function navigate(page) {
     document.body.scrollTop = 0;
   } catch(_) {}
   renderPage(page);
+  s33PaintNudge();
+}
+
+// Sur certains GPU Android (Galaxy A), le contenu fraîchement inséré dans le
+// DOM reste invisible tant qu'un repaint complet n'est pas forcé. Actif
+// uniquement en mode sans effets (?safe=1, mémorisé sur l'appareil).
+// Deux passages : juste après le rendu, puis après l'arrivée des données.
+function s33PaintNudge() {
+  if (localStorage.getItem('s33_safe_paint') !== '1') return;
+  [250, 1100].forEach(ms => setTimeout(() => {
+    try {
+      const el = document.querySelector('.page.active') || document.getElementById('app');
+      if (!el) return;
+      const d = el.style.display;
+      el.style.display = 'none';
+      void el.offsetHeight;
+      el.style.display = d || '';
+    } catch(_) {}
+  }, ms));
+}
+
+// Rapport de diagnostic à distance : quand le mode sans effets est actif
+// (appareil à problème d'affichage) ou avec ?diag=1, envoie l'état réel de
+// l'écran dans la table diag_reports — plus besoin de captures d'écran.
+async function s33SendDiag(moment) {
+  try {
+    const force = location.search.indexOf('diag=1') !== -1;
+    if (!force && localStorage.getItem('s33_safe_paint') !== '1') return;
+    const page = document.querySelector('.page.active');
+    const rect = page ? page.getBoundingClientRect() : null;
+    const cs = page ? getComputedStyle(page) : null;
+    const payload = {
+      moment,
+      utilisateur: (window.currentUser && (currentUser.username || currentUser.name)) || null,
+      page: (typeof currentPage !== 'undefined' && currentPage) || null,
+      ua: navigator.userAgent,
+      ecran: screen.width + 'x' + screen.height + ' @' + (window.devicePixelRatio || 1),
+      fenetre: innerWidth + 'x' + innerHeight,
+      safe: localStorage.getItem('s33_safe_paint') === '1',
+      enfants: page ? page.children.length : -1,
+      longueurTexte: page ? (page.innerText || '').length : -1,
+      cadre: rect ? Math.round(rect.width) + 'x' + Math.round(rect.height) : null,
+      affichage: cs ? cs.display + ' / opacite ' + cs.opacity + ' / visibilite ' + cs.visibility : null,
+      projetsCharges: (window.db && db.projects) ? db.projects.length : null,
+      erreurs: (window.__s33Errs || []).slice(0, 30),
+      build: (typeof S33_BUILD !== 'undefined' ? S33_BUILD : null)
+    };
+    sbInsert('diag_reports', { device: navigator.userAgent.slice(0, 120), payload }).catch(() => {});
+  } catch(_) {}
 }
 
 function renderPage(page) {

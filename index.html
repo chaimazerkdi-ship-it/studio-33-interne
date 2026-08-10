@@ -3061,7 +3061,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-08-10.6 — repaint force apres chaque page et rapport diagnostic auto';
+const S33_BUILD = '2026-08-10.7 — mise a jour auto sur ecran de connexion et rapport avant connexion';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3095,6 +3095,21 @@ const S33_BUILD = '2026-08-10.6 — repaint force apres chaque page et rapport d
       const txt = await r.text();
       const m = txt.match(/S33_BUILD = '([^']+)'/);
       if (!m || m[1] === S33_BUILD) return;
+      // Sur l'écran de connexion, on met à jour tout seul : la barre
+      // « Recharger » peut être invisible sur les appareils à bug
+      // d'affichage. Garde anti-boucle : 2 essais max par version.
+      try {
+        if (!window.currentUser) {
+          const k = 's33_auto_up_' + m[1];
+          const tries = parseInt(sessionStorage.getItem(k) || '0', 10);
+          if (tries < 2) {
+            sessionStorage.setItem(k, String(tries + 1));
+            _notified = true;
+            s33ForceReload();
+            return;
+          }
+        }
+      } catch(_) {}
       _notified = true;
       const bar = document.createElement('div');
       bar.id = 's33-update-bar';
@@ -6758,9 +6773,23 @@ async function s33SendDiag(moment) {
       erreurs: (window.__s33Errs || []).slice(0, 30),
       build: (typeof S33_BUILD !== 'undefined' ? S33_BUILD : null)
     };
-    sbInsert('diag_reports', { device: navigator.userAgent.slice(0, 120), payload }).catch(() => {});
+    // Envoi direct (fonctionne aussi avant connexion, avec la clé publique) :
+    // la table diag_reports accepte l'écriture anonyme mais pas la lecture.
+    fetch(SUPABASE_URL + '/rest/v1/diag_reports', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ device: navigator.userAgent.slice(0, 120), payload })
+    }).catch(() => {});
   } catch(_) {}
 }
+
+// Sur les appareils à problème d'affichage, un rapport part aussi depuis
+// l'écran de connexion — même si la personne n'arrive jamais à se connecter.
+setTimeout(() => { if (!window.currentUser) s33SendDiag('ecran-connexion'); }, 6000);
 
 function renderPage(page) {
   if (page === 'dashboard') renderDashboard();

@@ -2966,7 +2966,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-08-10.2 — plus d emails de reinitialisation vers les adresses internes';
+const S33_BUILD = '2026-08-10.3 — portillon notifications jamais coupe a l ecran';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -35583,15 +35583,17 @@ window.addEventListener('appinstalled', () => {
     _gateShown = true;
     const ov = document.createElement('div');
     ov.id = 's33-push-gate';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:2600;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:22px;';
+    // overflow-y:auto + margin:auto sur la carte : jamais coupée, même sur les
+    // téléphones où le rendu ou la taille de police fait déborder le contenu.
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2600;background:rgba(0,0,0,.72);display:flex;justify-content:center;padding:22px;overflow-y:auto;-webkit-overflow-scrolling:touch;';
     const inner = supported
       ? '<p style="font-size:13.5px;color:var(--text-dim);line-height:1.6;margin:0 0 18px;">Pour travailler dans l\'équipe, les notifications sont <b>obligatoires</b> : rappels de rapport, messages, tâches et signatures arrivent par là.</p>' +
         '<button onclick="s33GateEnable(this)" style="width:100%;padding:14px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;">Activer mes notifications</button>' +
         '<div id="s33-gate-help" style="display:none;margin-top:14px;font-size:12px;color:var(--text-dim);background:var(--surface2);border-radius:10px;padding:12px;line-height:1.55;text-align:left;"></div>'
       : '<p style="font-size:13.5px;color:var(--text-dim);line-height:1.6;margin:0 0 18px;">Ce navigateur ne permet pas les notifications. Installe d\'abord l\'application sur ton écran d\'accueil (Partager → « Sur l\'écran d\'accueil »), puis active-les depuis Équipe → Notifications.</p>' +
         '<button onclick="document.getElementById(\'s33-push-gate\').remove()" style="width:100%;padding:14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">J\'ai compris</button>';
-    ov.innerHTML = '<div style="background:var(--surface);border-radius:18px;max-width:420px;width:100%;padding:26px 22px;text-align:center;">' +
-      '<div style="font-size:40px;line-height:1;">🔔</div>' +
+    ov.innerHTML = '<div style="background:var(--surface);border-radius:18px;max-width:420px;width:100%;padding:26px 22px;text-align:center;margin:auto;flex-shrink:0;">' +
+      '<div style="line-height:1;"><span class="mi" style="font-size:42px;color:var(--gold);">notifications_active</span></div>' +
       '<div style="font-size:17px;font-weight:800;color:var(--text);margin:10px 0 8px;">Active tes notifications</div>' + inner + '</div>';
     document.body.appendChild(ov);
   }

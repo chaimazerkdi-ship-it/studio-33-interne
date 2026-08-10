@@ -2966,7 +2966,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-08-10.1 — generation PV renforcee : erreurs precises, CDN de secours, repli upload';
+const S33_BUILD = '2026-08-10.2 — plus d emails de reinitialisation vers les adresses internes';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6474,6 +6474,15 @@ async function openForgotPassword() {
   const email = raw.includes('@') ? raw.trim().toLowerCase() : (raw.trim().toLowerCase() + '@studio33.ma');
   const errEl = document.getElementById('auth-error');
   errEl.textContent = '';
+  // Les comptes internes @studio33.ma n'ont pas de vraie boîte mail : envoyer un
+  // email de réinitialisation ne peut que « rebondir » (et Supabase nous le reproche).
+  // La réinitialisation se fait par l'administratrice : Équipe → fiche du membre.
+  if (email.endsWith('@studio33.ma')) {
+    errEl.style.color = 'var(--gold)';
+    errEl.textContent = 'Les comptes internes n\'ont pas de boîte mail. Demande à Chaima de réinitialiser ton mot de passe (menu Équipe → ta fiche).';
+    setTimeout(() => { errEl.style.color = ''; errEl.textContent = ''; }, 12000);
+    return;
+  }
   try {
     // The redirectTo value must be in your Supabase project's allowed redirect URLs
     const redirectTo = window.location.origin + window.location.pathname + '#auth-recovery';

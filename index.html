@@ -2948,16 +2948,36 @@
     bufErr(m);
     showBoot(m);
   });
-  // ?safe=1 (mémorisé sur l'appareil) : retire ombres, filtres, animations et
-  // coins arrondis — certains GPU Android (Galaxy A) ne peignent pas les
-  // surfaces avec ombres portées. ?safe=0 pour désactiver.
+  // Mode sans effets : retire ombres, filtres et animations — les GPU des
+  // Samsung Galaxy (téléphones ET tablettes) peignent mal les surfaces à
+  // effets (contenu invisible, clignotements, zones blanches).
+  // Activation : automatique sur tout matériel Samsung (SM-xxx dans le user
+  // agent), ou manuelle via ?safe=1 (mémorisé). ?safe=0 désactive (mémorisé).
   try {
     if (location.search.indexOf('safe=1') !== -1) localStorage.setItem('s33_safe_paint', '1');
-    if (location.search.indexOf('safe=0') !== -1) localStorage.removeItem('s33_safe_paint');
-    if (localStorage.getItem('s33_safe_paint') === '1') {
+    if (location.search.indexOf('safe=0') !== -1) localStorage.setItem('s33_safe_paint', '0');
+    var safePref = localStorage.getItem('s33_safe_paint');
+    var samsungHw = /\bSM-[A-Z0-9]/i.test(navigator.userAgent);
+    window.__s33SafePaint = safePref === '1' || (samsungHw && safePref !== '0');
+    if (window.__s33SafePaint) {
       var ss = document.createElement('style');
       ss.textContent = '*, *::before, *::after { box-shadow: none !important; filter: none !important; backdrop-filter: none !important; text-shadow: none !important; transition: none !important; animation: none !important; will-change: auto !important; }';
       document.head.appendChild(ss);
+      // Repaints de secours : même sans effets, ces écrans laissent parfois
+      // la page entière invisible tant qu'un re-dessin complet n'est pas
+      // forcé. On en déclenche trois après l'ouverture.
+      [900, 2500, 6000].forEach(function(ms) {
+        setTimeout(function() {
+          try {
+            var b = document.body;
+            if (!b) return;
+            var d = b.style.display;
+            b.style.display = 'none';
+            void b.offsetHeight;
+            b.style.display = d || '';
+          } catch(e) {}
+        }, ms);
+      });
     }
   } catch(e) {}
   // ?debug=1 : console de diagnostic mobile (eruda) pour voir erreurs et réseau
@@ -3061,7 +3081,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-08-10.7 — mise a jour auto sur ecran de connexion et rapport avant connexion';
+const S33_BUILD = '2026-08-10.8 — mode sans effets automatique sur tout materiel Samsung';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6734,7 +6754,7 @@ function navigate(page) {
 // uniquement en mode sans effets (?safe=1, mémorisé sur l'appareil).
 // Deux passages : juste après le rendu, puis après l'arrivée des données.
 function s33PaintNudge() {
-  if (localStorage.getItem('s33_safe_paint') !== '1') return;
+  if (!(window.__s33SafePaint || localStorage.getItem('s33_safe_paint') === '1')) return;
   [250, 1100].forEach(ms => setTimeout(() => {
     try {
       const el = document.querySelector('.page.active') || document.getElementById('app');
@@ -6753,7 +6773,7 @@ function s33PaintNudge() {
 async function s33SendDiag(moment) {
   try {
     const force = location.search.indexOf('diag=1') !== -1;
-    if (!force && localStorage.getItem('s33_safe_paint') !== '1') return;
+    if (!force && !window.__s33SafePaint && localStorage.getItem('s33_safe_paint') !== '1') return;
     const page = document.querySelector('.page.active');
     const rect = page ? page.getBoundingClientRect() : null;
     const cs = page ? getComputedStyle(page) : null;
@@ -6764,7 +6784,8 @@ async function s33SendDiag(moment) {
       ua: navigator.userAgent,
       ecran: screen.width + 'x' + screen.height + ' @' + (window.devicePixelRatio || 1),
       fenetre: innerWidth + 'x' + innerHeight,
-      safe: localStorage.getItem('s33_safe_paint') === '1',
+      safe: !!window.__s33SafePaint,
+      prefSafe: localStorage.getItem('s33_safe_paint'),
       enfants: page ? page.children.length : -1,
       longueurTexte: page ? (page.innerText || '').length : -1,
       cadre: rect ? Math.round(rect.width) + 'x' + Math.round(rect.height) : null,

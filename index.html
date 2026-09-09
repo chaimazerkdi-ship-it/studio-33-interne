@@ -3081,7 +3081,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-08-10.8 — mode sans effets automatique sur tout materiel Samsung';
+const S33_BUILD = '2026-09-09.1 — guide dutilisation integre et export PDF';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -17837,10 +17837,10 @@ function renderGenerateurs() {
     { key: 'cps',           label: 'CPS',                 icon: 'description', enabled: true },
     { key: 'questionnaire', label: 'Questionnaire client', icon: 'quiz',       enabled: true },
     { key: 'planning',      label: 'Planning chantier',   icon: 'event_note',  enabled: true },
-    { key: 'os',            label: 'Ordre de service',    icon: 'engineering', enabled: true },
-    { key: 'courrier',      label: 'Courrier admin.',     icon: 'mail',        enabled: true },
-    { key: 'conformite',    label: 'Attestation conformité', icon: 'verified', enabled: true },
-    { key: 'bordereau',     label: 'Bordereau',           icon: 'outbox',      enabled: true }
+    { key: 'os',            label: 'Ordre de service',    icon: 'engineering', enabled: false },
+    { key: 'courrier',      label: 'Courrier admin.',     icon: 'mail',        enabled: false },
+    { key: 'conformite',    label: 'Attestation conformité', icon: 'verified', enabled: false },
+    { key: 'bordereau',     label: 'Bordereau',           icon: 'outbox',      enabled: false }
   ];
   const tabsHTML = '<div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:24px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;">' +
     tabs.map(function(t) {
@@ -37295,6 +37295,609 @@ window.addEventListener('appinstalled', () => {
   };
 
   console.log('✓ Expérience client chargée');
+})();
+</script>
+
+<!-- ═══ GUIDE — COMMENT UTILISER L'APPLICATION ═══
+     Page d'aide intégrée, adaptée aux droits de chaque personne,
+     exportable en PDF pour l'imprimer ou l'envoyer à une nouvelle recrue. -->
+<script>
+(function() {
+  'use strict';
+
+  // ── Droits : même logique que _canSee() de updateUIForUser ──
+  function u() { return window.currentUser || null; }
+  function perms() { return (u() && u().permissions) || {}; }
+  function isAdm() { return !!u() && u().role === 'admin'; }
+  function isCoAdm() { return !!u() && u().role !== 'admin' && perms().is_co_admin === true; }
+  function isDirection() { return isAdm() || isCoAdm(); }
+  function canSee(key) {
+    if (!u()) return false;
+    const sec = perms().sections || {};
+    if (isAdm()) return key === 'administratif' ? perms().no_administratif !== true : true;
+    if (isCoAdm()) return key === 'administratif' ? sec.administratif === true : sec[key] !== false;
+    return sec[key] === true;
+  }
+
+  // ── Contenu du guide ──
+  // Types de blocs : h (sous-titre) · p (paragraphe) · steps (étapes numérotées)
+  //                  list (puces) · warn (attention) · tip (astuce) · team (annexe)
+  const GUIDE = [
+
+    // ═══ PARTIE 1 — POUR TOUTE L'ÉQUIPE ═══
+    { id: 'debut', icon: 'flag', part: 1, title: 'Premiers pas — à faire le premier jour', open: true, blocks: [
+      { t: 'steps', x: [
+        'Ouvre client.studio33.ma dans Chrome (Android) ou Safari (iPhone).',
+        'Connecte-toi avec ton prénom et le mot de passe que Chaima t’a donné.',
+        'Installe l’application sur ton écran d’accueil (voir la section suivante).',
+        'Accepte les notifications quand l’application te le demande.',
+        'Envoie ton premier rapport journalier avant de partir le soir.'
+      ] },
+      { t: 'tip', x: 'Tout se fait depuis le téléphone. Il n’y a rien à télécharger depuis un magasin d’applications.' }
+    ] },
+
+    { id: 'connexion', icon: 'login', part: 1, title: 'Se connecter', blocks: [
+      { t: 'list', x: [
+        'Adresse : client.studio33.ma',
+        'Identifiant : ton prénom en minuscules (nezha, zineb, nadia, oumaima). Pas besoin d’écrire @studio33.ma, l’application le complète toute seule.',
+        'Mot de passe : celui que Chaima t’a donné.'
+      ] },
+      { t: 'warn', x: '« Mot de passe oublié ? » ne fonctionne pas pour les comptes du bureau : ils n’ont pas de boîte mail. Si tu as oublié ton mot de passe, demande à Chaima — elle le change en une minute.' },
+      { t: 'h', x: 'Installer l’application sur l’écran d’accueil' },
+      { t: 'list', x: [
+        'iPhone (Safari) : bouton Partager en bas de l’écran, puis « Sur l’écran d’accueil ». C’est obligatoire pour recevoir les notifications.',
+        'Android (Chrome) : menu en haut à droite, puis « Ajouter à l’écran d’accueil ».'
+      ] },
+      { t: 'tip', x: 'Une fois installée, l’application s’ouvre en plein écran, comme une vraie application.' }
+    ] },
+
+    { id: 'premiers-ecrans', icon: 'help_center', part: 1, title: 'Les deux écrans qui s’affichent au début', blocks: [
+      { t: 'h', x: '1. « Active tes notifications »' },
+      { t: 'p', x: 'Un écran sombre apparaît avec un bouton « Activer mes notifications ». Appuie dessus, puis accepte la demande du téléphone. Les notifications ne sont pas optionnelles : c’est par là qu’arrivent les tâches, les messages et les rappels.' },
+      { t: 'warn', x: 'Si tu as refusé par erreur, l’écran revient. Sur iPhone : Réglages → Notifications → Studio 33 → Autoriser. Sur Android : appui long sur l’icône de l’application → Infos → Notifications → Autoriser.' },
+      { t: 'h', x: '2. « Rapport journalier »' },
+      { t: 'p', x: 'À chaque connexion, tant que le rapport du jour n’a pas été envoyé, ce formulaire s’ouvre tout seul.' },
+      { t: 'warn', x: 'Il n’y a pas de croix pour le fermer — c’est voulu. Remplis-le et appuie sur « Soumettre le rapport ». Si tu dois vraiment le passer, recharge la page.' }
+    ] },
+
+    { id: 'reperer', icon: 'explore', part: 1, title: 'Se repérer dans l’application', blocks: [
+      { t: 'p', x: 'En bas de l’écran se trouvent les raccourcis principaux : Dashboard, Projets, Tâches, Calendrier, et le bouton « Plus ».' },
+      { t: 'p', x: 'Le bouton « Plus » ouvre la liste complète : Mon Rapport, PV de chantier, PV de réunion, Panneau chantier, Générateurs, Outils du cabinet, Messagerie, Signalements, Notifications, Mon profil, et ce Guide.' },
+      { t: 'warn', x: '« Mon Rapport » n’est pas dans la barre du bas. Passe par Plus → Mon Rapport, ou par le raccourci « Écrire mon rapport » sur le Dashboard.' },
+      { t: 'p', x: 'Le Dashboard commence par une rangée « Actions rapides » : ce sont les raccourcis les plus utiles au quotidien (PV de chantier, Écrire mon rapport, Ajouter au calendrier, Signaler un problème).' }
+    ] },
+
+    { id: 'rapport', icon: 'assignment', part: 1, title: 'Le rapport journalier', blocks: [
+      { t: 'p', x: 'À faire tous les jours avant de partir. Un bloc par projet sur lequel tu as travaillé.' },
+      { t: 'steps', x: [
+        'Projet — commence à taper le nom, puis appuie sur le projet dans la liste qui s’affiche.',
+        'Tâches réalisées — ce que tu as fait, en une ou deux phrases.',
+        'Temps travaillé (h) — en heures (0,5 = une demi-heure).',
+        'Blocages — seulement s’il y a un problème qui t’empêche d’avancer.',
+        '« Ajouter un autre projet » si tu as travaillé sur plusieurs.',
+        '« Soumettre le rapport ».'
+      ] },
+      { t: 'warn', x: 'Il faut vraiment appuyer sur le projet dans la liste déroulante. Si tu écris seulement son nom sans le sélectionner, l’application refusera avec le message « sélectionnez un projet ».' },
+      { t: 'h', x: 'Si tu n’as pas de réseau (sur chantier)' },
+      { t: 'p', x: 'Écris quand même ton rapport et envoie-le. Une pastille orange « N en attente » apparaît en bas à gauche. Dès que tu retrouves du réseau, appuie dessus pour synchroniser.' },
+      { t: 'warn', x: '« Modifier / Réécrire tout » efface tout le rapport du jour avant de rouvrir un formulaire vide. À n’utiliser que si tu veux vraiment tout recommencer.' }
+    ] },
+
+    { id: 'taches', icon: 'checklist', part: 1, title: 'Mes tâches', blocks: [
+      { t: 'p', x: 'Deux façons de voir tes tâches : « Ma journée » (classées par urgence) et « Par projet ».' },
+      { t: 'list', x: [
+        'Appuie sur le rond à gauche d’une tâche pour la terminer.',
+        'Sur téléphone, tu peux aussi glisser la tâche vers la gauche.',
+        '« → Demain » repousse une tâche en retard au lendemain.',
+        'La barre en haut permet d’ajouter une tâche rapidement : écris son nom, choisis le projet, puis « Ajouter ».'
+      ] },
+      { t: 'tip', x: 'Les filtres En retard / Urgentes / Aujourd’hui / Terminées se trouvent en haut de la vue « Ma journée ».' }
+    ] },
+
+    { id: 'pv', icon: 'engineering', part: 1, title: 'PV de chantier', blocks: [
+      { t: 'warn', x: 'Trois outils portent des noms proches. Ne les confonds pas.' },
+      { t: 'list', x: [
+        '« PV de chantier » — le vrai PV, avec photos annotées, réserves numérotées et validation par Chaima. C’est celui-là qu’on utilise après une visite de chantier.',
+        '« PV de réunion » — l’ancien générateur pour les comptes-rendus de réunion. Attention : il n’enregistre rien automatiquement, si tu quittes la page tout est perdu.',
+        '« Rapport visite » — le bouton dans la fiche d’un projet, pour un compte-rendu rapide en PDF.'
+      ] },
+      { t: 'h', x: 'Faire un PV de chantier, étape par étape' },
+      { t: 'steps', x: [
+        'Plus → « PV de chantier », puis « Nouveau PV ».',
+        'Choisis le projet EN PREMIER. Tant qu’aucun projet n’est choisi, rien ne s’enregistre.',
+        'Vérifie la date de visite et l’heure, ajoute la météo si tu veux.',
+        '« Présents » — ajoute les personnes présentes sur le chantier.',
+        '« Rappel du PV précédent » — pour chaque réserve encore ouverte, appuie sur « Réalisé / levée », « En cours » ou « En retard ».',
+        '« Ajouter des photos » — le téléphone te propose « Prendre une photo » ou ta galerie. Tu peux en ajouter plusieurs d’un coup.',
+        'Touche une photo pour l’annoter : Cercle, Flèche ou Texte, en rouge, orange ou vert.',
+        'Dès que tu dessines, l’application propose de créer une réserve numérotée : décris le problème, choisis le lot, la gravité, le délai et l’entreprise responsable. Ou garde-la comme simple annotation.',
+        'Remplis « Décisions prises » et « Actions à suivre » (qui fait quoi, pour quand).',
+        '« Terminer le PV » — le PDF est généré et le PV part en validation chez Chaima.'
+      ] },
+      { t: 'warn', x: 'Une fois le projet choisi et le PV enregistré, tu ne peux plus changer de projet. Si tu t’es trompée, supprime le brouillon et recommence.' },
+      { t: 'tip', x: 'Le bouton « Enregistrer » en haut sauvegarde ton brouillon à tout moment. Tu peux fermer et reprendre plus tard.' },
+      { t: 'h', x: 'Après avoir terminé le PV' },
+      { t: 'list', x: [
+        'Le PV passe en « En attente de validation ». L’objectif est qu’il soit diffusé dans les 48 h après la visite.',
+        'Si Chaima le valide, c’est elle qui l’envoie au client.',
+        'Si elle le refuse, le PV revient en « À corriger » avec le motif écrit en rouge. Corrige, puis termine à nouveau.',
+        'Tu peux toujours ouvrir le PDF avec le bouton « PDF ».'
+      ] }
+    ] },
+
+    { id: 'reserves', icon: 'rule', part: 1, title: 'Les réserves', blocks: [
+      { t: 'p', x: 'L’onglet « Réserves — tous chantiers » regroupe les réserves de tous les projets au même endroit.' },
+      { t: 'list', x: [
+        'Filtre par projet, par entreprise, ou coche « En retard seulement ».',
+        '« Marquer levée » quand le problème est corrigé. « Rouvrir » si ce n’est pas satisfaisant.'
+      ] },
+      { t: 'warn', x: 'Vérifie sur place avant de lever une réserve. Quand l’entreprise dit avoir corrigé, une mention « signalée corrigée » apparaît — ce n’est pas une preuve.' }
+    ] },
+
+    { id: 'calendrier', icon: 'calendar_month', part: 1, title: 'Calendrier et congés', blocks: [
+      { t: 'list', x: [
+        '« Ajouter un événement » : titre, type (RDV Client, Chantier, Administratif, Réunion BET), date, heure, lieu.',
+        '« Congé » : dates de début et de fin, motif, puis « Envoyer la demande ». Chaima reçoit la demande et l’approuve.',
+        'Les boutons Mois / Semaine / Jour / Agenda changent l’affichage. Sur téléphone, la semaine s’affiche en liste.',
+        '« Agenda du téléphone » télécharge le calendrier pour l’ajouter à Google Agenda ou à l’iPhone.'
+      ] }
+    ] },
+
+    { id: 'photos', icon: 'photo_camera', part: 1, title: 'Ajouter des photos', blocks: [
+      { t: 'p', x: 'Il y a trois chemins, selon ce que tu veux faire.' },
+      { t: 'list', x: [
+        'Photos d’une visite de chantier → dans le PV de chantier, bouton « Ajouter des photos ». C’est le bon chemin dans la grande majorité des cas.',
+        'Document ou photo à ranger dans un projet → fiche du projet, « Documents du projet », puis « + Ajouter ».'
+      ] },
+      { t: 'list', need: 'mediatheque', x: [
+        'Visuels, rendus 3D et plans → page Médiathèque.'
+      ] },
+      { t: 'warn', x: 'Dans « Documents du projet », le type « Photo de chantier » n’accepte que des fichiers JPG. Une capture d’écran (PNG) sera refusée — choisis « Document administratif » à la place.' },
+      { t: 'warn', need: 'mediatheque', x: 'Dans la Médiathèque, la photo est rattachée au projet choisi dans le filtre en haut de la page. Choisis d’abord le projet, puis appuie sur « + Ajouter ». Si le filtre est resté sur « Tous les projets », la photo ne sera rattachée à aucun projet.' }
+    ] },
+
+    { id: 'generateurs', icon: 'description', part: 1, title: 'Générateurs de documents', blocks: [
+      { t: 'p', x: 'Trois générateurs sont disponibles : CPS, Questionnaire client et Planning chantier. Les autres onglets sont marqués « Bientôt ».' },
+      { t: 'steps', x: [
+        'Plus → « Générateurs ».',
+        'Choisis l’onglet, puis le projet (ou « Sans projet » pour un essai).',
+        'Appuie sur « Nouveau CPS » (ou brief, ou planning). Le document s’ouvre en plein écran, déjà pré-rempli avec les informations du projet.',
+        'Chaque enregistrement crée une nouvelle version. Tu peux rouvrir, dupliquer ou télécharger les versions précédentes.'
+      ] }
+    ] },
+
+    { id: 'outils', icon: 'handyman', part: 1, title: 'Outils du cabinet', blocks: [
+      { t: 'list', x: [
+        'Escalier — calcul des marches avec la formule de Blondel.',
+        'Rampe PMR — pente en pourcentage et verdict de conformité.',
+        'Béton — volume, sacs de ciment, sable et gravier.',
+        'Carrelage — quantité à commander, chutes comprises.',
+        'Mémo réglementaire — les règles à retenir (escalier, PMR, parking), avec une recherche.'
+      ] }
+    ] },
+
+    { id: 'autres', icon: 'apps', part: 1, title: 'Les autres outils', blocks: [
+      { t: 'list', x: [
+        'Messagerie — les discussions internes de l’équipe, avec pièces jointes et messages vocaux.',
+        'Signalements — pour un problème AU BUREAU (climatisation, plomberie, imprimante, serrure). Ce n’est pas pour le chantier.',
+        'Panneau de chantier — génère le panneau réglementaire bilingue à afficher à l’entrée du chantier, aux vraies dimensions.',
+        'Concours / Appels d’offres — le suivi des participations et des résultats.',
+        'Samia IA — l’assistante qui t’aide à rédiger et corriger tes rapports.'
+      ] }
+    ] },
+
+    { id: 'bug', icon: 'build', part: 1, title: 'Si l’application s’affiche mal', blocks: [
+      { t: 'steps', x: [
+        'Appuie sur le bouton actualiser (le rond avec la flèche, en bas à gauche).',
+        'Si ça ne suffit pas, ferme complètement le navigateur et rouvre l’application.',
+        'En dernier recours, ouvre client.studio33.ma/?secours=1 puis appuie sur « Rouvrir l’application ». Cela nettoie tout et recharge la dernière version.'
+      ] },
+      { t: 'tip', x: 'Sur les téléphones et tablettes Samsung, un mode d’affichage simplifié s’active automatiquement (moins d’ombres et d’animations). C’est normal.' },
+      { t: 'p', x: 'Si le problème persiste, préviens Chaima avec une capture d’écran.' }
+    ] },
+
+    { id: 'regles', icon: 'verified', part: 1, title: 'Les règles de la maison', blocks: [
+      { t: 'list', x: [
+        'Le rapport journalier se remplit tous les jours, avant de partir.',
+        'Un PV de chantier se termine dans les 48 h qui suivent la visite.',
+        'On ne supprime pas ce qu’on n’a pas créé.',
+        'Une réserve ne se lève qu’après vérification sur place.',
+        'En cas de doute, on demande à Chaima plutôt que d’essayer.'
+      ] }
+    ] },
+
+    // ═══ PARTIE 2 — POUR LA DIRECTION ═══
+    { id: 'devis', icon: 'request_quote', part: 2, need: 'devis', title: 'Devis et validation', blocks: [
+      { t: 'steps', x: [
+        'Page Devis, bouton « + Nouveau ».',
+        'Remplis Informations (référence, client, date, description) et Montants (honoraires HT, TVA). Le TTC se calcule tout seul.',
+        'Vérifie « Phases & Répartition ». Le total doit faire exactement 100 % — sinon le bouton « Rééquilibrer à 100 % » le corrige.',
+        '« Sauvegarder », puis « PDF » pour le document.',
+        '« Signature » envoie au client un lien WhatsApp bilingue : il signe au doigt sur son téléphone.'
+      ] },
+      { t: 'h', x: 'La validation crée tout d’un coup' },
+      { t: 'p', x: 'Le bouton « Valider » (ou le statut passé à « Accepté ») crée en une fois : le client s’il est nouveau, le projet avec son budget, l’échéancier d’honoraires complet, et la première facture d’acompte à 15 jours.' },
+      { t: 'warn', x: 'Si les phases du devis ne totalisent pas exactement 100 %, l’application les ignore et applique le barème par défaut (30 / 20 / 15 / 15 / 15 / 5). Vérifie toujours le total avant de valider.' }
+    ] },
+
+    { id: 'factures', icon: 'receipt_long', part: 2, need: 'invoices', title: 'Facturation', blocks: [
+      { t: 'warn', x: 'Le montant que tu saisis est le montant TTC. Le HT et la TVA sont recalculés automatiquement à partir de lui. Si tu saisis un montant HT, la facture sera trop élevée.' },
+      { t: 'list', x: [
+        'Les filtres en haut : Toutes / En attente / En retard / Payées.',
+        'Appuie sur le badge de statut pour passer une facture en « Payée » : l’application demande le mode et la date de paiement.',
+        '« Partiel » enregistre un acompte reçu ; la ligne affiche alors ce qui reste dû.',
+        '« Relancer » ouvre un message WhatsApp prêt à envoyer (il faut un téléphone sur la fiche client).',
+        'Taux de TVA disponibles : 20 %, 14 %, 10 %, et 0 % exonéré pour les provinces du Sud.'
+      ] }
+    ] },
+
+    { id: 'honoraires', icon: 'payments', part: 2, title: 'Honoraires — échéancier par phase', blocks: [
+      { t: 'p', x: 'Le bloc se trouve en bas de la fiche d’un projet. Il découpe les honoraires en 6 phases et suit ce qui est facturé et encaissé.' },
+      { t: 'list', x: [
+        '« Générer l’échéancier type » répartit le budget du projet : 30 / 20 / 15 / 15 / 15 / 5 %.',
+        'Chaque ligne se modifie directement (libellé, montant, échéance, facture liée).',
+        'Le bouton facture sur une ligne crée la facture correspondante en un clic, échéance à 15 jours.'
+      ] },
+      { t: 'warn', x: 'Si le total des lignes ne correspond plus au budget du projet, un texte orange « ≠ budget projet » apparaît sous « Total honoraires ». Cela veut dire qu’une partie des honoraires n’est planifiée nulle part — il faut la reporter sur les phases suivantes, ou corriger le budget du projet.' },
+      { t: 'warn', x: '« Générer l’échéancier type » ne vérifie pas s’il existe déjà un échéancier. Appuyer deux fois crée 12 lignes au lieu de 6.' }
+    ] },
+
+    { id: 'portail', icon: 'share', part: 2, title: 'Espace client', blocks: [
+      { t: 'p', x: 'Depuis la fiche d’un projet, bouton « Espace client ». Le client reçoit un lien : il suit l’avancement, les jalons, le compte à rebours de livraison, les documents partagés, les photos, l’échéancier de ses honoraires, et il peut écrire au bureau.' },
+      { t: 'steps', x: [
+        '« Générer le lien client », puis « Copier » ou WhatsApp.',
+        'Coche les dossiers et documents à partager. Le client ne voit que ce qui est coché.',
+        '« Message de bienvenue » prépare le premier message WhatsApp.',
+        '« Rapport mensuel PDF » génère un point d’avancement à lui envoyer.'
+      ] },
+      { t: 'h', x: 'Suspendre n’est pas révoquer' },
+      { t: 'list', x: [
+        'Suspendre l’accès (impayé, litige) — le lien reste le même mais s’ouvre sur un message expliquant que le cabinet a suspendu l’accès. Réversible à tout moment.',
+        '« Révoquer » — le lien est détruit définitivement. Il faudra en générer un nouveau et le renvoyer.'
+      ] },
+      { t: 'warn', x: '« Mode réunion » crée un lien client si le projet n’en avait pas encore. Si tu ne veux pas que le client y ait accès, pense à suspendre ou révoquer après la réunion.' },
+      { t: 'p', x: '« Espace entreprise » est l’équivalent pour les artisans : ils voient les plans à jour et les réserves à corriger, et signalent quand c’est fait.' }
+    ] },
+
+    { id: 'equipe-admin', icon: 'group', part: 2, admin: true, title: 'Équipe, comptes et permissions', blocks: [
+      { t: 'p', x: 'Tout se passe dans le panneau de profil (en bas de la barre latérale), onglet « Équipe ».' },
+      { t: 'steps', x: [
+        '« + Ajouter un membre » : identifiant (prenom), nom affiché, titre, mot de passe, rôle.',
+        'Sur la fiche d’un membre, coche les sections auxquelles elle a droit. Chaque case est enregistrée immédiatement.',
+        '« Co-administrateur » ouvre toutes les sections d’un coup, sauf Administratif qu’il faut cocher à part.',
+        'Pour réinitialiser un mot de passe : même fiche, champ « Nouveau mot de passe », puis « Enregistrer ».'
+      ] },
+      { t: 'warn', x: 'Supprimer un membre efface aussi son compte de connexion. C’est définitif, il n’y a pas de corbeille pour ça.' },
+      { t: 'tip', x: 'Un membre sans aucune section cochée ne voit que les pages communes : Dashboard, Projets, Tâches, Rapport, Calendrier, PV, Générateurs et Outils.' }
+    ] },
+
+    { id: 'finance-admin', icon: 'account_balance', part: 2, need: 'finance', title: 'Finances', blocks: [
+      { t: 'list', x: [
+        'Entrées et charges du mois, solde net, et la part des entrées absorbée par les charges.',
+        '« Reçu » permet de photographier un justificatif pour créer la dépense.',
+        '« Brut ⇄ Net » est le simulateur de salaire.',
+        '« Exporter » télécharge l’année en CSV, ouvrable dans Excel.',
+        'Les factures payées remontent automatiquement en entrées — elles ne peuvent pas être supprimées ici.'
+      ] }
+    ] },
+
+    { id: 'administratif-admin', icon: 'folder_special', part: 2, need: 'administratif', title: 'Administratif', blocks: [
+      { t: 'p', x: 'Le classeur du cabinet : relevés bancaires, documents d’entreprise, factures d’achat, reçus de taxes, ressources humaines, charges récurrentes.' },
+      { t: 'list', x: [
+        'Chaque document peut avoir une date d’expiration : l’application prévient avant l’échéance.',
+        '« Export comptable » télécharge un dossier complet de l’année à donner au comptable.'
+      ] },
+      { t: 'p', x: 'Les papiers du cabinet (décennale, patente, cotisation de l’Ordre) se suivent aussi dans Outils du cabinet, avec une alerte avant expiration.' }
+    ] },
+
+    { id: 'corbeille', icon: 'restore_from_trash', part: 2, title: 'Sauvegardes et corbeille', blocks: [
+      { t: 'p', x: '« Sauvegarde » télécharge un fichier Excel complet du cabinet (clients, projets, factures, devis, échéanciers, réserves, rapports). À faire régulièrement et à garder en lieu sûr.' },
+      { t: 'p', x: 'La « Corbeille » récupère ce qui a été supprimé par erreur — mais seulement 5 types d’éléments : projets, clients, factures, devis et documents.' },
+      { t: 'warn', x: 'Tout le reste est supprimé définitivement, sans corbeille : membres de l’équipe, contacts pro, fournisseurs, matériaux, tâches, lignes d’échéancier, documents générés, fiches administratives.' },
+      { t: 'tip', x: 'Juste après une suppression, une barre « Annuler » s’affiche pendant 8 secondes. C’est le moyen le plus rapide de revenir en arrière.' }
+    ] },
+
+    { id: 'annexe', icon: 'badge', part: 2, title: 'Annexe — qui voit quoi', blocks: [
+      { t: 'p', x: 'Les comptes actuels et leur niveau d’accès :' },
+      { t: 'team' }
+    ] }
+  ];
+
+  // ── Rendu HTML ──
+  function fmt(t) {
+    let s = String(t == null ? '' : t)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    s = s.replace(/«\s*([^»]+?)\s*»/g, '<b class="g33-b">$1</b>');
+    s = s.replace(/client\.studio33\.ma(\/\?[a-z0-9=]+)?/g, '<code class="g33-c">$&</code>');
+    return s;
+  }
+
+  function blockVisible(b) {
+    if (b.need && !canSee(b.need)) return false;
+    return true;
+  }
+  function sectionVisible(s) {
+    if (s.part === 2 && !isDirection()) return false;
+    if (s.admin && !isAdm()) return false;
+    if (s.need && !canSee(s.need)) return false;
+    return s.blocks.some(blockVisible) || s.blocks.some(b => b.t === 'team');
+  }
+
+  let _team = null;
+
+  function teamHTML() {
+    if (!_team) return '<div class="g33-p" style="color:var(--text-faint);">Chargement des comptes…</div>';
+    if (!_team.length) return '<div class="g33-p" style="color:var(--text-faint);">Liste des comptes indisponible.</div>';
+    return '<div class="g33-tablewrap"><table class="g33-table">' +
+      '<thead><tr><th>Personne</th><th>Identifiant</th><th>Poste</th><th>Accès</th></tr></thead><tbody>' +
+      _team.map(m => '<tr><td><b>' + fmt(m.nom) + '</b></td><td>' + fmt(m.id) + '</td><td>' + fmt(m.poste) + '</td><td>' + fmt(m.acces) + '</td></tr>').join('') +
+      '</tbody></table></div>';
+  }
+
+  function blockHTML(b) {
+    if (b.t === 'team') return teamHTML();
+    if (!blockVisible(b)) return '';
+    if (b.t === 'h')    return '<div class="g33-h">' + fmt(b.x) + '</div>';
+    if (b.t === 'p')    return '<div class="g33-p">' + fmt(b.x) + '</div>';
+    if (b.t === 'warn') return '<div class="g33-warn"><span class="mi">priority_high</span><div>' + fmt(b.x) + '</div></div>';
+    if (b.t === 'tip')  return '<div class="g33-tip"><span class="mi">lightbulb</span><div>' + fmt(b.x) + '</div></div>';
+    if (b.t === 'steps') return '<ol class="g33-steps">' + b.x.map(s => '<li>' + fmt(s) + '</li>').join('') + '</ol>';
+    if (b.t === 'list')  return '<ul class="g33-list">' + b.x.map(s => '<li>' + fmt(s) + '</li>').join('') + '</ul>';
+    return '';
+  }
+
+  function render() {
+    const box = document.getElementById('guide-content');
+    if (!box) return;
+    const secs = GUIDE.filter(sectionVisible);
+    const p1 = secs.filter(s => s.part === 1);
+    const p2 = secs.filter(s => s.part === 2);
+
+    const toc = arr => '<div class="g33-toc">' + arr.map(s =>
+      '<button class="g33-tocitem" onclick="s33GuideGo(\'' + s.id + '\')">' +
+        '<span class="mi mi-sm">' + s.icon + '</span>' + fmt(s.title) +
+      '</button>').join('') + '</div>';
+
+    const sec = s => '<details class="g33-sec" id="g33-' + s.id + '"' + (s.open ? ' open' : '') + '>' +
+      '<summary><span class="mi">' + s.icon + '</span><span>' + fmt(s.title) + '</span></summary>' +
+      '<div class="g33-body">' + s.blocks.map(blockHTML).join('') + '</div>' +
+    '</details>';
+
+    let html = '<div class="g33-intro">' +
+      'Ce guide explique comment se servir de l’application au quotidien. ' +
+      'Il s’adapte à ton compte : tu ne vois que ce que tu peux réellement faire. ' +
+      'Une nouvelle personne au bureau peut le lire du début à la fin le premier jour.' +
+    '</div>';
+
+    html += '<div class="g33-parttitle"><span class="mi">groups</span> Partie 1 — Pour toute l’équipe</div>';
+    html += toc(p1);
+    html += p1.map(sec).join('');
+
+    if (p2.length) {
+      html += '<div class="g33-parttitle" style="margin-top:34px;"><span class="mi">admin_panel_settings</span> Partie 2 — Pour la direction</div>';
+      html += toc(p2);
+      html += p2.map(sec).join('');
+    }
+
+    box.innerHTML = html;
+  }
+
+  window.s33GuideGo = function(id) {
+    const el = document.getElementById('g33-' + id);
+    if (!el) return;
+    el.open = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // ── Chargement des comptes pour l'annexe ──
+  function accessLabel(m) {
+    const p = m.permissions || {};
+    const sec = p.sections || {};
+    if (m.role === 'admin') return p.no_administratif === true ? 'Administratrice (sans Administratif)' : 'Administratrice — accès complet';
+    if (p.is_co_admin === true) return sec.administratif === true ? 'Co-administratrice — tout, Administratif inclus' : 'Co-administratrice — tout sauf Administratif';
+    const on = ['finance', 'invoices', 'devis', 'clients', 'contacts', 'mediatheque', 'library', 'equipe']
+      .filter(k => sec[k] === true);
+    return on.length ? 'Membre — sections : ' + on.join(', ') : 'Membre — pages communes uniquement';
+  }
+
+  function loadTeam() {
+    if (_team || typeof sbGet !== 'function') return Promise.resolve();
+    return sbGet('team_members', '?order=role,display_name').then(rows => {
+      _team = (Array.isArray(rows) ? rows : []).filter(m => m.active !== false).map(m => ({
+        nom: m.display_name || m.username || '—',
+        id: m.username || '—',
+        poste: m.job_title || '—',
+        acces: accessLabel(m)
+      }));
+    }).catch(() => { _team = []; });
+  }
+
+  // ── Export PDF ──
+  const CP = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
+  function pdfSafe(t) {
+    return String(t == null ? '' : t)
+      .replace(/→/g, '->').replace(/←/g, '<-').replace(/⇄/g, '<->')
+      .replace(/≠/g, 'different de').replace(/[✓✔]/g, 'OK')
+      .replace(/[^\x00-\xFF]/g, c => CP.indexOf(c) !== -1 ? c : '');
+  }
+
+  window.s33GuidePdf = async function() {
+    try {
+      toast('Préparation du PDF…');
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+        try { await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); }
+        catch(_) { await pvLoadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); }
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const M = 48, W = 595 - M * 2, BOT = 800;
+      let y = 0;
+
+      function brk(h) { if (y + h > BOT) { doc.addPage(); y = M; } }
+      function line(text, size, style, color, indent, gap) {
+        doc.setFont('helvetica', style || 'normal');
+        doc.setFontSize(size || 10);
+        doc.setTextColor.apply(doc, color || [40, 40, 40]);
+        const w = W - (indent || 0);
+        const parts = doc.splitTextToSize(pdfSafe(text), w);
+        parts.forEach(function(p) {
+          brk(size + 4);
+          doc.text(p, M + (indent || 0), y);
+          y += (size || 10) + 3.5;
+        });
+        y += (gap == null ? 4 : gap);
+      }
+
+      // En-tête
+      doc.setFillColor(26, 26, 26); doc.rect(0, 0, 595, 96, 'F');
+      doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
+      doc.text('STUDIO 33 ARCHITECTS', M, 44);
+      doc.setFontSize(12); doc.setFont('helvetica', 'normal');
+      doc.text('Guide d\'utilisation de l\'application interne', M, 66);
+      doc.setFontSize(9); doc.setTextColor(200, 200, 200);
+      doc.text('Document genere le ' + new Date().toLocaleDateString('fr-FR') +
+               ((u() && u().name) ? ' - pour ' + pdfSafe(u().name) : ''), M, 84);
+      y = 130;
+
+      const secs = GUIDE.filter(sectionVisible);
+      let curPart = 0;
+      secs.forEach(function(s) {
+        if (s.part !== curPart) {
+          curPart = s.part;
+          brk(50);
+          y += 8;
+          doc.setFillColor(249, 115, 22); doc.rect(M, y - 11, W, 2, 'F');
+          y += 12;
+          line(curPart === 1 ? 'PARTIE 1 - POUR TOUTE L\'EQUIPE' : 'PARTIE 2 - POUR LA DIRECTION',
+               13, 'bold', [249, 115, 22], 0, 10);
+        }
+        brk(40);
+        line(s.title, 12.5, 'bold', [26, 26, 26], 0, 6);
+        s.blocks.forEach(function(b) {
+          if (b.t === 'team') {
+            (_team || []).forEach(function(m) {
+              line('- ' + m.nom + ' (' + m.id + ') - ' + m.poste + ' : ' + m.acces, 9.5, 'normal', [60, 60, 60], 10, 1);
+            });
+            y += 4;
+            return;
+          }
+          if (!blockVisible(b)) return;
+          if (b.t === 'h')    return line(b.x, 10.5, 'bold', [60, 60, 60], 0, 3);
+          if (b.t === 'p')    return line(b.x, 10, 'normal', [45, 45, 45], 0, 5);
+          if (b.t === 'warn') return line('ATTENTION : ' + b.x, 10, 'bold', [180, 60, 30], 0, 5);
+          if (b.t === 'tip')  return line('Astuce : ' + b.x, 10, 'italic', [80, 110, 80], 0, 5);
+          if (b.t === 'steps') { b.x.forEach(function(s2, i) { line((i + 1) + '. ' + s2, 10, 'normal', [45, 45, 45], 14, 1); }); y += 4; return; }
+          if (b.t === 'list')  { b.x.forEach(function(s2) { line('- ' + s2, 10, 'normal', [45, 45, 45], 14, 1); }); y += 4; return; }
+        });
+        y += 6;
+      });
+
+      // Pied de page sur toutes les pages
+      const n = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= n; i++) {
+        doc.setPage(i);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150, 150, 150);
+        doc.text('Studio 33 Architects - Agadir, Maroc', M, 822);
+        doc.text(i + ' / ' + n, 595 - M, 822, { align: 'right' });
+      }
+
+      doc.save('Studio33-Guide-application.pdf');
+      toast('Guide téléchargé — tu peux l’imprimer ou l’envoyer par WhatsApp');
+    } catch(e) {
+      console.error('guide pdf', e);
+      toast('Génération impossible — vérifie ta connexion et réessaie');
+    }
+  };
+
+  // ── Injection CSS / menu / page ──
+  function injectCSS() {
+    if (document.getElementById('g33-css')) return;
+    const st = document.createElement('style');
+    st.id = 'g33-css';
+    st.textContent =
+      '#page-guide .g33-intro{font-size:13.5px;line-height:1.65;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--gold);border-radius:var(--radius);padding:14px 16px;margin-bottom:22px;}' +
+      '#page-guide .g33-parttitle{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;color:var(--text);margin:0 0 14px;letter-spacing:.01em;}' +
+      '#page-guide .g33-parttitle .mi{color:var(--gold);}' +
+      '#page-guide .g33-toc{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}' +
+      '#page-guide .g33-tocitem{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:7px 14px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;text-align:left;}' +
+      '#page-guide .g33-tocitem:hover{border-color:var(--gold);}' +
+      '#page-guide .g33-tocitem .mi{color:var(--gold);}' +
+      '#page-guide .g33-sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;}' +
+      '#page-guide .g33-sec>summary{display:flex;align-items:center;gap:11px;padding:15px 17px;font-size:14.5px;font-weight:700;color:var(--text);cursor:pointer;list-style:none;}' +
+      '#page-guide .g33-sec>summary::-webkit-details-marker{display:none;}' +
+      '#page-guide .g33-sec>summary .mi{color:var(--gold);flex-shrink:0;}' +
+      '#page-guide .g33-sec[open]>summary{border-bottom:1px solid var(--border);}' +
+      '#page-guide .g33-body{padding:16px 17px 19px;}' +
+      '#page-guide .g33-h{font-size:13px;font-weight:800;color:var(--text);margin:16px 0 7px;}' +
+      '#page-guide .g33-body>.g33-h:first-child{margin-top:0;}' +
+      '#page-guide .g33-p{font-size:13.5px;line-height:1.68;color:var(--text-dim);margin-bottom:11px;}' +
+      '#page-guide .g33-steps,#page-guide .g33-list{margin:0 0 12px;padding-left:21px;}' +
+      '#page-guide .g33-steps li,#page-guide .g33-list li{font-size:13.5px;line-height:1.62;color:var(--text-dim);margin-bottom:8px;}' +
+      '#page-guide .g33-steps li::marker{font-weight:800;color:var(--gold);}' +
+      '#page-guide .g33-b{color:var(--text);font-weight:700;}' +
+      '#page-guide .g33-c{background:var(--surface3);border-radius:5px;padding:2px 6px;font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--text);}' +
+      '#page-guide .g33-warn,#page-guide .g33-tip{display:flex;gap:10px;align-items:flex-start;border-radius:var(--radius);padding:12px 14px;margin-bottom:12px;font-size:13px;line-height:1.6;}' +
+      '#page-guide .g33-warn{background:rgba(239,68,68,.09);border:1px solid rgba(239,68,68,.28);color:var(--text);}' +
+      '#page-guide .g33-warn .mi{color:#ef4444;flex-shrink:0;font-size:19px;}' +
+      '#page-guide .g33-tip{background:rgba(34,150,94,.09);border:1px solid rgba(34,150,94,.26);color:var(--text);}' +
+      '#page-guide .g33-tip .mi{color:#22965e;flex-shrink:0;font-size:19px;}' +
+      '#page-guide .g33-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:10px;}' +
+      '#page-guide .g33-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:520px;}' +
+      '#page-guide .g33-table th{text-align:left;padding:9px 11px;background:var(--surface2);color:var(--text-dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);}' +
+      '#page-guide .g33-table td{padding:10px 11px;border-bottom:1px solid var(--border);color:var(--text-dim);vertical-align:top;}' +
+      '@media(max-width:640px){#page-guide .g33-tocitem{font-size:12px;padding:6px 12px;}#page-guide .g33-sec>summary{font-size:13.5px;padding:13px 14px;}#page-guide .g33-body{padding:14px;}}';
+    document.head.appendChild(st);
+  }
+
+  function injectNav() {
+    if (!document.getElementById('nav-guide')) {
+      const ref = document.getElementById('nav-ai');
+      if (ref) ref.insertAdjacentHTML('afterend',
+        '<div class="nav-item" id="nav-guide" onclick="navigate(\'guide\')">' +
+          '<span class="nav-icon"><span class="mi">menu_book</span></span><span class="nav-text">Guide</span>' +
+        '</div>');
+    }
+    if (!document.getElementById('mnav-more-guide')) {
+      const sheet = document.querySelector('.mobile-more-sheet');
+      const ref = document.getElementById('mnav-more-rapport') ||
+                  (sheet ? sheet.querySelector('.mobile-more-item') : null);
+      if (ref) ref.insertAdjacentHTML('beforebegin',
+        '<div class="mobile-more-item" id="mnav-more-guide" onclick="mobileNavigate(\'guide\'); closeMobileMore()">' +
+          '<span class="mnav-icon"><span class="mi">menu_book</span></span> Guide' +
+        '</div>');
+    }
+  }
+
+  function injectPage() {
+    if (document.getElementById('page-guide')) return;
+    const anyPage = document.querySelector('.page');
+    if (!anyPage || !anyPage.parentElement) return;
+    anyPage.parentElement.insertAdjacentHTML('beforeend',
+      '<div class="page" id="page-guide">' +
+        '<div class="page-header">' +
+          '<div><div class="page-title">Guide</div>' +
+          '<div class="page-subtitle">Comment utiliser l’application — à lire le premier jour</div></div>' +
+          '<button class="btn btn-gold" onclick="s33GuidePdf()"><span class="mi mi-sm">download</span> Télécharger en PDF</button>' +
+        '</div>' +
+        '<div id="guide-content"></div>' +
+      '</div>');
+  }
+
+  function openGuide() {
+    injectCSS(); injectNav(); injectPage();
+    render();
+    loadTeam().then(render);
+  }
+
+  const _navG = navigate;
+  navigate = function(page) {
+    if (page === 'guide') { injectCSS(); injectNav(); injectPage(); _navG(page); openGuide(); return; }
+    _navG(page);
+  };
+
+  injectCSS(); injectNav(); injectPage();
+
+  console.log('✓ Guide chargé');
 })();
 </script>
 

@@ -210,6 +210,10 @@
   .s33-swipe-hint { display: none; }
   @media (pointer: coarse) { .s33-swipe-hint { display: inline; } }
 
+  /* En-tête d'un bloc de tâches groupées par projet (vue « Ma journée ») */
+  .s33-grp-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    background: var(--surface2); border-bottom: 1px solid var(--border); }
+
   /* iOS centre le texte des champs de date — on le remet à gauche, comme tous les autres champs */
   input[type="date"], input[type="datetime-local"], input[type="time"], input[type="month"] {
     text-align: left;
@@ -3081,7 +3085,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-10.2 — comptes-rendus de reunion client';
+const S33_BUILD = '2026-09-10.3 — taches regroupees par projet dans Ma journee';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -16618,11 +16622,12 @@ function s33RenderTachesJour(opts) {
   }
   toolbar += `</div>`;
 
-  // Ligne de tâche
-  const row = x => {
+  // Ligne de tâche. En mode groupé (dans un bloc projet), la ligne perd son
+  // cadre et la pastille du projet : le nom est déjà dans l'en-tête du bloc.
+  const row = (x, grouped, isLast) => {
     const t = x.t, diff = dayDiff(t);
     const isLate = !x.done && diff != null && diff < 0;
-    const projChip = x.admin
+    const projChip = grouped ? '' : x.admin
       ? `<span style="font-size:10px;color:var(--text-faint);background:var(--surface3);padding:2px 8px;border-radius:99px;flex-shrink:0;">Administratif</span>`
       : `<span onclick="event.stopPropagation();openProjectDetail(${x.p.id})" title="${escHTML(x.p.name)}" style="font-size:10.5px;color:var(--gold);background:rgba(201,169,110,.12);padding:3px 9px;border-radius:10px;cursor:pointer;line-height:1.4;white-space:normal;overflow-wrap:anywhere;">${escHTML(x.p.name)}</span>`;
     const postpone = (!x.done && (isLate || diff === 0))
@@ -16642,11 +16647,14 @@ function s33RenderTachesJour(opts) {
     const check = x.admin
       ? `<button onclick="event.stopPropagation();toggleAdminTask(${t.id})" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:2px solid ${x.done ? '#3dd68c' : 'var(--border)'};background:${x.done ? '#3dd68c' : 'var(--surface)'};color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;">${x.done ? '<span class="mi" style="font-size:15px;">check</span>' : ''}</button>`
       : s33TaskCheckboxHTML(x.p.id, t.id, x.done);
-    return `<div class="s33-swipe" ${x.admin ? `data-admin="1"` : `data-pid="${x.p.id}"`} data-tid="${t.id}" data-done="${x.done ? 1 : 0}" style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:7px;flex-wrap:wrap;${x.done ? 'opacity:.55;' : ''}">
+    const skin = grouped
+      ? `background:none;border:none;border-bottom:${isLast ? 'none' : '1px solid var(--border)'};border-radius:0;margin-bottom:0;`
+      : 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:7px;';
+    return `<div class="s33-swipe" ${x.admin ? `data-admin="1"` : `data-pid="${x.p.id}"`} data-tid="${t.id}" data-done="${x.done ? 1 : 0}" style="display:flex;align-items:center;gap:9px;padding:10px 12px;${skin}flex-wrap:wrap;${x.done ? 'opacity:.55;' : ''}">
       ${check}
       <div style="flex:1;min-width:140px;">
         <div style="font-size:13px;font-weight:600;color:var(--text);${x.done ? 'text-decoration:line-through;font-weight:400;' : ''}">${escHTML(t.name)}${t.priority === 'urgent' && !x.done ? ' <span class="badge badge-red" style="font-size:9px;vertical-align:2px;">Urgent</span>' : ''}</div>
-        <div style="display:flex;gap:6px;align-items:flex-start;margin-top:4px;flex-wrap:wrap;">${projChip}</div>
+        ${projChip ? `<div style="display:flex;gap:6px;align-items:flex-start;margin-top:4px;flex-wrap:wrap;">${projChip}</div>` : ''}
       </div>
       ${taskDeadlineBadge(t.deadline, x.done)}
       ${postpone}
@@ -16656,15 +16664,37 @@ function s33RenderTachesJour(opts) {
     </div>`;
   };
 
+  // Les tâches d'un même projet sont réunies dans un seul bloc : le nom du
+  // projet — souvent très long — n'est plus répété sur chaque ligne.
+  const renderGrouped = list => {
+    const groups = [], byKey = {};
+    list.forEach(x => {
+      const k = x.admin ? 'admin' : 'p' + x.p.id;
+      if (!byKey[k]) { byKey[k] = { admin: x.admin, p: x.p, items: [] }; groups.push(byKey[k]); }
+      byKey[k].items.push(x);
+    });
+    return groups.map(g => {
+      const nom = g.admin ? 'Administratif' : g.p.name;
+      const head = `<div ${g.admin ? '' : `onclick="openProjectDetail(${g.p.id})" style="cursor:pointer;"`} class="s33-grp-head">
+        <span class="mi" style="font-size:16px;color:${g.admin ? 'var(--text-faint)' : 'var(--gold)'};flex-shrink:0;">${g.admin ? 'inbox' : 'folder'}</span>
+        <span style="flex:1;min-width:0;font-size:12px;font-weight:800;color:${g.admin ? 'var(--text-dim)' : 'var(--gold)'};line-height:1.4;overflow-wrap:anywhere;">${escHTML(nom)}</span>
+        <span style="flex-shrink:0;font-size:10px;font-weight:800;color:var(--text-faint);background:var(--surface3);padding:2px 8px;border-radius:99px;">${g.items.length}</span>
+      </div>`;
+      return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden;">` +
+        head + g.items.map((x, i) => row(x, true, i === g.items.length - 1)).join('') +
+      `</div>`;
+    }).join('');
+  };
+
   const section = (title, list, color) => list.length
-    ? `<div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${color};margin:16px 0 8px;">${title} (${list.length})</div>` + list.map(row).join('')
+    ? `<div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:${color};margin:16px 0 8px;">${title} (${list.length})</div>` + renderGrouped(list)
     : '';
 
   let body = '';
   if (q === 'done') {
     body = section('Terminées', shown, 'var(--text-faint)') || `<div class="empty-state"><p>Aucune tâche terminée.</p></div>`;
   } else if (q) {
-    body = shown.map(row).join('') || `<div class="empty-state"><p>Rien dans ce filtre — c'est bon signe.</p></div>`;
+    body = renderGrouped(shown) || `<div class="empty-state"><p>Rien dans ce filtre — c'est bon signe.</p></div>`;
   } else {
     const late = shown.filter(x => { const d = dayDiff(x.t); return d != null && d < 0; });
     const today = shown.filter(x => dayDiff(x.t) === 0);

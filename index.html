@@ -3085,7 +3085,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-10.3 — taches regroupees par projet dans Ma journee';
+const S33_BUILD = '2026-09-10.4 — correction documents de projet invisibles au dela de 1000';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5875,6 +5875,35 @@ async function logActivity(actionType, description, entityType, entityId, entity
 }
 
 async function sbGet(table, query='') { return sbFetch(table, 'GET', null, query); }
+
+// L'API Supabase plafonne le nombre de lignes renvoyees en une seule reponse
+// (reglage « Max rows »). Une table qui depasse ce plafond est donc chargee
+// incomplete, en silence : c'est ce qui faisait disparaitre les documents les
+// plus recents des dossiers de projet. On pagine jusqu'a tout avoir.
+// On avance de la taille REELLEMENT recue, pas de celle demandee : le helper
+// reste donc correct quelle que soit la valeur du plafond, ou s'il n'y en a pas.
+// La requete doit contenir un tri stable (ex. &order=id) pour que la pagination
+// ne saute ni ne repete de lignes.
+async function sbGetAll(table, query = '', pageSize = 1000) {
+  const sep = query.indexOf('?') === -1 ? '?' : '&';
+  const out = [];
+  let offset = 0;
+  for (let garde = 0; garde < 200; garde++) {
+    let page;
+    try {
+      page = await sbFetch(table, 'GET', null, query + sep + 'limit=' + pageSize + '&offset=' + offset, true);
+    } catch(e) {
+      // Une page en erreur apres des pages reussies donnerait une liste
+      // tronquee sans le dire : on remonte l'erreur plutot que de mentir.
+      if (out.length) throw e;
+      return [];
+    }
+    if (!Array.isArray(page) || page.length === 0) break;
+    out.push.apply(out, page);
+    offset += page.length;
+  }
+  return out;
+}
 async function sbInsert(table, body) { return sbFetch(table, 'POST', body, '', false); }
 async function sbInsertOrThrow(table, body) { return sbFetch(table, 'POST', body, '', true); }
 
@@ -6123,7 +6152,7 @@ async function loadDB() {
       sbGet('devis', '?deleted_at=is.null&order=id'),
       sbGet('charges', '?order=id'),
       sbGet('entrees', '?order=id'),
-      sbGet('media', '?deleted_at=is.null&select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year,client_visible&order=id'),
+      sbGetAll('media', '?deleted_at=is.null&select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year,client_visible&order=id'),
       sbGet('app_config'),
       sbGet('user_tasks', '?order=created_at'),
       sbGet('daily_reports', '?order=submitted_at.desc'),

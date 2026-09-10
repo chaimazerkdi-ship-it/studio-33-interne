@@ -3081,7 +3081,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-09.1 — guide dutilisation integre et export PDF';
+const S33_BUILD = '2026-09-10.1 — taches : suppression, plusieurs personnes, nom de projet complet';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5649,10 +5649,8 @@ const S33_BUILD = '2026-09-09.1 — guide dutilisation integre et export PDF';
       </select>
     </div>
     <div class="form-row">
-      <label>Assigné à</label>
-      <select id="task-assigned">
-        <option value="">— Non assigné —</option>
-      </select>
+      <label>Assigné à <span style="font-weight:400;color:var(--text-faint);font-size:11px;">— touchez plusieurs personnes si besoin</span></label>
+      <div id="task-assigned-wrap" style="display:flex;flex-wrap:wrap;gap:7px;"></div>
     </div>
     <div class="form-row">
       <label>Date limite</label>
@@ -7047,7 +7045,7 @@ function renderProjectDetailPage() {
                     <div style="display:flex;align-items:center;gap:10px;">
                       <div style="flex:1;min-width:0;">
                         <div style="font-size:13px;font-weight:${isDone?'400':'500'};color:var(--text);text-decoration:${isDone?'line-through':'none'};opacity:${isDone?'.5':'1'};">${t.name}</div>
-                        ${t.assignedTo ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">${(()=>{const u=USERS.find(x=>x.name===t.assignedTo||x.username===t.assignedTo);return u?avatarHTML(u.id,18):'';})()}<span style="font-size:11px;color:var(--text-dim);">${t.assignedTo}</span></div>` : ''}
+                        ${taskHasAssignee(t) ? `<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">${taskAvatarsHTML(t, 18)}<span style="font-size:11px;color:var(--text-dim);">${escHTML(taskAssigneeNames(t).join(', '))}</span></div>` : ''}
                       </div>
                       ${taskDeadlineEditable(p.id, t.id, t.deadline, isDone)}
                       ${t.priority==='urgent'&&!isDone ? '<span class="badge badge-red" style="font-size:9px;flex-shrink:0;">Urgent</span>' : ''}
@@ -7784,25 +7782,35 @@ function openTaskModal(projectId) {
   document.getElementById('task-priority').value = 'normal';
   if (document.getElementById('task-deadline')) document.getElementById('task-deadline').value = '';
 
-  // Populate assignees dynamically from db.teamMembers + USERS
-  const sel = document.getElementById('task-assigned');
-  if (sel) {
-    sel.innerHTML = '<option value="">— Non assigné —</option>';
-    const allTeam = (db.teamMembers && db.teamMembers.length > 0)
-      ? db.teamMembers.map(t => t.display_name || t.username).filter(Boolean)
-      : USERS.map(u => u.name);
-    // Co-admins and admins can assign to everyone including admin
-    const canAssignToAdmin = isAdmin || currentUser?.permissions?.is_co_admin;
-    const members = canAssignToAdmin ? allTeam : allTeam.filter(n => n !== (currentUser?.name || ''));
-    members.forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      sel.appendChild(opt);
-    });
-    sel.value = '';
-  }
+  // Assignation multiple : une pastille par personne, plusieurs choix possibles
+  window._s33NewTaskSel = [];
+  s33RenderTaskAssignChips();
   openModal('task-modal');
+}
+
+// Pastilles d'assignation du modal « Nouvelle tâche » (sélection multiple)
+function s33RenderTaskAssignChips() {
+  const wrap = document.getElementById('task-assigned-wrap');
+  if (!wrap) return;
+  const sel = window._s33NewTaskSel || (window._s33NewTaskSel = []);
+  const canAssignToAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.is_co_admin;
+  const team = s33TeamList().filter(m => canAssignToAdmin || m.name !== (currentUser?.name || ''));
+  if (!team.length) { wrap.innerHTML = '<span style="font-size:12px;color:var(--text-faint);">Aucun membre disponible</span>'; return; }
+  wrap.innerHTML = team.map(m => {
+    const on = sel.indexOf(m.name) !== -1;
+    const u = USERS.find(x => x.name === m.name);
+    const av = u ? avatarHTML(u.id, 24)
+      : '<span style="width:24px;height:24px;border-radius:50%;background:var(--surface3);color:var(--text-dim);font-size:9px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;">' + escHTML((m.name || '?').slice(0, 2).toUpperCase()) + '</span>';
+    return '<button type="button" onclick="s33ToggleNewTaskAssignee(\'' + escHTML(m.name).replace(/'/g, "\\'") + '\')" style="display:inline-flex;align-items:center;gap:7px;padding:4px 12px 4px 4px;border-radius:99px;cursor:pointer;font-family:inherit;border:2px solid ' + (on ? 'var(--gold)' : 'var(--border)') + ';background:' + (on ? 'rgba(201,169,110,.12)' : 'var(--surface)') + ';">' +
+      av + '<span style="font-size:12px;font-weight:600;color:' + (on ? 'var(--gold)' : 'var(--text-dim)') + ';">' + escHTML(m.name.split(' ')[0]) + '</span></button>';
+  }).join('');
+}
+
+function s33ToggleNewTaskAssignee(name) {
+  const sel = window._s33NewTaskSel || (window._s33NewTaskSel = []);
+  const i = sel.indexOf(name);
+  if (i === -1) sel.push(name); else sel.splice(i, 1);
+  s33RenderTaskAssignChips();
 }
 
 async function saveTask() {
@@ -7821,10 +7829,13 @@ async function saveTask() {
 
   // Générer un ID unique basé sur timestamp pour éviter les doublons
   const newId = Date.now();
-  const assignedTo = document.getElementById('task-assigned') ? document.getElementById('task-assigned').value : '';
+  const _team = s33TeamList();
+  const picked = (window._s33NewTaskSel || [])
+    .map(n => _team.find(m => m.name === n)).filter(Boolean)
+    .map(m => ({ id: m.id, name: m.name }));
   const deadline = document.getElementById('task-deadline') ? document.getElementById('task-deadline').value : '';
   const newTask = { id: newId, name, done: false, status: 'todo', priority };
-  if (assignedTo) newTask.assignedTo = assignedTo;
+  if (picked.length) setTaskAssignees(newTask, picked);
   if (deadline) newTask.deadline = deadline;
   freshTasks.push(newTask);
   if (p) p.tasks = freshTasks;
@@ -7834,14 +7845,15 @@ async function saveTask() {
   openProjectDetail(projId);
   toast('Tâche ajoutée');
 
-  // Notify the assigned member
-  if (assignedTo) {
-    const member = USERS.find(u => u.name.toLowerCase() === assignedTo.toLowerCase() || u.username.toLowerCase() === assignedTo.toLowerCase());
+  // Prévenir chaque personne assignée
+  const projName = db.projects.find(x => x.id === projId)?.name || '';
+  picked.forEach(a => {
+    const member = USERS.find(u => u.name.toLowerCase() === a.name.toLowerCase() || u.username.toLowerCase() === a.name.toLowerCase());
     if (member && member.id !== currentUser?.id) {
-      const projName = db.projects.find(x => x.id === projId)?.name || '';
       createNotification(member.id, '<span class="mi mi-sm">task_alt</span> Nouvelle tâche assignée', name + (projName ? ' — ' + projName : ''), 'task_assigned', 'taches', newId);
     }
-  }
+  });
+  window._s33NewTaskSel = [];
 }
 
 // ===== TASK STATUS HELPERS =====
@@ -15963,8 +15975,8 @@ function renderRapport() {
       // Heures via timelogs sur tâches
       (db.projects || []).forEach(p => {
         (p.tasks || []).forEach(t => {
-          const assigned = (t.assignedTo || '').split(' ')[0].toLowerCase() === name.toLowerCase()
-                        || (t.assignedTo || '').toLowerCase() === name.toLowerCase();
+          const assigned = taskIsFor(t, name)
+                        || taskAssigneeNames(t).some(n => n.split(' ')[0].toLowerCase() === name.toLowerCase());
           if (assigned) {
             if (isTaskDone(t)) done++;
             else if (t.status === 'inprogress') inprogress++;
@@ -16160,7 +16172,7 @@ function renderMesTaches() {
     autoBtn.style.background = showAuto ? '#1a73e8' : 'var(--surface)';
     autoBtn.style.color = showAuto ? '#fff' : 'var(--text-dim)';
   }
-  const hasAssignee = t => ((t.assignedTo || '').trim() !== '') || (t.assignedUserId != null && t.assignedUserId !== '');
+  const hasAssignee = t => taskHasAssignee(t);
 
   // Tâches administratives (Supabase, par utilisateur)
   const uid = String(currentUser.id);
@@ -16195,13 +16207,13 @@ function renderMesTaches() {
         if (!showAuto && !hasAssignee(t)) return false;
         // Admin avec filtre membre → montrer seulement les tâches de ce membre
         if ((isAdmin || currentUser?.permissions?.is_co_admin) && filterMember) {
-          return (t.assignedTo || '').toLowerCase() === filterMember.toLowerCase();
+          return taskIsFor(t, filterMember);
         }
         // Admin sans filtre → toutes les tâches (assignées, ou tout si Tâches auto ON)
         if (isAdmin || currentUser?.permissions?.is_co_admin) return true;
         // Staff → seulement ses tâches (+ les non assignées si Tâches auto ON)
         if (showAuto && !hasAssignee(t)) return true;
-        return String(t.assignedUserId || '') === String(currentUser.id) || (t.assignedTo||'').toLowerCase() === currentUser.name.toLowerCase();
+        return taskIsFor(t, currentUser.name, currentUser.id);
       })
     })).filter(p => p.tasks.length > 0);
 
@@ -16288,7 +16300,7 @@ function renderMesTaches() {
               <div style="display:flex;align-items:center;gap:12px;">
                 <div style="flex:1;min-width:0;">
                   <div style="font-size:13px;font-weight:${isDone?'400':'500'};color:var(--text);text-decoration:${isDone?'line-through':'none'};">${t.name}</div>
-                  ${t.assignedTo && isAdmin ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px;">${(()=>{const u=USERS.find(x=>x.name===t.assignedTo||x.username===t.assignedTo);return u?avatarHTML(u.id,18):'';})()}<span style="font-size:11px;color:var(--text-dim);">${t.assignedTo}</span></div>` : ''}
+                  ${taskHasAssignee(t) && (isAdmin || taskAssignees(t).length > 1) ? `<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">${taskAvatarsHTML(t, 18)}<span style="font-size:11px;color:var(--text-dim);">${escHTML(taskAssigneeNames(t).join(', '))}</span></div>` : ''}
                 </div>
                 ${taskDeadlineBadge(t.deadline, isDone)}
                 ${t.priority==='urgent' && !isDone ? '<span class="badge badge-red" style="flex-shrink:0;">Urgent</span>' : ''}
@@ -16448,6 +16460,81 @@ function s33IsEnCours(t) {
   return s === 'inprogress' || s === 'en cours' || s === 'review';
 }
 
+// ── Multi-assignation des tâches ────────────────────────────────────
+// Modèle : t.assignees = [{ id, name }]. Pour rester compatible avec tout
+// le code existant (calendrier, charge d'équipe, Samia, notifications),
+// t.assignedTo et t.assignedUserId gardent toujours la première personne.
+function taskAssignees(t) {
+  if (!t) return [];
+  if (Array.isArray(t.assignees)) {
+    const l = t.assignees.filter(a => a && a.name);
+    if (l.length) return l;
+  }
+  const n = (t.assignedTo || '').trim();
+  return n ? [{ id: t.assignedUserId != null ? t.assignedUserId : null, name: n }] : [];
+}
+
+function taskAssigneeNames(t) { return taskAssignees(t).map(a => a.name); }
+
+// Libellé lisible de toutes les personnes assignées (repli sur assigned_to)
+function taskWhoLabel(t) {
+  const l = taskAssigneeNames(t);
+  if (l.length) return l.join(', ');
+  return (t && t.assigned_to ? String(t.assigned_to) : '').trim();
+}
+function taskHasAssignee(t) { return taskAssignees(t).length > 0; }
+
+// Cette tâche concerne-t-elle cette personne (par nom ou par identifiant) ?
+function taskIsFor(t, name, userId) {
+  const l = taskAssignees(t);
+  if (!l.length) return false;
+  const n = (name || '').trim().toLowerCase();
+  const uid = (userId === undefined || userId === null || userId === '') ? null : String(userId);
+  return l.some(a => (n && (a.name || '').toLowerCase() === n) || (uid && a.id != null && String(a.id) === uid));
+}
+
+function setTaskAssignees(t, list) {
+  const clean = (list || []).filter(a => a && a.name)
+    .filter((a, i, arr) => arr.findIndex(b => b.name === a.name) === i);
+  if (clean.length > 1) t.assignees = clean; else delete t.assignees;
+  t.assignedTo = clean.length ? clean[0].name : '';
+  t.assignedUserId = clean.length ? clean[0].id : null;
+  return clean;
+}
+
+// Avatars empilés des personnes assignées (3 max, puis « +N »)
+function taskAvatarsHTML(t, size) {
+  const l = taskAssignees(t), sz = size || 24;
+  if (!l.length) return '';
+  const show = l.slice(0, 3);
+  const cell = (inner, i) => '<span style="' + (i ? 'margin-left:-8px;' : '') + 'display:inline-flex;line-height:0;border-radius:50%;box-shadow:0 0 0 2px var(--surface);">' + inner + '</span>';
+  let html = show.map((a, i) => {
+    const u = USERS.find(z => z.name === a.name || z.username === a.name);
+    const ini = escHTML((a.name || '?').slice(0, 2).toUpperCase());
+    return cell(u ? avatarHTML(u.id, sz)
+      : '<span style="width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;background:var(--surface3);color:var(--text-dim);font-size:' + Math.round(sz * 0.38) + 'px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;">' + ini + '</span>', i);
+  }).join('');
+  if (l.length > show.length) {
+    html += cell('<span style="width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;background:var(--surface3);color:var(--text-dim);font-size:' + Math.round(sz * 0.36) + 'px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;">+' + (l.length - show.length) + '</span>', 1);
+  }
+  return html;
+}
+
+// Suppression d'une tâche depuis n'importe quelle vue, avec son nom dans la confirmation
+function s33DeleteTaskAsk(projId, taskId, isAdminTask) {
+  let nom = '';
+  if (isAdminTask) {
+    const t = (db.userTasks || []).find(x => x.id === taskId);
+    nom = t ? t.name : '';
+  } else {
+    const pr = db.projects.find(x => x.id === projId);
+    const t = pr && (pr.tasks || []).find(x => x.id === taskId);
+    nom = t ? t.name : '';
+  }
+  if (!confirm('Supprimer la tâche' + (nom ? ' « ' + nom + ' »' : '') + ' ?\n\nCette action est définitive.')) return;
+  if (isAdminTask) deleteAdminTask(taskId); else deleteTask(projId, taskId);
+}
+
 function s33TeamList() {
   const tm = (db.teamMembers || []).filter(m => m.active !== false);
   if (tm.length) return tm.map(m => ({ id: m.user_id != null ? m.user_id : m.id, name: m.display_name || m.username || '' })).filter(x => x.name);
@@ -16594,19 +16681,81 @@ function s33OpenReassign(projId, taskId, ev) {
   const pop = document.createElement('div');
   pop.id = 's33-reassign-pop';
   pop.style.cssText = 'position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:6px;min-width:170px;';
-  pop.innerHTML = '<div style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);padding:6px 10px;">Assigner à</div>' +
-    s33TeamList().map(m =>
-      `<button onclick="s33ReassignTask(${projId},${taskId},'${escHTML(m.name).replace(/'/g, "\\'")}')" style="display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;background:none;border:none;border-radius:8px;font-family:inherit;font-size:12.5px;color:var(--text);cursor:pointer;text-align:left;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${(() => { const u = USERS.find(x => x.name === m.name); return u ? avatarHTML(u.id, 22) : '<span style="width:22px;height:22px;border-radius:50%;background:var(--surface3);display:inline-block;"></span>'; })()} ${escHTML(m.name)}</button>`
-    ).join('') +
-    `<button onclick="s33ReassignTask(${projId},${taskId},'')" style="display:block;width:100%;padding:7px 10px;background:none;border:none;border-top:1px solid var(--border);font-family:inherit;font-size:11.5px;color:var(--text-faint);cursor:pointer;text-align:left;">Personne (non assignée)</button>`;
+  const _p = db.projects.find(x => x.id === projId);
+  const _t = _p && (_p.tasks || []).find(t => t.id === taskId);
+  window._s33AssignSel = taskAssigneeNames(_t);
+  pop.innerHTML = s33AssignPopBody(projId, taskId);
   document.body.appendChild(pop);
   const r = ev.target.closest('button, span, div').getBoundingClientRect();
   const w = 190;
   pop.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left - 60)) + 'px';
   pop.style.top = Math.min(window.innerHeight - 60, r.bottom + 6) + 'px';
   setTimeout(() => document.addEventListener('click', function h(e) {
-    if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', h); }
+    if (!pop.contains(e.target)) { document.removeEventListener('click', h); s33CommitAssignees(projId, taskId); }
   }), 50);
+}
+
+// Corps du popover : une ligne cochable par personne
+function s33AssignPopBody(projId, taskId) {
+  const sel = window._s33AssignSel || [];
+  const line = m => {
+    const on = sel.indexOf(m.name) !== -1;
+    const u = USERS.find(x => x.name === m.name);
+    const av = u ? avatarHTML(u.id, 22) : '<span style="width:22px;height:22px;border-radius:50%;background:var(--surface3);display:inline-block;"></span>';
+    return '<button onclick="event.stopPropagation();s33ToggleAssignee(' + projId + ',' + taskId + ',\'' + escHTML(m.name).replace(/'/g, "\\'") + '\')" style="display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:none;border-radius:8px;font-family:inherit;font-size:12.5px;color:var(--text);cursor:pointer;text-align:left;background:' + (on ? 'rgba(201,169,110,.14)' : 'none') + ';">' +
+      av + '<span style="flex:1;">' + escHTML(m.name) + '</span>' +
+      '<span class="mi" style="font-size:17px;color:' + (on ? 'var(--gold)' : 'var(--border)') + ';">' + (on ? 'check_circle' : 'radio_button_unchecked') + '</span></button>';
+  };
+  return '<div style="font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);padding:6px 10px;">Assigner à <span style="font-weight:600;text-transform:none;letter-spacing:0;">— plusieurs possibles</span></div>' +
+    s33TeamList().map(line).join('') +
+    '<button onclick="event.stopPropagation();s33ClearAssignees(' + projId + ',' + taskId + ')" style="display:block;width:100%;padding:7px 10px;background:none;border:none;border-top:1px solid var(--border);font-family:inherit;font-size:11.5px;color:var(--text-faint);cursor:pointer;text-align:left;">Personne (non assignée)</button>' +
+    '<button onclick="event.stopPropagation();s33CommitAssignees(' + projId + ',' + taskId + ')" style="display:block;width:100%;margin-top:4px;padding:9px 10px;background:var(--gold);border:none;border-radius:8px;font-family:inherit;font-size:12.5px;font-weight:700;color:#fff;cursor:pointer;">Terminé</button>';
+}
+
+function s33ToggleAssignee(projId, taskId, name) {
+  const sel = window._s33AssignSel || (window._s33AssignSel = []);
+  const i = sel.indexOf(name);
+  if (i === -1) sel.push(name); else sel.splice(i, 1);
+  const pop = document.getElementById('s33-reassign-pop');
+  if (pop) pop.innerHTML = s33AssignPopBody(projId, taskId);
+}
+
+function s33ClearAssignees(projId, taskId) {
+  window._s33AssignSel = [];
+  s33CommitAssignees(projId, taskId);
+}
+
+// Enregistre la sélection et prévient les personnes nouvellement ajoutées
+async function s33CommitAssignees(projId, taskId) {
+  const pop = document.getElementById('s33-reassign-pop');
+  if (pop) pop.remove();
+  const names = (window._s33AssignSel || []).slice();
+  const team = s33TeamList();
+  const list = names.map(n => team.find(m => m.name === n)).filter(Boolean).map(m => ({ id: m.id, name: m.name }));
+  try {
+    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
+    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
+    const task = freshTasks.find(t => t.id === taskId);
+    if (!task) { toast('Tâche introuvable — actualisez'); return; }
+    const avant = taskAssigneeNames(task);
+    if (avant.length === list.length && avant.every(n => names.indexOf(n) !== -1)) return;
+    setTaskAssignees(task, list);
+    const p = db.projects.find(x => x.id === projId);
+    if (p) p.tasks = freshTasks;
+    await sbUpdate('projects', projId, { tasks: freshTasks });
+    renderMesTaches();
+    toast(!list.length ? 'Tâche désassignée'
+        : list.length === 1 ? 'Tâche assignée à ' + list[0].name
+        : 'Tâche assignée à ' + list.length + ' personnes');
+    if (typeof s33SendPush === 'function') {
+      list.filter(a => avant.indexOf(a.name) === -1).forEach(a => {
+        const uuid = (typeof s33ResolveAuthUuid === 'function') ? s33ResolveAuthUuid(a.id) : String(a.id);
+        if (uuid && uuid !== String(currentUser.id)) {
+          s33SendPush({ userIds: [uuid] }, 'Tâche assignée', (p ? p.name + ' — ' : '') + (task.name || ''), '/', 'task_' + projId + '_' + taskId);
+        }
+      });
+    }
+  } catch(e) { console.error('assign', e); toast('Assignation impossible — réessayez'); }
 }
 
 async function s33ReassignTask(projId, taskId, whoName) {
@@ -16639,7 +16788,7 @@ function s33RenderTachesJour(opts) {
   const isAdmin = opts.isAdmin;
   const canAssign = isAdmin || currentUser?.permissions?.is_co_admin;
   const showAuto = localStorage.getItem('s33_taches_show_auto') === 'true';
-  const hasAssignee = t => ((t.assignedTo || '').trim() !== '') || (t.assignedUserId != null && t.assignedUserId !== '');
+  const hasAssignee = t => taskHasAssignee(t);
   const savedDone = JSON.parse(localStorage.getItem('s33_done_tasks_' + currentUser.id) || '{}');
 
   // Collecte des tâches visibles (mêmes règles que la vue par projet)
@@ -16649,8 +16798,8 @@ function s33RenderTachesJour(opts) {
     if (opts.filterPid && p.id !== opts.filterPid) return;
     (p.tasks || []).forEach(t => {
       if (!showAuto && !hasAssignee(t)) return;
-      if (canAssign && opts.filterMember && (t.assignedTo || '').toLowerCase() !== opts.filterMember.toLowerCase()) return;
-      if (!canAssign && !(String(t.assignedUserId || '') === String(currentUser.id) || (t.assignedTo || '').toLowerCase() === currentUser.name.toLowerCase() || (showAuto && !hasAssignee(t)))) return;
+      if (canAssign && opts.filterMember && !taskIsFor(t, opts.filterMember)) return;
+      if (!canAssign && !(taskIsFor(t, currentUser.name, currentUser.id) || (showAuto && !hasAssignee(t)))) return;
       items.push({ t: t, p: p, admin: false, done: !!(savedDone[p.id + '_' + t.id] || isTaskDone(t)) });
     });
   });
@@ -16662,7 +16811,7 @@ function s33RenderTachesJour(opts) {
   }
 
   // Filtre avatar (vue jour)
-  if (window._tMember) items = items.filter(x => !x.admin && (x.t.assignedTo || '').toLowerCase() === window._tMember.toLowerCase());
+  if (window._tMember) items = items.filter(x => !x.admin && taskIsFor(x.t, window._tMember));
 
   const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
   const dayDiff = t => {
@@ -16710,15 +16859,19 @@ function s33RenderTachesJour(opts) {
     const isLate = !x.done && diff != null && diff < 0;
     const projChip = x.admin
       ? `<span style="font-size:10px;color:var(--text-faint);background:var(--surface3);padding:2px 8px;border-radius:99px;flex-shrink:0;">Administratif</span>`
-      : `<span onclick="event.stopPropagation();openProjectDetail(${x.p.id})" style="font-size:10px;color:var(--gold);background:rgba(201,169,110,.12);padding:2px 8px;border-radius:99px;cursor:pointer;flex-shrink:0;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHTML(x.p.name)}</span>`;
+      : `<span onclick="event.stopPropagation();openProjectDetail(${x.p.id})" title="${escHTML(x.p.name)}" style="font-size:10.5px;color:var(--gold);background:rgba(201,169,110,.12);padding:3px 9px;border-radius:10px;cursor:pointer;line-height:1.4;white-space:normal;overflow-wrap:anywhere;">${escHTML(x.p.name)}</span>`;
     const postpone = (!x.done && (isLate || diff === 0))
       ? `<span style="display:inline-flex;gap:4px;flex-shrink:0;">
           <button onclick="event.stopPropagation();s33PostponeTask(${x.admin ? 0 : x.p.id},${t.id},'demain',${x.admin})" style="padding:3px 9px;border-radius:99px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;">→ Demain</button>
           <button onclick="event.stopPropagation();s33PostponeTask(${x.admin ? 0 : x.p.id},${t.id},'lundi',${x.admin})" style="padding:3px 9px;border-radius:99px;border:1px solid var(--border);background:var(--surface2);color:var(--text-dim);font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;">→ Lun</button>
         </span>` : '';
-    const avatar = (!x.admin && canAssign)
-      ? `<span onclick="s33OpenReassign(${x.p.id},${t.id},event)" title="${escHTML(t.assignedTo || 'Assigner')}" style="cursor:pointer;flex-shrink:0;line-height:0;">${(() => { const u = USERS.find(z => z.name === t.assignedTo); return u ? avatarHTML(u.id, 26) : '<span style="width:26px;height:26px;border-radius:50%;border:1.5px dashed var(--border);display:inline-flex;align-items:center;justify-content:center;color:var(--text-faint);"><span class="mi" style="font-size:14px;">person_add</span></span>'; })()}</span>`
-      : '';
+    const qui = taskAssigneeNames(t).join(', ');
+    const avatar = x.admin ? '' : (canAssign
+      ? `<span onclick="s33OpenReassign(${x.p.id},${t.id},event)" title="${escHTML(qui || 'Assigner')}" style="cursor:pointer;flex-shrink:0;line-height:0;display:inline-flex;align-items:center;">${taskAvatarsHTML(t, 26) || '<span style="width:26px;height:26px;border-radius:50%;border:1.5px dashed var(--border);display:inline-flex;align-items:center;justify-content:center;color:var(--text-faint);"><span class="mi" style="font-size:14px;">person_add</span></span>'}</span>`
+      : (taskAssignees(t).length > 1
+          ? `<span title="${escHTML(qui)}" style="flex-shrink:0;line-height:0;display:inline-flex;align-items:center;">${taskAvatarsHTML(t, 22)}</span>`
+          : ''));
+    const del = `<button onclick="event.stopPropagation();s33DeleteTaskAsk(${x.admin ? 0 : x.p.id},${t.id},${x.admin})" title="Supprimer la tâche" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;border:none;background:var(--surface3);color:var(--text-faint);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;"><span class="mi" style="font-size:15px;">delete_outline</span></button>`;
     const encours = (!x.done && !x.admin)
       ? `<span onclick="event.stopPropagation();s33ToggleEncours(${x.p.id},${t.id})" style="flex-shrink:0;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:99px;cursor:pointer;${s33IsEnCours(t) ? 'background:rgba(59,130,246,.14);color:#2563eb;' : 'background:var(--surface3);color:var(--text-faint);'}">En cours</span>` : '';
     const check = x.admin
@@ -16728,12 +16881,13 @@ function s33RenderTachesJour(opts) {
       ${check}
       <div style="flex:1;min-width:140px;">
         <div style="font-size:13px;font-weight:600;color:var(--text);${x.done ? 'text-decoration:line-through;font-weight:400;' : ''}">${escHTML(t.name)}${t.priority === 'urgent' && !x.done ? ' <span class="badge badge-red" style="font-size:9px;vertical-align:2px;">Urgent</span>' : ''}</div>
-        <div style="display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap;">${projChip}${!x.admin && t.assignedTo && !canAssign ? '' : ''}</div>
+        <div style="display:flex;gap:6px;align-items:flex-start;margin-top:4px;flex-wrap:wrap;">${projChip}</div>
       </div>
       ${taskDeadlineBadge(t.deadline, x.done)}
       ${postpone}
       ${encours}
       ${avatar}
+      ${del}
     </div>`;
   };
 
@@ -18139,11 +18293,11 @@ function _collectCalEvents() {
   (db.projects || []).forEach(function(p) {
     (p.tasks || []).forEach(function(t) {
       if (!t.deadline || isTaskDone(t)) return;
-      const assignedTo = (t.assignedTo || t.assigned_to || '').trim();
+      const assignedTo = taskWhoLabel(t);
       if (!_calShowTemplateTasks && !assignedTo) return;
       if (!tasksByDate[t.deadline]) tasksByDate[t.deadline] = [];
       const al = assignedTo.toLowerCase();
-      const mine = !!(myName && (al === myName || al.startsWith(myName + ' ') || al.includes(' ' + myName)));
+      const mine = !!(myName && (al === myName || al.startsWith(myName + ' ') || al.includes(' ' + myName))) || taskIsFor(t, (currentUser || {}).name, (currentUser || {}).id);
       tasksByDate[t.deadline].push({ name: t.name, proj: p.name, mine: mine, assignedTo: assignedTo });
     });
   });
@@ -18529,11 +18683,11 @@ function _buildAgendaHTML() {
     if (calFilter.project && String(calFilter.project) !== String(p.id)) return;
     (p.tasks || []).forEach(function(t) {
       if (!t.deadline || isTaskDone(t)) return;
-      const assignedTo = (t.assignedTo || t.assigned_to || '').trim();
+      const assignedTo = taskWhoLabel(t);
       if (!_calShowTemplateTasks && !assignedTo) return;
       const d = new Date(t.deadline + 'T00:00:00');
       if (d < today || d > horizonEnd) return;
-      items.push({ kind: 'task', date: t.deadline, sortKey: t.deadline + 'T23:00', task: t, project: p, mine: myName && assignedTo.toLowerCase().indexOf(myName) !== -1 });
+      items.push({ kind: 'task', date: t.deadline, sortKey: t.deadline + 'T23:00', task: t, project: p, mine: (myName && assignedTo.toLowerCase().indexOf(myName) !== -1) || taskIsFor(t, (currentUser || {}).name, (currentUser || {}).id) });
     });
   });
 
@@ -18646,12 +18800,12 @@ function _old_renderCalendar() {
   (db.projects || []).forEach(p => {
     (p.tasks || []).forEach(t => {
       if (t.deadline && !isTaskDone(t)) {
-        const assignedTo = (t.assignedTo || t.assigned_to || '').trim();
+        const assignedTo = taskWhoLabel(t);
         // Si toggle OFF, ignorer les tâches sans assignation (auto-template)
         if (!_calShowTemplateTasks && !assignedTo) return;
         if (!tasksByDate[t.deadline]) tasksByDate[t.deadline] = [];
         const assignedToLower = assignedTo.toLowerCase();
-        const isMyTask = myName && (assignedToLower === myName || assignedToLower.startsWith(myName + ' ') || assignedToLower.includes(' ' + myName));
+        const isMyTask = !!(myName && (assignedToLower === myName || assignedToLower.startsWith(myName + ' ') || assignedToLower.includes(' ' + myName))) || taskIsFor(t, (currentUser || {}).name, (currentUser || {}).id);
         tasksByDate[t.deadline].push({ name: t.name, proj: p.name, mine: isMyTask, assignedTo });
       }
     });
@@ -21242,7 +21396,7 @@ function escHTML(str) {
         if (isTaskDone(t) || !t.deadline || t.deadline >= today) return;
         const assignee = (t.assignedTo || '').trim();
         if (!assignee && !t.assignedUserId) return;
-        const mine = assignee.toLowerCase() === userName.toLowerCase() || String(t.assignedUserId || '') === userId;
+        const mine = taskIsFor(t, userName, userId);
         if (isAdmin || mine) {
           reminders.push({
             icon: 'schedule', color: '#e74c3c',
@@ -25216,7 +25370,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
         if (isTaskDone(t) || !t.deadline) return;
         const assignee = (t.assignedTo || '').trim();
         if (!assignee && !t.assignedUserId) return;
-        const mine = assignee.toLowerCase() === userName || String(t.assignedUserId || '') === userId;
+        const mine = taskIsFor(t, userName, userId);
         if (!isAdmin && !mine) return;
         if (t.deadline < today) {
           if (isAdmin) {

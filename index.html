@@ -2994,57 +2994,6 @@
       document.head.appendChild(es);
     }
   } catch(e) {}
-  // ── Filet de sécurité : « Réparer » si l'app ne s'ouvre pas ──────────
-  // Purement additif : ne s'exécute QUE si l'application a déjà échoué à
-  // s'afficher. Sur un démarrage normal, la condition est fausse et rien
-  // ne se passe. Entièrement sous try/catch : même en erreur, ce code ne
-  // peut pas empêcher l'application de démarrer.
-  try {
-    var S33_MODES_PUBLICS = ['portal', 'sign', 'pvsign', 'ent', 'reunion', 'secours'];
-    var s33EstModePublic = function() {
-      var q = location.search || '';
-      for (var i = 0; i < S33_MODES_PUBLICS.length; i++) {
-        if (q.indexOf(S33_MODES_PUBLICS[i] + '=') !== -1) return true;
-      }
-      return false;
-    };
-    var _reparAffiche = false;
-    var s33Reparer = function() {
-      try {
-        var d = document.getElementById('s33-repar');
-        if (d) d.innerHTML = '<div style="font-size:15px;">Nettoyage en cours…</div>';
-      } catch(e) {}
-      var fini = function() { location.href = location.origin + location.pathname; };
-      var p2 = Promise.resolve();
-      p2 = p2.then(function() { return ('serviceWorker' in navigator) ? navigator.serviceWorker.getRegistrations().then(function(rs) { return Promise.all(rs.map(function(r) { return r.unregister(); })); }) : null; });
-      p2 = p2.then(function() { return ('caches' in window) ? caches.keys().then(function(ks) { return Promise.all(ks.map(function(k) { return caches.delete(k); })); }) : null; });
-      p2 = p2.then(function() { try { localStorage.clear(); } catch(e) {} try { sessionStorage.clear(); } catch(e) {} });
-      p2.then(fini).catch(fini);
-    };
-    window.s33Reparer = s33Reparer;
-
-    setTimeout(function() {
-      try {
-        if (_reparAffiche) return;
-        if (window.currentUser) return;              // quelqu'un est connecté
-        if (s33EstModePublic()) return;              // lien client, signature, secours
-        var auth = document.getElementById('auth-screen');
-        var visible = auth && getComputedStyle(auth).display !== 'none';
-        var pret = visible && auth.querySelector('button');
-        if (pret) return;                            // l'écran de connexion est là : rien à réparer
-        _reparAffiche = true;
-        var b = document.createElement('div');
-        b.id = 's33-repar';
-        b.setAttribute('style', 'position:fixed;left:0;right:0;bottom:0;z-index:99997;background:#1a1a1a;color:#fff;font-family:Arial,sans-serif;padding:18px 20px calc(18px + env(safe-area-inset-bottom));font-size:14px;line-height:1.55;');
-        b.innerHTML = '<div style="font-weight:bold;margin-bottom:6px;">L\'application met du temps à s\'ouvrir.</div>' +
-          '<div style="font-size:12.5px;color:#ccc;margin-bottom:14px;">Vérifiez votre connexion, puis appuyez sur Réparer.</div>' +
-          '<button onclick="s33Reparer()" style="background:#c9a96e;color:#111;border:none;padding:12px 24px;border-radius:99px;font-weight:bold;font-size:14px;font-family:inherit;cursor:pointer;">Réparer</button>' +
-          '<button onclick="var e=document.getElementById(\'s33-repar\');if(e)e.remove();" style="background:none;color:#999;border:none;padding:12px 16px;font-size:13px;font-family:inherit;cursor:pointer;">Fermer</button>';
-        (document.body || document.documentElement).appendChild(b);
-      } catch(e) {}
-    }, 20000);
-  } catch(e) {}
-
   // Certains Android (dont des Galaxy A) peignent mal le premier rendu :
   // le contenu statique reste invisible tant que rien ne force un repaint.
   // On force un repaint de l'écran de connexion juste après le chargement.
@@ -3136,48 +3085,22 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-11.1 — plus de rechargement force, bouton Reparer au demarrage';
+const S33_BUILD = '2026-09-10.3 — taches regroupees par projet dans Ma journee';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
 
-  // Recharge « propre ». On vérifie D'ABORD que la nouvelle version est
-  // réellement joignable, et on ne vide les caches qu'ensuite : sinon un réseau
-  // qui lâche entre les deux laisse l'appareil sans aucune copie de l'app.
-  // Quoi qu'il arrive, cette fonction se termine par un rechargement.
+  // Recharge « propre » : vide les caches de l'app puis recharge depuis le réseau
   window.s33ForceReload = async function() {
     try {
-      let joignable = false;
-      try {
-        const ctl = new AbortController();
-        const t = setTimeout(function() { ctl.abort(); }, 8000);
-        const r = await fetch('index.html?s33up=' + Date.now(), {
-          cache: 'no-store', signal: ctl.signal, headers: { 'Range': 'bytes=0-2047' }
-        });
-        clearTimeout(t);
-        joignable = !!r && (r.ok || r.status === 206);
-      } catch(_) { joignable = false; }
-
-      if (!joignable) {
-        // Réseau indisponible : on ne touche à rien et on recharge simplement.
-        // L'app repart sur sa copie locale au lieu de se retrouver sans rien.
-        try { toast('Mise à jour impossible — vérifiez votre connexion'); } catch(_) {}
-        location.reload();
-        return;
-      }
-
-      try {
-        const ks = await caches.keys();
-        await Promise.all(ks.map(k => caches.delete(k)));
-      } catch(_) {}
-      try {
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (reg) await reg.update();
-      } catch(_) {}
-      location.reload();
-    } catch(_) {
-      location.reload();
-    }
+      const ks = await caches.keys();
+      await Promise.all(ks.map(k => caches.delete(k)));
+    } catch(_) {}
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) await reg.update();
+    } catch(_) {}
+    location.reload();
   };
 
   // Détection de mise à jour : on télécharge le début du fichier en ligne
@@ -3196,11 +3119,21 @@ const S33_BUILD = '2026-09-11.1 — plus de rechargement force, bouton Reparer a
       const txt = await r.text();
       const m = txt.match(/S33_BUILD = '([^']+)'/);
       if (!m || m[1] === S33_BUILD) return;
-      // On n'impose JAMAIS le rechargement : purger le cache d'office obligeait
-      // l'appareil à retélécharger toute l'application avant d'afficher quoi que
-      // ce soit — insupportable sur une connexion mobile faible, et sans copie
-      // de secours si le téléchargement échouait. C'est la personne qui décide,
-      // via la barre ci-dessous.
+      // Sur l'écran de connexion, on met à jour tout seul : la barre
+      // « Recharger » peut être invisible sur les appareils à bug
+      // d'affichage. Garde anti-boucle : 2 essais max par version.
+      try {
+        if (!window.currentUser) {
+          const k = 's33_auto_up_' + m[1];
+          const tries = parseInt(sessionStorage.getItem(k) || '0', 10);
+          if (tries < 2) {
+            sessionStorage.setItem(k, String(tries + 1));
+            _notified = true;
+            s33ForceReload();
+            return;
+          }
+        }
+      } catch(_) {}
       _notified = true;
       const bar = document.createElement('div');
       bar.id = 's33-update-bar';
@@ -5942,35 +5875,6 @@ async function logActivity(actionType, description, entityType, entityId, entity
 }
 
 async function sbGet(table, query='') { return sbFetch(table, 'GET', null, query); }
-
-// L'API Supabase plafonne le nombre de lignes renvoyees en une seule reponse
-// (reglage « Max rows »). Une table qui depasse ce plafond est donc chargee
-// incomplete, en silence : c'est ce qui faisait disparaitre les documents les
-// plus recents des dossiers de projet. On pagine jusqu'a tout avoir.
-// On avance de la taille REELLEMENT recue, pas de celle demandee : le helper
-// reste donc correct quelle que soit la valeur du plafond, ou s'il n'y en a pas.
-// La requete doit contenir un tri stable (ex. &order=id) pour que la pagination
-// ne saute ni ne repete de lignes.
-async function sbGetAll(table, query = '', pageSize = 1000) {
-  const sep = query.indexOf('?') === -1 ? '?' : '&';
-  const out = [];
-  let offset = 0;
-  for (let garde = 0; garde < 200; garde++) {
-    let page;
-    try {
-      page = await sbFetch(table, 'GET', null, query + sep + 'limit=' + pageSize + '&offset=' + offset, true);
-    } catch(e) {
-      // Une page en erreur apres des pages reussies donnerait une liste
-      // tronquee sans le dire : on remonte l'erreur plutot que de mentir.
-      if (out.length) throw e;
-      return [];
-    }
-    if (!Array.isArray(page) || page.length === 0) break;
-    out.push.apply(out, page);
-    offset += page.length;
-  }
-  return out;
-}
 async function sbInsert(table, body) { return sbFetch(table, 'POST', body, '', false); }
 async function sbInsertOrThrow(table, body) { return sbFetch(table, 'POST', body, '', true); }
 
@@ -6219,7 +6123,7 @@ async function loadDB() {
       sbGet('devis', '?deleted_at=is.null&order=id'),
       sbGet('charges', '?order=id'),
       sbGet('entrees', '?order=id'),
-      sbGetAll('media', '?deleted_at=is.null&select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year,client_visible&order=id'),
+      sbGet('media', '?deleted_at=is.null&select=id,name,project_id,type,is_pdf,is_project_doc,is_general,added_at,added_by,mime,url,file_path,folder,category,doc_type,size,year,client_visible&order=id'),
       sbGet('app_config'),
       sbGet('user_tasks', '?order=created_at'),
       sbGet('daily_reports', '?order=submitted_at.desc'),

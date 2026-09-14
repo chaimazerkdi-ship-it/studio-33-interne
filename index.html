@@ -3085,7 +3085,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-10.3 — taches regroupees par projet dans Ma journee';
+const S33_BUILD = '2026-09-14.1 — sous-dossiers Administratif enregistres en base';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5875,6 +5875,28 @@ async function logActivity(actionType, description, entityType, entityId, entity
 }
 
 async function sbGet(table, query='') { return sbFetch(table, 'GET', null, query); }
+
+// ── Réglages partagés, stockés en base (table app_config clé/valeur) ──
+// À utiliser pour toute donnée qui doit être la même pour toute l'équipe.
+// Le navigateur ne doit servir qu'aux préférences d'affichage personnelles.
+async function s33ConfigGetJSON(key) {
+  try {
+    const rows = await sbGet('app_config', '?key=eq.' + encodeURIComponent(key));
+    if (rows && rows[0] && rows[0].value) return JSON.parse(rows[0].value);
+  } catch(e) { console.warn('[config] lecture ' + key, e); }
+  return null;
+}
+
+async function s33ConfigSetJSON(key, obj) {
+  const val = JSON.stringify(obj);
+  const rows = await sbGet('app_config', '?key=eq.' + encodeURIComponent(key));
+  if (rows && rows.length) {
+    await sbFetch('app_config', 'PATCH', { value: val }, '?key=eq.' + encodeURIComponent(key), true);
+  } else {
+    await sbInsertOrThrow('app_config', { key: key, value: val });
+  }
+  return true;
+}
 async function sbInsert(table, body) { return sbFetch(table, 'POST', body, '', false); }
 async function sbInsertOrThrow(table, body) { return sbFetch(table, 'POST', body, '', true); }
 
@@ -25623,35 +25645,82 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
   // ── STATE ───────────────────────────────────────────────────
   let selectedCategory = 'all';
   let selectedSubfolder = 'all'; // null/'all' = all subtypes in this category
-  // Custom user-defined subfolders (persisted per category in localStorage)
-  function loadCustomSubs() {
-    try { return JSON.parse(localStorage.getItem('s33_admin_subs') || '{}') || {}; }
-    catch(e) { return {}; }
+  // Sous-dossiers personnalisés : stockés EN BASE (app_config), partagés par
+  // toute l'équipe. Ils étaient auparavant dans le navigateur, donc visibles
+  // seulement sur l'appareil qui les avait créés — et effacés par un vidage
+  // du cache. Reprise automatique de l'ancien contenu local au premier passage.
+  const SUBS_KEY = 'admin_subfolders';
+  let _customSubs = {};
+
+  async function loadCustomSubsFromDb() {
+    let fromDb = null;
+    try { fromDb = await s33ConfigGetJSON(SUBS_KEY); } catch(e) {}
+    if (fromDb && typeof fromDb === 'object') { _customSubs = fromDb; }
+    // Première fois : on remonte ce qui traînait dans ce navigateur vers la base
+    let local = null;
+    try { local = JSON.parse(localStorage.getItem('s33_admin_subs') || 'null'); } catch(e) {}
+    if (local && typeof local === 'object' && Object.keys(local).length) {
+      let ajout = false;
+      Object.keys(local).forEach(cat => {
+        const dejaLa = (_customSubs[cat] || []).map(x => String(x).toLowerCase());
+        (local[cat] || []).forEach(nom => {
+          if (nom && dejaLa.indexOf(String(nom).toLowerCase()) === -1) {
+            if (!_customSubs[cat]) _customSubs[cat] = [];
+            _customSubs[cat].push(nom); dejaLa.push(String(nom).toLowerCase()); ajout = true;
+          }
+        });
+      });
+      if (ajout) {
+        try { await s33ConfigSetJSON(SUBS_KEY, _customSubs); } catch(e) { console.warn('[admin] remontée sous-dossiers', e); }
+      }
+      try { localStorage.removeItem('s33_admin_subs'); } catch(e) {}
+    }
   }
-  function saveCustomSubs(subs) {
-    try { localStorage.setItem('s33_admin_subs', JSON.stringify(subs)); } catch(e) {}
-  }
+
+  function loadCustomSubs() { return _customSubs || {}; }
+
   function getSubsFor(catKey) {
     const base = (SUBTYPES[catKey] || []).slice();
+    // Source de vérité : les sous-dossiers réellement présents dans les
+    // documents. Un dossier qui contient au moins un document s'affiche
+    // partout, sur tous les appareils, sans dépendre du navigateur.
+    const desDocs = [];
+    (db.admin_docs || []).forEach(d => {
+      if (d && !d.deleted_at && d.category === catKey && d.subtype && String(d.subtype).trim()) {
+        desDocs.push(String(d.subtype).trim());
+      }
+    });
     const custom = (loadCustomSubs()[catKey] || []);
-    // Merge + dedupe (base order first, then custom)
     const seen = {};
     const out = [];
-    base.concat(custom).forEach(s => { if (!seen[s.toLowerCase()]) { seen[s.toLowerCase()] = 1; out.push(s); } });
+    base.concat(desDocs).concat(custom).forEach(s => {
+      const k = String(s).toLowerCase();
+      if (!seen[k]) { seen[k] = 1; out.push(s); }
+    });
     return out;
   }
-  window.s33AddAdminSubfolder = function(catKey) {
+
+  window.s33AddAdminSubfolder = async function(catKey) {
     const v = prompt('Nom du nouveau sous-dossier :');
     if (!v || !v.trim()) return;
-    const all = loadCustomSubs();
-    if (!all[catKey]) all[catKey] = [];
-    // Prevent duplicate (base or custom)
-    const existing = getSubsFor(catKey).map(x => x.toLowerCase());
-    if (existing.includes(v.trim().toLowerCase())) { alert('Ce sous-dossier existe déjà.'); return; }
-    all[catKey].push(v.trim());
-    saveCustomSubs(all);
-    selectedSubfolder = v.trim();
+    const nom = v.trim();
+    const existing = getSubsFor(catKey).map(x => String(x).toLowerCase());
+    if (existing.indexOf(nom.toLowerCase()) !== -1) { alert('Ce sous-dossier existe déjà.'); return; }
+    const avant = JSON.parse(JSON.stringify(_customSubs || {}));
+    if (!_customSubs[catKey]) _customSubs[catKey] = [];
+    _customSubs[catKey].push(nom);
+    selectedSubfolder = nom;
     renderAdministratif();
+    try {
+      await s33ConfigSetJSON(SUBS_KEY, _customSubs);
+      if (typeof toast === 'function') toast('Sous-dossier « ' + nom + ' » créé — visible par toute l\'équipe');
+    } catch(e) {
+      console.error('[admin] création sous-dossier', e);
+      _customSubs = avant;
+      selectedSubfolder = 'all';
+      renderAdministratif();
+      if (typeof toast === 'function') toast('Sous-dossier non enregistré — vérifiez la connexion et réessayez');
+    }
   };
 
   // ── HELPERS ─────────────────────────────────────────────────
@@ -25732,6 +25801,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
         + '<div id="admin-doc-empty" style="display:none;" class="empty-state"><div class="icon"><span class="mi" style="font-size:34px;">folder</span></div><p>Aucun document dans cette catégorie. Cliquez sur <strong>+ Ajouter document</strong>.</p></div>';
     }
     await loadAdminDocs();
+    await loadCustomSubsFromDb();
     renderAdministratif();
   };
 

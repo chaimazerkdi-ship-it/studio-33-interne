@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Note d'honoraires — Studio 33</title>
+<style>
+  :root { --gold:#F97316; --ink:#1a1a1a; --dim:#666; --faint:#999; --line:#e5e5e5; --bg:#faf8f5; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Inter,system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); font-size:14px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:18px 16px 90px; }
+  h1 { font-size:19px; margin:0 0 2px; }
+  .sub { font-size:12px; color:var(--faint); margin-bottom:18px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin:0 0 12px; }
+  .grid { display:flex; flex-wrap:wrap; gap:12px; }
+  .f { display:flex; flex-direction:column; flex:1; min-width:170px; }
+  .f.full { flex:100%; min-width:100%; }
+  label { font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); margin-bottom:5px; }
+  input, select, textarea { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); font-family:inherit; font-size:13px; }
+  textarea { min-height:70px; resize:vertical; }
+  .hint { font-size:11px; color:var(--faint); margin-top:5px; line-height:1.5; }
+  .bar { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line); padding:12px 16px calc(12px + env(safe-area-inset-bottom)); display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; z-index:10; }
+  .btn { padding:10px 20px; border-radius:99px; font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink); }
+  .btn-gold { background:var(--gold); border-color:var(--gold); color:#fff; }
+  .warn { background:#fff4ed; border:1px solid #fbd0b0; color:#9a4a12; border-radius:8px; padding:10px 12px; font-size:12px; line-height:1.55; margin-top:10px; }
+
+  /* ── Le document ── */
+  .doc { background:#fff; border:1px solid var(--line); border-radius:12px; padding:34px 32px; }
+  .doc-head { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; border-bottom:2px solid var(--ink); padding-bottom:14px; }
+  .doc-logo { font-size:22px; font-weight:800; letter-spacing:.02em; }
+  .doc-logo span { color:var(--gold); }
+  .doc-coord { font-size:10.5px; color:var(--dim); line-height:1.6; text-align:right; }
+  .doc-titre { text-align:center; margin:22px 0 4px; font-size:17px; font-weight:800; letter-spacing:.06em; }
+  .doc-num { text-align:center; font-size:12.5px; color:var(--dim); margin-bottom:22px; }
+  .parties { display:flex; gap:18px; flex-wrap:wrap; margin-bottom:18px; }
+  .partie { flex:1; min-width:210px; border:1px solid var(--line); border-radius:8px; padding:11px 13px; }
+  .partie h3 { font-size:9.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--faint); margin:0 0 6px; }
+  .partie div { font-size:12px; line-height:1.6; }
+  .refs { border:1px solid var(--line); border-radius:8px; padding:11px 13px; margin-bottom:18px; font-size:12px; line-height:1.8; }
+  .refs b { font-weight:700; }
+  table.calc { width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:6px; }
+  table.calc td { padding:9px 10px; border-bottom:1px solid var(--line); }
+  table.calc td.n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  table.calc tr.sep td { border-top:2px solid var(--ink); }
+  table.calc tr.net td { font-weight:800; font-size:14px; background:#faf8f5; }
+  table.calc tr.ded td { color:#9a4a12; }
+  .lettres { font-size:12px; font-style:italic; color:var(--dim); margin:12px 0 18px; line-height:1.6; }
+  .obs { font-size:12px; line-height:1.6; margin-bottom:18px; white-space:pre-wrap; }
+  .signature { display:flex; justify-content:flex-end; margin-top:26px; }
+  .signature div { width:210px; text-align:center; font-size:11.5px; color:var(--dim); }
+  .signature .box { height:78px; border:1px dashed var(--line); border-radius:8px; margin-top:6px; }
+  .mentions { margin-top:26px; padding-top:12px; border-top:1px solid var(--line); font-size:9.5px; color:var(--faint); line-height:1.7; text-align:center; }
+  @media print {
+    body { background:#fff; }
+    .wrap { padding:0; max-width:none; }
+    .card, .bar, h1, .sub { display:none !important; }
+    .doc { border:none; border-radius:0; padding:0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Note d'honoraires</h1>
+  <div class="sub">Marchés publics — une note par décompte de l'entreprise, pour le paiement du suivi</div>
+
+  <div class="card">
+    <h2>Le marché</h2>
+    <div class="grid">
+      <div class="f"><label>N° de la note</label><input id="f_num" placeholder="NH-2026-001"></div>
+      <div class="f"><label>Date</label><input type="date" id="f_date"></div>
+      <div class="f"><label>N° du marché</label><input id="f_marche" placeholder="ex : 12/2026"></div>
+      <div class="f"><label>N° du décompte</label><input id="f_decompte" placeholder="1"></div>
+    </div>
+    <div class="grid" style="margin-top:12px;">
+      <div class="f full"><label>Projet / objet des travaux</label><input id="f_projet"></div>
+    </div>
+    <div class="grid" style="margin-top:12px;">
+      <div class="f"><label>Maître d'ouvrage</label><input id="f_moa"></div>
+      <div class="f"><label>Lieu</label><input id="f_lieu"></div>
+      <div class="f"><label>N° dossier Rokhass</label><input id="f_rokhass"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Calcul des honoraires</h2>
+    <div class="grid">
+      <div class="f"><label>Montant des travaux — décompte cumulé (DH)</label><input type="number" id="f_travaux" step="0.01" placeholder="1000000"></div>
+      <div class="f"><label>Taux d'honoraires (%)</label><input type="number" id="f_taux" step="0.01" value="4"></div>
+      <div class="f">
+        <label>Quote-part de la phase (%)</label>
+        <select id="f_quotepart">
+          <option value="85">85 % — Direction et suivi des travaux</option>
+          <option value="90">90 % — Réception provisoire</option>
+          <option value="100">100 % — Réception définitive</option>
+          <option value="autre">Autre…</option>
+        </select>
+      </div>
+      <div class="f" id="wrap_quotepart_libre" style="display:none;"><label>Quote-part libre (%)</label><input type="number" id="f_quotepart_libre" step="0.01"></div>
+    </div>
+    <div class="grid" style="margin-top:12px;">
+      <div class="f"><label>Honoraires déjà demandés (DH HT)</label><input type="number" id="f_deja" step="0.01" value="0"></div>
+      <div class="f">
+        <label>TVA</label>
+        <select id="f_tva"><option value="20">20 %</option><option value="0">0 % — exonérée</option></select>
+      </div>
+    </div>
+    <div id="rappel_precedentes" class="warn" style="display:none;"></div>
+    <div class="hint">Le montant des travaux est celui du décompte <b>cumulé</b>. Les honoraires déjà demandés sur les décomptes précédents sont déduits automatiquement, pour ne réclamer que le solde.</div>
+  </div>
+
+  <div class="card">
+    <h2>Observations</h2>
+    <div class="grid"><div class="f full"><textarea id="f_obs" placeholder="Remarques éventuelles à porter sur la note…"></textarea></div></div>
+  </div>
+
+  <div id="apercu"></div>
+</div>
+
+<div class="bar">
+  <button class="btn" onclick="printDoc()">Imprimer / PDF</button>
+  <button class="btn btn-gold" id="btn-save" onclick="saveDoc()" style="display:none;">Enregistrer dans le projet</button>
+</div>
+
+<script>
+var IS_EMBED = false;
+try { IS_EMBED = window.parent && window.parent !== window; } catch(_) {}
+
+var CABINET = {
+  nom: 'Studio 33 Architects',
+  adresse: '01 Imm paternelle, Rue de Madrid, Agadir',
+  contact: '05 28 84 33 30 · Studio33architecture@gmail.com',
+  ice: '003100569000002', if: '52549060', rc: '52055', tp: '48303312',
+  iban: '0220100000080030'
+};
+
+var _precedentes = [];
+
+function v(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function n(id) { return parseFloat(v(id)) || 0; }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+  });
+}
+function fmt(x) {
+  var neg = x < 0; x = Math.abs(x);
+  var s = x.toFixed(2).replace('.', ',');
+  var p = s.split(',');
+  p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return (neg ? '- ' : '') + p.join(',');
+}
+function fmtDate(d) {
+  if (!d) return '';
+  var p = String(d).split('-');
+  if (p.length !== 3) return d;
+  var mois = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  return parseInt(p[2], 10) + ' ' + mois[parseInt(p[1], 10) - 1] + ' ' + p[0];
+}
+
+/* ── Montant en toutes lettres (français) ─────────────────── */
+var U = ['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+var D = ['','','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+function sousCent(x) {
+  if (x < 20) return U[x];
+  var diz = Math.floor(x / 10), un = x % 10;
+  if (diz === 7 || diz === 9) un += 10;
+  var mot = D[diz];
+  if (diz === 8 && un === 0) return mot + 's';
+  if (un === 0) return mot;
+  if (un === 1 && diz !== 8 && diz !== 9) return mot + ' et un';
+  if (un === 11 && diz === 7) return mot + ' et onze';
+  return mot + '-' + U[un];
+}
+function sousMille(x) {
+  if (x < 100) return sousCent(x);
+  var c = Math.floor(x / 100), r = x % 100;
+  var mot = (c > 1 ? U[c] + ' cent' : 'cent');
+  if (c > 1 && r === 0) mot += 's';
+  return r === 0 ? mot : mot + ' ' + sousCent(r);
+}
+function entierLettres(x) {
+  x = Math.floor(Math.abs(x));
+  if (x === 0) return 'zéro';
+  var out = [];
+  var mi = Math.floor(x / 1000000), mil = Math.floor((x % 1000000) / 1000), r = x % 1000;
+  if (mi) out.push(mi === 1 ? 'un million' : sousMille(mi) + ' millions');
+  if (mil) out.push(mil === 1 ? 'mille' : sousMille(mil) + ' mille');
+  if (r) out.push(sousMille(r));
+  return out.join(' ');
+}
+function enLettres(x) {
+  var e = Math.floor(Math.abs(x));
+  var cts = Math.round((Math.abs(x) - e) * 100);
+  var s = entierLettres(e) + ' dirham' + (e > 1 ? 's' : '');
+  if (cts > 0) s += ' et ' + entierLettres(cts) + ' centime' + (cts > 1 ? 's' : '');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/* ── Calcul ───────────────────────────────────────────────── */
+function quotepart() {
+  var q = v('f_quotepart');
+  return q === 'autre' ? (parseFloat(v('f_quotepart_libre')) || 0) : (parseFloat(q) || 0);
+}
+function calcul() {
+  var travaux = n('f_travaux');
+  var taux = n('f_taux');
+  var qp = quotepart();
+  var deja = n('f_deja');
+  var tvaTaux = parseFloat(v('f_tva'));
+  if (isNaN(tvaTaux)) tvaTaux = 20;
+  var honoTotal = travaux * taux / 100;
+  var acquis = honoTotal * qp / 100;
+  var netHT = acquis - deja;
+  var tva = netHT * tvaTaux / 100;
+  return { travaux: travaux, taux: taux, qp: qp, deja: deja, tvaTaux: tvaTaux,
+           honoTotal: honoTotal, acquis: acquis, netHT: netHT, tva: tva, netTTC: netHT + tva };
+}
+
+/* ── Aperçu ───────────────────────────────────────────────── */
+function buildDoc() {
+  var c = calcul();
+  var ligneDed = c.deja > 0
+    ? '<tr class="ded"><td>À déduire — honoraires déjà demandés sur les décomptes précédents</td><td class="n">- ' + fmt(c.deja) + '</td></tr>'
+    : '';
+  var ligneTva = c.tvaTaux > 0
+    ? '<tr><td>TVA ' + fmt(c.tvaTaux).replace(',00','') + ' %</td><td class="n">' + fmt(c.tva) + '</td></tr>'
+    : '<tr><td>TVA non applicable — opération exonérée</td><td class="n">—</td></tr>';
+
+  return ''
+  + '<div class="doc" id="doc">'
+  +   '<div class="doc-head">'
+  +     '<div><div class="doc-logo">STUDIO <span>33</span></div>'
+  +       '<div style="font-size:10.5px;color:#666;margin-top:3px;">Architectes · Agadir</div></div>'
+  +     '<div class="doc-coord">' + esc(CABINET.nom) + '<br>' + esc(CABINET.adresse) + '<br>' + esc(CABINET.contact) + '</div>'
+  +   '</div>'
+  +   '<div class="doc-titre">NOTE D\'HONORAIRES</div>'
+  +   '<div class="doc-num">N° ' + esc(v('f_num') || '—') + ' · ' + esc(fmtDate(v('f_date'))) + '</div>'
+  +   '<div class="parties">'
+  +     '<div class="partie"><h3>Émetteur</h3><div><b>' + esc(CABINET.nom) + '</b><br>' + esc(CABINET.adresse) + '<br>ICE : ' + esc(CABINET.ice) + '</div></div>'
+  +     '<div class="partie"><h3>Maître d\'ouvrage</h3><div><b>' + esc(v('f_moa') || '—') + '</b>' + (v('f_lieu') ? '<br>' + esc(v('f_lieu')) : '') + '</div></div>'
+  +   '</div>'
+  +   '<div class="refs">'
+  +     '<b>Projet :</b> ' + esc(v('f_projet') || '—') + '<br>'
+  +     (v('f_marche') ? '<b>Marché n° :</b> ' + esc(v('f_marche')) + '<br>' : '')
+  +     '<b>Décompte n° :</b> ' + esc(v('f_decompte') || '—')
+  +     (v('f_rokhass') ? '<br><b>Dossier Rokhass n° :</b> ' + esc(v('f_rokhass')) : '')
+  +   '</div>'
+  +   '<table class="calc">'
+  +     '<tr><td>Montant des travaux — décompte n° ' + esc(v('f_decompte') || '—') + ' (cumulé)</td><td class="n">' + fmt(c.travaux) + ' DH</td></tr>'
+  +     '<tr><td>Honoraires au taux de ' + fmt(c.taux).replace(',00','') + ' % du montant des travaux</td><td class="n">' + fmt(c.honoTotal) + '</td></tr>'
+  +     '<tr><td>Quote-part de la phase — ' + fmt(c.qp).replace(',00','') + ' %</td><td class="n">' + fmt(c.acquis) + '</td></tr>'
+  +     ligneDed
+  +     '<tr class="sep"><td><b>NET À PAYER HT</b></td><td class="n"><b>' + fmt(c.netHT) + '</b></td></tr>'
+  +     ligneTva
+  +     '<tr class="net"><td>NET À PAYER TTC</td><td class="n">' + fmt(c.netTTC) + ' DH</td></tr>'
+  +   '</table>'
+  +   '<div class="lettres">Arrêtée la présente note à la somme de : <b>' + esc(enLettres(c.netTTC)) + '</b>.</div>'
+  +   (v('f_obs') ? '<div class="obs">' + esc(v('f_obs')) + '</div>' : '')
+  +   '<div class="signature"><div>Le ' + esc(fmtDate(v('f_date'))) + '<br>Cachet et signature<div class="box"></div></div></div>'
+  +   '<div class="mentions">'
+  +     esc(CABINET.nom) + ' — ' + esc(CABINET.adresse) + '<br>'
+  +     esc(CABINET.contact) + '<br>'
+  +     'ICE : ' + esc(CABINET.ice) + ' · IF : ' + esc(CABINET.if) + ' · RC : ' + esc(CABINET.rc) + ' · TP : ' + esc(CABINET.tp) + '<br>'
+  +     'Règlement par virement bancaire — IBAN : ' + esc(CABINET.iban)
+  +   '</div>'
+  + '</div>';
+}
+
+function render() {
+  document.getElementById('wrap_quotepart_libre').style.display = (v('f_quotepart') === 'autre') ? 'flex' : 'none';
+  document.getElementById('apercu').innerHTML = buildDoc();
+}
+
+/* ── Enregistrement / impression ──────────────────────────── */
+function collect() {
+  var o = {};
+  ['f_num','f_date','f_marche','f_decompte','f_projet','f_moa','f_lieu','f_rokhass',
+   'f_travaux','f_taux','f_quotepart','f_quotepart_libre','f_deja','f_tva','f_obs'].forEach(function(id) {
+    o[id] = v(id);
+  });
+  return o;
+}
+
+function buildPrintHTML() {
+  var st = document.querySelector('style');
+  return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Note d\'honoraires</title>'
+    + '<style>' + (st ? st.textContent : '') + '</style></head><body><div class="wrap">'
+    + buildDoc() + '</div></body></html>';
+}
+
+function printDoc() {
+  if (IS_EMBED) {
+    try { window.parent.postMessage({ type: 'nh:print', html: buildPrintHTML() }, '*'); return; } catch(_) {}
+  }
+  window.print();
+}
+
+function saveDoc() {
+  var c = calcul();
+  window.parent.postMessage({
+    type: 'nh:save',
+    data: {
+      title: 'Note d\'honoraires' + (v('f_decompte') ? ' — décompte n° ' + v('f_decompte') : '') + (v('f_projet') ? ' — ' + v('f_projet') : ''),
+      form_data: collect(),
+      html_content: buildDoc(),
+      metadata: { num: v('f_num'), decompte: v('f_decompte'), travaux: c.travaux,
+                  taux: c.taux, quotepart: c.qp, net_ht: c.netHT, net_ttc: c.netTTC }
+    }
+  }, '*');
+}
+
+/* ── Dialogue avec l'application ──────────────────────────── */
+window.addEventListener('message', function(e) {
+  if (!e.data || typeof e.data !== 'object') return;
+  if (e.data.type !== 'nh:preload' && e.data.type !== 'gen:preload') return;
+  var d = e.data.data || {};
+
+  if (d.f_num || d.f_travaux) {
+    // Réouverture d'une note enregistrée
+    Object.keys(d).forEach(function(k) {
+      var el = document.getElementById(k);
+      if (el && d[k] != null) el.value = d[k];
+    });
+  } else {
+    // Pré-remplissage depuis le projet
+    if (d.proj_nom) document.getElementById('f_projet').value = d.proj_nom;
+    if (d.proj_moa) document.getElementById('f_moa').value = d.proj_moa;
+    if (d.proj_lieu) document.getElementById('f_lieu').value = d.proj_lieu;
+    if (d.proj_rokhass) document.getElementById('f_rokhass').value = d.proj_rokhass;
+    if (d.nh_num) document.getElementById('f_num').value = d.nh_num;
+    if (d.nh_decompte) document.getElementById('f_decompte').value = d.nh_decompte;
+    if (d.nh_taux != null) document.getElementById('f_taux').value = d.nh_taux;
+    if (d.nh_tva != null) document.getElementById('f_tva').value = String(d.nh_tva);
+    if (d.nh_quotepart != null) {
+      var sel = document.getElementById('f_quotepart');
+      var q = String(d.nh_quotepart);
+      var connu = Array.prototype.some.call(sel.options, function(o) { return o.value === q; });
+      if (connu) { sel.value = q; }
+      else { sel.value = 'autre'; document.getElementById('f_quotepart_libre').value = q; }
+    }
+    if (d.nh_deja != null) document.getElementById('f_deja').value = d.nh_deja;
+
+    _precedentes = Array.isArray(d.nh_precedentes) ? d.nh_precedentes : [];
+    if (_precedentes.length) {
+      var box = document.getElementById('rappel_precedentes');
+      box.style.display = 'block';
+      box.innerHTML = '<b>' + _precedentes.length + ' note' + (_precedentes.length > 1 ? 's' : '')
+        + ' déjà déposée' + (_precedentes.length > 1 ? 's' : '') + ' sur ce projet :</b><br>'
+        + _precedentes.map(function(p) {
+            return '· ' + (p.num ? 'n° ' + esc(p.num) : 'note') + (p.decompte ? ' — décompte ' + esc(p.decompte) : '')
+                 + ' : ' + fmt(parseFloat(p.ht) || 0) + ' DH HT';
+          }).join('<br>')
+        + '<br>Total déjà demandé et déduit ci-dessus : <b>' + fmt(d.nh_deja || 0) + ' DH HT</b>.';
+    }
+  }
+  render();
+});
+
+/* ── Démarrage ────────────────────────────────────────────── */
+document.getElementById('f_date').value = new Date().toISOString().slice(0, 10);
+['f_num','f_date','f_marche','f_decompte','f_projet','f_moa','f_lieu','f_rokhass',
+ 'f_travaux','f_taux','f_quotepart','f_quotepart_libre','f_deja','f_tva','f_obs'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) { el.addEventListener('input', render); el.addEventListener('change', render); }
+});
+if (IS_EMBED) {
+  document.getElementById('btn-save').style.display = 'inline-block';
+  try { window.parent.postMessage({ type: 'nh:ready' }, '*'); } catch(_) {}
+}
+render();
+</script>
+</body>
+</html>

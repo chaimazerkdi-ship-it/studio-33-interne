@@ -3085,7 +3085,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-21.1 — tous les documents des projets sont charges';
+const S33_BUILD = '2026-09-21.2 — generateur de note d honoraires (marches publics)';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -17787,6 +17787,7 @@ const GEN_TYPES = {
   cps:           { label: 'CPS',                src: 'generators/cps.html',      icon: 'description', newLabel: 'Nouveau CPS' },
   questionnaire: { label: 'Questionnaire client', src: 'brief.html',             icon: 'quiz',        newLabel: 'Nouveau brief' },
   planning:      { label: 'Planning chantier',  src: 'generators/planning.html', icon: 'event_note',  newLabel: 'Nouveau planning' },
+  note_honoraires: { label: 'Note d\'honoraires', src: 'generators/note-honoraires.html', icon: 'receipt_long', newLabel: 'Nouvelle note d\'honoraires' },
   os:            { label: 'Ordre de service',   src: null, icon: 'engineering', newLabel: 'Nouvel ordre de service' },
   courrier:      { label: 'Courrier administratif', src: null, icon: 'mail',    newLabel: 'Nouveau courrier' },
   conformite:    { label: 'Attestation de conformité', src: null, icon: 'verified', newLabel: 'Nouvelle attestation' },
@@ -17837,6 +17838,7 @@ function renderGenerateurs() {
     { key: 'cps',           label: 'CPS',                 icon: 'description', enabled: true },
     { key: 'questionnaire', label: 'Questionnaire client', icon: 'quiz',       enabled: true },
     { key: 'planning',      label: 'Planning chantier',   icon: 'event_note',  enabled: true },
+    { key: 'note_honoraires', label: 'Note d\'honoraires',  icon: 'receipt_long', enabled: true },
     { key: 'os',            label: 'Ordre de service',    icon: 'engineering', enabled: false },
     { key: 'courrier',      label: 'Courrier admin.',     icon: 'mail',        enabled: false },
     { key: 'conformite',    label: 'Attestation conformité', icon: 'verified', enabled: false },
@@ -17868,7 +17870,58 @@ function _genSetProject(id) { _genState.selectedProjectId = id; renderGenerateur
 // Dispatch by generator type
 function _genBuildPreload(type, projectId) {
   if (type === 'questionnaire') return _genBuildPreloadForBrief(projectId);
+  if (type === 'note_honoraires') return _genBuildPreloadForNoteHonoraires(projectId);
   return _genBuildPreloadFromProject(projectId);
+}
+
+// Pré-remplissage de la note d'honoraires (marchés publics).
+// Le cumul des notes déjà déposées est calculé à partir des versions déjà
+// enregistrées pour ce projet : pas besoin de stocker quoi que ce soit de plus.
+function _genBuildPreloadForNoteHonoraires(projectId) {
+  if (!projectId) return null;
+  const p = (db.projects || []).find(function(x) { return String(x.id) === String(projectId); });
+  if (!p) return null;
+  const client = (db.clients || []).find(function(c) { return String(c.id) === String(p.clientId ?? p.client_id); });
+
+  const notes = (db.generatedDocs || [])
+    .filter(function(d) { return d.doc_type === 'note_honoraires' && String(d.project_id || '') === String(projectId); })
+    .sort(function(a, b) { return (a.version || 0) - (b.version || 0); });
+
+  const precedentes = notes.map(function(d) {
+    const m = d.metadata || {};
+    const f = d.form_data || {};
+    return { num: m.num || f.f_num || '', decompte: m.decompte || f.f_decompte || '',
+             ht: parseFloat(m.net_ht != null ? m.net_ht : 0) || 0 };
+  });
+  const dejaHT = precedentes.reduce(function(s2, x) { return s2 + (x.ht || 0); }, 0);
+
+  const derniere = notes.length ? notes[notes.length - 1] : null;
+  const dm = derniere ? (derniere.metadata || {}) : {};
+  const df = derniere ? (derniere.form_data || {}) : {};
+
+  // TVA : on reprend celle de la dernière facture du projet, comme s33HonFacturer
+  let tva = 20;
+  try {
+    const prev = (db.invoices || [])
+      .filter(function(i) { return i.projectId === p.id && i.tva_rate != null; })
+      .sort(function(a, b) { return String(b.date || '').localeCompare(String(a.date || '')); })[0];
+    if (prev && typeof s33InvTvaRate === 'function') tva = s33InvTvaRate(prev);
+  } catch(_) {}
+
+  const annee = new Date().getFullYear();
+  return {
+    proj_nom: p.name || '',
+    proj_moa: client ? client.name : '',
+    proj_lieu: p.city || p.ville || '',
+    proj_rokhass: p.num_rokhass || p.numRokhass || '',
+    nh_num: 'NH-' + annee + '-' + String(notes.length + 1).padStart(3, '0'),
+    nh_decompte: String(notes.length + 1),
+    nh_taux: (dm.taux != null ? dm.taux : (df.f_taux || 4)),
+    nh_quotepart: (dm.quotepart != null ? dm.quotepart : (df.f_quotepart || 85)),
+    nh_tva: tva,
+    nh_deja: Math.round(dejaHT * 100) / 100,
+    nh_precedentes: precedentes
+  };
 }
 
 // Pre-fill map: project → CPS form fields

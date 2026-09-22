@@ -3085,7 +3085,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-22.2 — PV de chantier enregistre meme avec beaucoup de photos';
+const S33_BUILD = '2026-09-22.3 — PV de chantier : le lien du PDF est bien enregistre';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -33536,9 +33536,13 @@ window.addEventListener('appinstalled', () => {
       _cur.statut = 'attente';
       _cur.validation_history.push({ action: 'soumis', by: myName(), at: new Date().toISOString() });
       _cur.pdf_media_id = mediaId;
-      await sbUpdate('pv_chantier', _cur.id, {
+      // photosPourBase : sans cela cette requete repartait avec les images
+      // entieres, echouait en silence, et pdf_media_id n'etait jamais
+      // enregistre — le PV affichait « PDF non genere » alors que le PDF
+      // existait. sbUpdateOrThrow : ne plus jamais echouer sans le dire.
+      await sbUpdateOrThrow('pv_chantier', _cur.id, {
         statut: 'attente', validation_history: _cur.validation_history,
-        pdf_media_id: mediaId, photos: _cur.photos, rappel: _cur.rappel, updated_at: new Date().toISOString()
+        pdf_media_id: mediaId, photos: photosPourBase(_cur.photos), rappel: _cur.rappel, updated_at: new Date().toISOString()
       });
       const i = _pvs.findIndex(p => p.id === _cur.id);
       if (i >= 0) Object.assign(_pvs[i], { statut: 'attente', validation_history: _cur.validation_history, pdf_media_id: mediaId, photos: _cur.photos, rappel: _cur.rappel });
@@ -33817,6 +33821,7 @@ window.addEventListener('appinstalled', () => {
     const patch = { updated_at: new Date().toISOString() };
     try {
       if (action === 'valide') {
+        if (pv.statut === 'valide' && !comment) { toast('Ce PV est déjà validé'); return; }
         hist.push({ action: 'valide', by: myName(), at: new Date().toISOString(), comment: comment || '' });
         patch.statut = 'valide';
         patch.validation_history = hist;
@@ -33826,7 +33831,7 @@ window.addEventListener('appinstalled', () => {
           const url = await _mediaStorageUrl(media.file_path, 31536000);
           if (url) patch.pdf_url = url;
         }
-        await sbUpdate('pv_chantier', id, patch);
+        await sbUpdateOrThrow('pv_chantier', id, patch);
         Object.assign(pv, patch);
         await notifyAuthor(pv, '<span class="mi mi-sm">task_alt</span> PV validé', pv.ref + ' — ' + projName(pv.project_id) + ' est validé, prêt à diffuser');
         toast('PV validé — passez à la diffusion');
@@ -33834,7 +33839,7 @@ window.addEventListener('appinstalled', () => {
         hist.push({ action: 'refuse', by: myName(), at: new Date().toISOString(), comment: comment });
         patch.statut = 'a_corriger';
         patch.validation_history = hist;
-        await sbUpdate('pv_chantier', id, patch);
+        await sbUpdateOrThrow('pv_chantier', id, patch);
         Object.assign(pv, patch);
         await notifyAuthor(pv, '<span class="mi mi-sm">block</span> PV à corriger', pv.ref + ' — ' + projName(pv.project_id) + ' : ' + comment);
         toast('PV renvoyé en correction');
@@ -33930,9 +33935,28 @@ window.addEventListener('appinstalled', () => {
     await markDiffused(pv, 'lien copié');
   };
 
+  // Retrouve le PDF du PV dans la mediatheque du projet quand le lien
+  // pdf_media_id manque sur la ligne (enregistrement du lien ayant echoue).
+  function retrouverPdf(pv) {
+    const cand = (db.media || []).filter(function(m) {
+      return m && m.doc_type === 'pv_chantier'
+        && String(m.project_id) === String(pv.project_id)
+        && String(m.name || '').indexOf(pv.ref) !== -1;
+    });
+    if (!cand.length) return null;
+    cand.sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
+    return cand[0].id;
+  }
+
   window.s33PvOpenPdf = async function(pvId) {
     const pv = _pvs.find(p => p.id === pvId);
-    if (!pv || !pv.pdf_media_id) { toast('PDF non généré'); return; }
+    if (!pv) return;
+    if (!pv.pdf_media_id) {
+      const trouve = retrouverPdf(pv);
+      if (!trouve) { toast('PDF non généré'); return; }
+      pv.pdf_media_id = trouve;
+      sbUpdate('pv_chantier', pv.id, { pdf_media_id: trouve }).catch(function() {});
+    }
     toast('Ouverture du PDF…');
     const data = await getMediaData(pv.pdf_media_id);
     if (!data) { toast('PDF introuvable'); return; }

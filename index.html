@@ -3085,7 +3085,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-22.3 — PV de chantier : le lien du PDF est bien enregistre';
+const S33_BUILD = '2026-09-22.4 — PV de chantier : tout le texte avant les photos';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -33650,9 +33650,9 @@ window.addEventListener('appinstalled', () => {
       y = doc.lastAutoTable.finalY + 6;
     }
 
-    // Réserves du PV + photos annotées
+    // Réserves du PV (texte seul — les photos sont regroupées à la fin)
     const drafts = collectDraftReserves();
-    if (drafts.length || (_cur.photos || []).some(ph => !ph.standalone)) {
+    if (drafts.length) {
       secTitle('Réserves de la visite (' + drafts.length + ')');
       for (const d of drafts) {
         const a = d.a;
@@ -33668,21 +33668,7 @@ window.addEventListener('appinstalled', () => {
         const meta = [a.lot, a.ent ? 'Entreprise : ' + a.ent : '', a.dl ? 'À résoudre avant le ' + fmtD(a.dl) : ''].filter(Boolean).join('   ·   ');
         if (meta) { doc.text(meta, M, y); y += 5; } else y += 1;
       }
-      // Photos annotées
-      for (let pi = 0; pi < (_cur.photos || []).length; pi++) {
-        const ph = _cur.photos[pi];
-        if (ph.standalone) continue;
-        const flat = await flatten(ph);
-        if (!flat) continue;
-        const iw = Math.min(W - 2 * M, 120);
-        const ih = iw * flat.h / flat.w;
-        need(ih + 8);
-        try { doc.addImage(flat.data, 'JPEG', M, y, iw, ih); y += ih + 3; } catch(_) {}
-        const resNums = (ph.annotations || []).filter(a => a.n).map(a => _cur.ref + '.' + a.n).join(', ');
-        doc.setFontSize(8); doc.setTextColor.apply(doc, GREY);
-        doc.text('Photo ' + (pi + 1) + (resNums ? ' — réserves ' + resNums : ''), M, y);
-        y += 6;
-      }
+      y += 2;
     }
 
     // Décisions
@@ -33707,6 +33693,28 @@ window.addEventListener('appinstalled', () => {
         body: acts.map(a => [a.qui || '', a.quoi || '', a.quand ? fmtD(a.quand) : '']),
         theme: 'grid', headStyles: { fillColor: ORANGE, fontSize: 8.5 }, styles: { fontSize: 9, cellPadding: 1.6 } });
       y = doc.lastAutoTable.finalY + 6;
+    }
+
+    // Photos du chantier — toujours APRES le texte, et sur une page neuve,
+    // pour que le PV se lise d'abord entierement (demande de Chaima).
+    const aPhotos = (_cur.photos || []).filter(ph => !ph.standalone);
+    if (aPhotos.length) {
+      footer(); doc.addPage(); header();
+      secTitle('Photos du chantier (' + aPhotos.length + ')');
+      for (let pi = 0; pi < (_cur.photos || []).length; pi++) {
+        const ph = _cur.photos[pi];
+        if (ph.standalone) continue;
+        const flat = await flatten(ph);
+        if (!flat) continue;
+        const iw = Math.min(W - 2 * M, 120);
+        const ih = iw * flat.h / flat.w;
+        need(ih + 8);
+        try { doc.addImage(flat.data, 'JPEG', M, y, iw, ih); y += ih + 3; } catch(_) {}
+        const resNums = (ph.annotations || []).filter(a => a.n).map(a => _cur.ref + '.' + a.n).join(', ');
+        doc.setFontSize(8); doc.setTextColor.apply(doc, GREY);
+        doc.text('Photo ' + (pi + 1) + (resNums ? ' — réserves ' + resNums : ''), M, y);
+        y += 6;
+      }
     }
 
     footer();

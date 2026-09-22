@@ -3085,7 +3085,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-21.2 — generateur de note d honoraires (marches publics)';
+const S33_BUILD = '2026-09-22.1 — note d honoraires en vrai PDF A4';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11022,6 +11022,163 @@ async function s33InvoicePdf(id) {
   }
 }
 
+// ── Vrai PDF A4 de la note d'honoraires ──────────────────────────────
+// Le générateur envoie ses champs et son calcul ; l'app met en page.
+// On ne passe pas par l'impression du navigateur : celle-ci ajoute
+// l'adresse du site et l'heure en haut et en bas de la feuille, et rien
+// dans le document ne peut l'empêcher. Ici, les mentions légales sont
+// posées à une hauteur fixe, en bas de la page A4.
+async function s33GenPdfNoteHonoraires(d) {
+  if (!d) return;
+  const c = d.calc || {};
+  const num = d.f_num || '';
+  toast('Préparation du PDF…');
+  try {
+    if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, M = 18;
+    const INK = [26, 26, 26], DIM = [102, 102, 102];
+    const money = n => (Math.round((parseFloat(n) || 0) * 100) / 100)
+      .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      .replace(/[\u202f\u00a0]/g, ' ');
+    const pct = n => String(parseFloat(n) || 0).replace('.', ',');
+    const fmtD2 = v => { try { return new Date(String(v).slice(0, 10) + 'T00:00').toLocaleDateString('fr-FR'); } catch(_) { return v || ''; } };
+    let y = 18;
+
+    // En-tête : références à gauche, logo du cabinet à droite
+    doc.setFontSize(9);
+    let yRef = y;
+    [['Note n°', num || '—'], ['Date', fmtD2(d.f_date)], ['Projet', d.f_projet || '—']].forEach(r => {
+      doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
+      doc.text(r[0], M, yRef);
+      doc.setFont('helvetica', 'normal');
+      const n = s33PdfMixed(doc, String(r[1] || ''), M + 26, yRef, { maxW: 92 }) || 1;
+      yRef += 5.4 + (n - 1) * 4;
+    });
+    try {
+      const lw = 46, lh = lw * 0.384;
+      doc.addImage(S33_LOGO_BW, 'JPEG', W - M - lw, y - 5, lw, lh);
+    } catch(_) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor.apply(doc, INK);
+      doc.text('STUDIO 33 ARCHITECTS', W - M, y + 2, { align: 'right' });
+    }
+    y = Math.max(y + 22, yRef + 5);
+
+    doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.5);
+    doc.line(M, y, W - M, y); y += 6;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor.apply(doc, INK);
+    doc.text('NOTE D\'HONORAIRES' + (num ? ' ' + num : ''), M, y);
+    doc.setFontSize(9);
+    doc.text('DÉCOMPTE N° ' + (d.f_decompte || '—'), W - M, y, { align: 'right' });
+    y += 3.5;
+    doc.setDrawColor(221); doc.setLineWidth(0.2);
+    doc.line(M, y, W - M, y); y += 10;
+
+    // Émetteur / Maître d'ouvrage
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.6); doc.setTextColor(150);
+    doc.text('ÉMETTEUR', M, y); doc.text('MAÎTRE D\'OUVRAGE', W / 2 + 6, y); y += 5;
+    doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
+    doc.text('Studio 33 Architects', M, y);
+    const nMoa = s33PdfMixed(doc, d.f_moa || '—', W / 2 + 6, y, { maxW: 80 }) || 1;
+    y += 4.6 + (nMoa - 1) * 4;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, DIM);
+    doc.text('01 Imm paternelle, Rue de Madrid, Agadir', M, y);
+    if (d.f_lieu) s33PdfMixed(doc, String(d.f_lieu), W / 2 + 6, y, { maxW: 80 });
+    y += 4.2;
+    doc.text('05 28 84 33 30 · Studio33architecture@gmail.com', M, y);
+    y += 10;
+
+    // Références du marché
+    const refs = [];
+    if (d.f_marche) refs.push(['Marché n°', d.f_marche]);
+    refs.push(['Décompte n°', d.f_decompte || '—']);
+    if (d.f_rokhass) refs.push(['Dossier Rokhass n°', d.f_rokhass]);
+    doc.setFontSize(8.8);
+    refs.forEach(r => {
+      doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
+      doc.text(r[0], M, y);
+      doc.setFont('helvetica', 'normal'); doc.setTextColor.apply(doc, DIM);
+      s33PdfMixed(doc, String(r[1]), M + 38, y, { maxW: 130 });
+      y += 4.8;
+    });
+    y += 5;
+
+    // Le calcul, ligne par ligne — le maître d'ouvrage doit pouvoir le refaire
+    const body = [
+      ['Montant des travaux — décompte n° ' + (d.f_decompte || '—') + ' (cumulé)', money(c.travaux) + ' MAD'],
+      ['Honoraires au taux de ' + pct(c.taux) + ' % du montant des travaux', money(c.honoTotal) + ' MAD'],
+      ['Quote-part de la phase — ' + pct(c.qp) + ' %', money(c.acquis) + ' MAD']
+    ];
+    if ((parseFloat(c.deja) || 0) > 0) body.push(['À déduire — honoraires déjà demandés sur les décomptes précédents', '- ' + money(c.deja) + ' MAD']);
+    body.push(['NET À PAYER HT', money(c.netHT) + ' MAD']);
+    body.push([(parseFloat(c.tvaTaux) || 0) > 0 ? 'TVA ' + pct(c.tvaTaux) + ' %' : 'TVA non applicable — opération exonérée',
+               (parseFloat(c.tvaTaux) || 0) > 0 ? money(c.tva) + ' MAD' : '—']);
+    body.push(['NET À PAYER TTC', money(c.netTTC) + ' MAD']);
+    const iHT = body.length - 3, iTTC = body.length - 1;
+    let headBottomY = null;
+    doc.autoTable({
+      startY: y, margin: { left: M, right: M },
+      head: [['DÉSIGNATION', 'MONTANT']],
+      body: body,
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: { top: 3, bottom: 3, left: 2.5, right: 2.5 }, textColor: INK, lineWidth: 0 },
+      headStyles: { fillColor: [242, 242, 242], fontStyle: 'bold', fontSize: 7.8, textColor: INK },
+      columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 40, halign: 'right' } },
+      didParseCell: t => {
+        if (t.section !== 'body') return;
+        if (t.row.index === iHT || t.row.index === iTTC) t.cell.styles.fontStyle = 'bold';
+        if (t.row.index === iTTC) { t.cell.styles.fontSize = 10.5; t.cell.styles.fillColor = [246, 242, 234]; }
+      },
+      didDrawCell: t => { if (t.section === 'head') headBottomY = t.cell.y + t.cell.height; }
+    });
+    doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.3);
+    if (headBottomY) doc.line(M, headBottomY, W - M, headBottomY);
+    doc.line(M, doc.lastAutoTable.finalY, W - M, doc.lastAutoTable.finalY);
+    y = doc.lastAutoTable.finalY + 8;
+
+    // Montant en toutes lettres
+    if (d.lettres) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(85);
+      const l = doc.splitTextToSize('Arrêtée la présente note à la somme de : ' + d.lettres + '.', W - 2 * M);
+      doc.text(l, M, y); y += l.length * 4.4 + 3;
+    }
+    if (d.f_obs) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.8); doc.setTextColor.apply(doc, DIM);
+      const o = doc.splitTextToSize(String(d.f_obs), W - 2 * M);
+      doc.text(o, M, y); y += o.length * 4.2 + 3;
+    }
+
+    // Cachet et signature
+    const ySig = Math.min(y + 8, 228); // suit le texte, sans jamais toucher le pied de page
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
+    doc.text('Agadir, le ' + fmtD2(d.f_date), W - M - 62, ySig);
+    doc.text('Cachet et signature', W - M - 62, ySig + 5);
+    doc.setDrawColor(200); doc.setLineWidth(0.2);
+    doc.rect(W - M - 62, ySig + 8, 62, 26);
+
+    // Pied de page — hauteur fixe, vraiment en bas de la feuille A4
+    const yB = 276;
+    doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.3);
+    doc.line(M, yB, W - M, yB);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.6); doc.setTextColor(90);
+    doc.text('Studio 33 Architects — 01 Imm paternelle, Rue de Madrid, Agadir', M, yB + 5.5);
+    doc.text('05 28 84 33 30 · Studio33architecture@gmail.com', M, yB + 9.8);
+    doc.text('Règlement par virement bancaire — IBAN : 022010000008003079157925', M, yB + 14.1);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, INK);
+    doc.text('ICE : 003100569000002', W - M, yB + 5.5, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(90);
+    doc.text('IF : 52549060 · RC : 52055 · TP : 48303312', W - M, yB + 9.8, { align: 'right' });
+
+    const fname = 'Note_honoraires_' + String(num || d.f_decompte || '').replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf';
+    await s33DownloadPdf(doc, fname.replace('__', '_'));
+  } catch(e) {
+    console.error('s33GenPdfNoteHonoraires', e);
+    toast('Erreur PDF — vérifiez la connexion et réessayez');
+  }
+}
+
 function printInvoice(id) {
   const inv = db.invoices.find(x => x.id === id);
   const client = db.clients.find(c => c.id === inv.clientId);
@@ -18030,6 +18187,9 @@ window.addEventListener('message', function(e) {
     // Les générateurs intégrés délèguent l'impression à l'app :
     // depuis leur cadre, window.print() sort une page blanche sur iPhone
     if (e.data.html && typeof s33PrintHTML === 'function') s33PrintHTML(e.data.html);
+  } else if (action === 'pdf') {
+    // Vrai PDF A4 mis en page par l'app (note d'honoraires)
+    if (prefix === 'nh' && typeof s33GenPdfNoteHonoraires === 'function') s33GenPdfNoteHonoraires(e.data.data);
   }
 });
 

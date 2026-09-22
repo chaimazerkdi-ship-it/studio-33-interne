@@ -28,7 +28,7 @@
   /* ── Le document ── */
   .doc { background:#fff; border:1px solid var(--line); border-radius:12px; padding:34px 32px; }
   .doc-head { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; border-bottom:2px solid var(--ink); padding-bottom:14px; }
-  .doc-logo { font-size:22px; font-weight:800; letter-spacing:.02em; }
+  .doc-logo { font-size:19px; font-weight:800; letter-spacing:.02em; white-space:nowrap; }
   .doc-logo span { color:var(--gold); }
   .doc-coord { font-size:10.5px; color:var(--dim); line-height:1.6; text-align:right; }
   .doc-titre { text-align:center; margin:22px 0 4px; font-size:17px; font-weight:800; letter-spacing:.06em; }
@@ -118,7 +118,7 @@
 </div>
 
 <div class="bar">
-  <button class="btn" onclick="printDoc()">Imprimer / PDF</button>
+  <button class="btn" onclick="pdfDoc()">Télécharger le PDF</button>
   <button class="btn btn-gold" id="btn-save" onclick="saveDoc()" style="display:none;">Enregistrer dans le projet</button>
 </div>
 
@@ -131,7 +131,7 @@ var CABINET = {
   adresse: '01 Imm paternelle, Rue de Madrid, Agadir',
   contact: '05 28 84 33 30 · Studio33architecture@gmail.com',
   ice: '003100569000002', if: '52549060', rc: '52055', tp: '48303312',
-  iban: '0220100000080030'
+  iban: '022010000008003079157925'
 };
 
 var _precedentes = [];
@@ -230,8 +230,7 @@ function buildDoc() {
   return ''
   + '<div class="doc" id="doc">'
   +   '<div class="doc-head">'
-  +     '<div><div class="doc-logo">STUDIO <span>33</span></div>'
-  +       '<div style="font-size:10.5px;color:#666;margin-top:3px;">Architectes · Agadir</div></div>'
+  +     '<div><div class="doc-logo">STUDIO <span>33</span> ARCHITECTS</div></div>'
   +     '<div class="doc-coord">' + esc(CABINET.nom) + '<br>' + esc(CABINET.adresse) + '<br>' + esc(CABINET.contact) + '</div>'
   +   '</div>'
   +   '<div class="doc-titre">NOTE D\'HONORAIRES</div>'
@@ -282,16 +281,16 @@ function collect() {
   return o;
 }
 
-function buildPrintHTML() {
-  var st = document.querySelector('style');
-  return '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Note d\'honoraires</title>'
-    + '<style>' + (st ? st.textContent : '') + '</style></head><body><div class="wrap">'
-    + buildDoc() + '</div></body></html>';
-}
-
-function printDoc() {
+// Dans l'app : vrai PDF A4 genere par l'application (jsPDF), pour qu'il n'y
+// ait ni adresse du site ni heure d'impression ajoutees par le navigateur, et
+// que les mentions legales restent ancrees en bas de la feuille.
+function pdfDoc() {
   if (IS_EMBED) {
-    try { window.parent.postMessage({ type: 'nh:print', html: buildPrintHTML() }, '*'); return; } catch(_) {}
+    var c = calcul();
+    var d = collect();
+    d.calc = c;
+    d.lettres = enLettres(c.netTTC);
+    try { window.parent.postMessage({ type: 'nh:pdf', data: d }, '*'); return; } catch(_) {}
   }
   window.print();
 }

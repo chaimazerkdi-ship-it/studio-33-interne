@@ -286,11 +286,18 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  /* iPhone : sans cette ligne, tirer au-dela du haut de la page fait glisser
+     TOUTE la page — y compris la barre du bas, censee rester fixe — et iOS
+     ne la remet en place qu'a la fin du geste. */
+  html, body { overscroll-behavior-y: none; }
+
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background: var(--bg);
     color: var(--text);
+    /* dvh = hauteur reellement visible ; 100vh la surestime sur iPhone */
     min-height: 100vh;
+    min-height: 100dvh;
     overflow-x: hidden;
     font-weight: 300;
     font-size: 14px;
@@ -375,6 +382,7 @@
   .layout {
     display: flex;
     height: 100vh;
+    height: 100dvh;
   }
 
   /* SIDEBAR */
@@ -1683,11 +1691,13 @@
     .layout {
       height: auto;
       min-height: 100vh;
+      min-height: 100dvh;
     }
 
     .main {
       height: auto;
       min-height: 100vh;
+      min-height: 100dvh;
       padding-bottom: calc(56px + env(safe-area-inset-bottom));
     }
 
@@ -3085,7 +3095,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-22.4 — PV de chantier : tout le texte avant les photos';
+const S33_BUILD = '2026-09-25.1 — iPhone : la barre du bas reste en place';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;

@@ -3095,7 +3095,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-09-25.1 — iPhone : la barre du bas reste en place';
+const S33_BUILD = '2026-10-05.1 — Equipe : relancer les rapports non deposes';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -20160,6 +20160,133 @@ function closeMemberProfile() {
   renderEquipe();
 }
 
+/* ══════════════════════════════════════════════════════════════
+   RELANCE DES RAPPORTS JOURNALIERS (Équipe → Rapports)
+   Prévient, dans l'app et sur le téléphone, les personnes qui
+   n'ont pas déposé leur rapport pour la date affichée.
+   ══════════════════════════════════════════════════════════════ */
+
+const RELANCES_KEY = 'relances_rapport';
+
+// Qui a déjà été relancé, et quand. En base (app_config), pas dans le
+// navigateur : une relance partie du téléphone doit être connue de
+// l'ordinateur.  Forme : { '2026-10-05': { '6': '2026-10-05T09:12:00Z' } }
+let _relances = null;
+async function _relancesCharger() {
+  if (_relances) return _relances;
+  try { _relances = (await s33ConfigGetJSON(RELANCES_KEY)) || {}; }
+  catch(e) { console.warn('[relance] lecture', e); _relances = {}; }
+  return _relances;
+}
+function relanceDejaFaite(dateStr, memberId) {
+  return !!(_relances && _relances[dateStr] && _relances[dateStr][String(memberId)]);
+}
+
+function _relanceNomsDe(ids) {
+  return ids.map(function(id) {
+    const u = USERS.find(function(x) { return String(x.id) === String(id); });
+    return u ? u.name : ('#' + id);
+  });
+}
+
+// Envoie le rappel. memberIds = identifiants USERS ; dateStr = 'AAAA-MM-JJ'.
+async function s33RelancerRapport(memberIds, dateStr, sansConfirmation) {
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.is_co_admin === true;
+  if (!isAdmin) return;
+  const ids = (memberIds || []).map(String).filter(Boolean);
+  if (!ids.length) return;
+
+  await _relancesCharger();
+
+  // Une relance par personne et par jour — mais Chaima garde le dernier mot
+  const deja = ids.filter(function(id) { return relanceDejaFaite(dateStr, id); });
+  if (deja.length && !sansConfirmation) {
+    const noms = _relanceNomsDe(deja).join(', ');
+    const msg = deja.length === ids.length
+      ? 'Déjà relancée(s) aujourd\'hui : ' + noms + '.\n\nRenvoyer quand même ?'
+      : 'Déjà relancée(s) aujourd\'hui : ' + noms + '.\n\nOK : tout renvoyer.\nAnnuler : ne rien envoyer.';
+    if (!confirm(msg)) return;
+  }
+
+  const dateJolie = (function() {
+    try { return new Date(dateStr + 'T00:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' }); }
+    catch(_) { return dateStr; }
+  })();
+
+  const envoyes = [], sansCompte = [];
+  const uuids = [];
+  for (const id of ids) {
+    const uuid = (typeof s33ResolveAuthUuid === 'function') ? s33ResolveAuthUuid(id) : null;
+    const u = USERS.find(function(x) { return String(x.id) === String(id); });
+    const nom = u ? u.name : ('#' + id);
+    if (!uuid) { sansCompte.push(nom); continue; }   // pas de compte : on le dit, on ne l'oublie pas
+    uuids.push(uuid);
+    envoyes.push({ id: id, nom: nom, uuid: uuid });
+  }
+
+  // 1. La cloche dans l'app, avec le lien direct vers la page Rapport
+  for (const e of envoyes) {
+    try {
+      await createNotification(
+        e.uuid,
+        '<span class="mi mi-sm">assignment_late</span> Rapport journalier',
+        'Votre rapport du ' + dateJolie + ' n\'est pas encore déposé.',
+        'rappel', 'rapport', null
+      );
+    } catch(err) { console.warn('[relance] notification ' + e.nom, err); }
+  }
+
+  // 2. La notification sur le téléphone — un seul appel pour tout le groupe
+  if (uuids.length && typeof s33SendPush === 'function') {
+    try {
+      await s33SendPush(
+        { userIds: uuids },
+        'Rapport journalier',
+        'Votre rapport du ' + dateJolie + ' n\'est pas encore déposé.',
+        '/', 'rappel-rapport'
+      );
+    } catch(err) { console.warn('[relance] push', err); }
+  }
+
+  // 3. Mémoriser, en base
+  if (envoyes.length) {
+    const maintenant = new Date().toISOString();
+    if (!_relances[dateStr]) _relances[dateStr] = {};
+    envoyes.forEach(function(e) { _relances[dateStr][String(e.id)] = maintenant; });
+    // On ne garde que les 30 derniers jours, pour que la clé ne gonfle pas
+    const limite = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    Object.keys(_relances).forEach(function(d) { if (d < limite) delete _relances[d]; });
+    try { await s33ConfigSetJSON(RELANCES_KEY, _relances); }
+    catch(err) { console.warn('[relance] enregistrement', err); }
+  }
+
+  // 4. Dire ce qui s'est réellement passé
+  let msg = '';
+  if (envoyes.length) msg = 'Rappel envoyé à ' + envoyes.map(function(e) { return e.nom; }).join(', ');
+  if (sansCompte.length) msg += (msg ? ' — ' : '') + 'sans compte, non prévenue(s) : ' + sansCompte.join(', ');
+  toast(msg || 'Aucun rappel envoyé');
+  renderEquipe();
+}
+
+// Appelé par la cloche d'une pastille : ne pas ouvrir la fiche du membre
+function s33RelancerUn(ev, memberId, dateStr) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  s33RelancerRapport([memberId], dateStr);
+}
+
+// Appelé par le bouton groupé
+async function s33RelancerTous(dateStr) {
+  const ids = (window._equipeEnAttente || []).slice();
+  if (!ids.length) { toast('Tout le monde a déposé son rapport'); return; }
+  await _relancesCharger();
+  const deja = ids.filter(function(id) { return relanceDejaFaite(dateStr, id); });
+  let msg = 'Envoyer un rappel à ' + _relanceNomsDe(ids).join(', ') + ' ?'
+          + '\n\nElles recevront une notification dans l\'app et sur leur téléphone.';
+  if (deja.length) msg += '\n\nDéjà relancée(s) aujourd\'hui : ' + _relanceNomsDe(deja).join(', ') + '.';
+  if (!confirm(msg)) return;
+  s33RelancerRapport(ids, dateStr, true);   // la question vient d'être posée
+}
+
 function renderEquipe() {
   const isAdmin = currentUser?.role === 'admin' || currentUser?.permissions?.is_co_admin === true;
 
@@ -20247,16 +20374,35 @@ function renderEquipe() {
 
   const container = document.getElementById('equipe-reports-list');
 
+  // Qui n'a pas encore déposé, pour la date affichée. Pas de relance sur une
+  // date à venir : le rapport n'est pas encore attendu.
+  const _aujourdhui = new Date().toISOString().slice(0, 10);
+  const _dateFuture = activeDate > _aujourdhui;
+  const _enAttente = _dateFuture ? [] : members.filter(m => !_memberSubmitted(m));
+  window._equipeEnAttente = _enAttente.map(m => m.id);
+  _relancesCharger();
+
+  // Bouton groupé — seulement s'il reste des retardataires
+  const relanceBarHtml = _enAttente.length ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+    <button class="btn btn-gold" onclick="s33RelancerTous('${activeDate}')" style="display:flex;align-items:center;gap:7px;">
+      <span class="mi mi-sm">notifications_active</span> Relancer les absentes (${_enAttente.length})
+    </button>
+    <span style="font-size:11.5px;color:var(--text-faint);">Notification dans l'app et sur leur téléphone.</span>
+  </div>` : '';
+
   // Status row — each card is clickable to show all reports for that member
-  const statusHtml = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">
+  const statusHtml = relanceBarHtml + `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">
     ${members.map(m => {
       const submitted = _memberSubmitted(m);
+      const peutRelancer = !submitted && !_dateFuture;
+      const dejaRelance = peutRelancer && relanceDejaFaite(activeDate, m.id);
       return `<div onclick="viewMemberReports(${JSON.stringify(m.id)})" style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid ${submitted ? 'var(--green)' : 'var(--border)'};border-radius:var(--radius);padding:12px 18px;cursor:pointer;transition:all .15s;min-width:150px;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='';this.style.transform=''">
         ${avatarHTML(m.id, 36)}
-        <div>
+        <div style="flex:1;">
           <div style="font-size:15px;color:var(--text);font-weight:700;">${m.name}</div>
-          <div style="font-size:11px;font-weight:500;color:${submitted ? 'var(--green)' : 'var(--red)'};">${submitted ? 'Soumis ✓' : 'En attente'}</div>
+          <div style="font-size:11px;font-weight:500;color:${submitted ? 'var(--green)' : 'var(--red)'};">${submitted ? 'Soumis ✓' : (dejaRelance ? 'En attente · relancée' : 'En attente')}</div>
         </div>
+        ${peutRelancer ? `<span onclick="s33RelancerUn(event, ${JSON.stringify(m.id)}, '${activeDate}')" title="${dejaRelance ? 'Déjà relancée aujourd\'hui' : 'Envoyer un rappel à ' + m.name}" class="mi" style="font-size:19px;color:${dejaRelance ? 'var(--text-faint)' : 'var(--gold)'};padding:4px;border-radius:50%;">notifications</span>` : ''}
       </div>`;
     }).join('')}
   </div>`;

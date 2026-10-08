@@ -3095,7 +3095,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-08.1 — les notifications ouvrent la bonne page';
+const S33_BUILD = '2026-10-08.2 — les documents se rouvrent apres une heure';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5970,23 +5970,43 @@ async function _mediaStorageUrl(filePath, expiresIn) {
   } catch(e) { return null; }
 }
 
+// Un lien vers un fichier du stockage est SIGNE et donc perissable. Il etait
+// garde en cache pour toute la seance et ressorti tel quel : passe le delai,
+// le serveur repondait 400 et le document ne s'ouvrait plus (constate sur le
+// PV de Nadia, ouvert a 16h16 puis refuse trois fois a 17h49). On retient
+// desormais la date de peremption avec le lien, et on en redemande un neuf
+// des qu'il approche de sa fin.
+const MEDIA_URL_DUREE = 8 * 3600;      // 8 heures : une journee de travail
+const MEDIA_URL_MARGE = 10 * 60 * 1000; // on resigne 10 min avant la fin
+
+function _mediaCacheLire(id) {
+  const v = _mediaDataCache[id];
+  if (v === undefined) return undefined;
+  if (v && typeof v === 'object' && v.u) {
+    return (Date.now() < v.exp - MEDIA_URL_MARGE) ? v.u : undefined;  // perime : on resigne
+  }
+  return v;   // base64 (data:) ou null (introuvable) : valable indefiniment
+}
+function _mediaCacheEcrireUrl(id, url) {
+  if (!url) { _mediaDataCache[id] = null; return url; }
+  _mediaDataCache[id] = { u: url, exp: Date.now() + MEDIA_URL_DUREE * 1000 };
+  return url;
+}
+
 async function getMediaData(id) {
-  if (_mediaDataCache[id] !== undefined) return _mediaDataCache[id];
+  const vu = _mediaCacheLire(id);
+  if (vu !== undefined) return vu;
   // Check already-loaded db.media for file_path (avoids extra round-trip)
   const cached = (db.media || []).find(m => parseInt(m.id) === parseInt(id));
   if (cached && cached.file_path) {
-    const signed = await _mediaStorageUrl(cached.file_path, 3600);
-    _mediaDataCache[id] = signed;
-    return signed;
+    return _mediaCacheEcrireUrl(id, await _mediaStorageUrl(cached.file_path, MEDIA_URL_DUREE));
   }
   // Fetch from DB — check both data and file_path columns
   const rows = await sbGet('media', `?select=data,file_path&id=eq.${id}`);
   const row = rows?.[0];
   if (!row) { _mediaDataCache[id] = null; return null; }
   if (row.file_path) {
-    const signed = await _mediaStorageUrl(row.file_path, 3600);
-    _mediaDataCache[id] = signed;
-    return signed;
+    return _mediaCacheEcrireUrl(id, await _mediaStorageUrl(row.file_path, MEDIA_URL_DUREE));
   }
   const d = row.data ?? null;
   _mediaDataCache[id] = d;

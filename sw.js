@@ -71,17 +71,27 @@ self.addEventListener('push', (event) => {
 });
 
 // ── Click handler — focus existing tab or open new one ──────
+// La notification porte sa destination (ex. '/?p=taches'). Si l'app est
+// deja ouverte, on NE recharge pas : on lui envoie un message et elle
+// change d'onglet sur place — recharger couterait 2,4 Mo a chaque clic.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  let targetUrl = (event.notification.data && event.notification.data.url) || self.registration.scope;
+  const dest = (event.notification.data && event.notification.data.url) || '';
+  let targetUrl = dest;
   if (!targetUrl || targetUrl === '/') targetUrl = self.registration.scope;
+  else if (targetUrl.charAt(0) === '/') {
+    try { targetUrl = new URL(targetUrl, self.registration.scope).href; } catch (e) {}
+  }
   event.waitUntil((async () => {
     const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of allClients) {
       if ('focus' in client) {
         await client.focus();
-        if (client.url !== targetUrl && 'navigate' in client) {
-          try { await client.navigate(targetUrl); } catch (e) {}
+        try { client.postMessage({ type: 's33-nav', url: targetUrl }); }
+        catch (e) {
+          if (client.url !== targetUrl && 'navigate' in client) {
+            try { await client.navigate(targetUrl); } catch (e2) {}
+          }
         }
         return;
       }

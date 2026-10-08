@@ -3095,7 +3095,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-05.1 — Equipe : relancer les rapports non deposes';
+const S33_BUILD = '2026-10-08.1 — les notifications ouvrent la bonne page';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6518,6 +6518,7 @@ async function login() {
     if (typeof s33UpdateOfflineBadge === 'function') s33UpdateOfflineBadge();
     if (typeof s33FlushOfflineReports === 'function') s33FlushOfflineReports();
     s33PaintNudge();
+    try { s33OuvrirDestinationNotif(); } catch(e) { console.warn('[notif] destination', e); }
     setTimeout(() => s33SendDiag('apres-connexion'), 5000);
   }
 }
@@ -6669,6 +6670,58 @@ initTheme();
 
 // ===== NAVIGATION =====
 let currentPage = 'dashboard';
+
+/* ── Destination d'une notification ────────────────────────────────
+   Une notification systeme porte desormais sa page ('/?p=taches'). Au
+   demarrage on la retient, et on l'ouvre une fois la connexion faite.
+   Si l'app est deja ouverte, le service worker nous previent par message
+   et on change d'onglet sur place, sans rien recharger.               */
+let _destNotif = null;
+
+function _destLire(urlStr) {
+  try {
+    const qs = urlStr ? new URL(urlStr, location.origin).search : location.search;
+    const q = new URLSearchParams(qs);
+    const p = q.get('p');
+    if (!p) return null;
+    // On n'ouvre qu'une page qui existe reellement
+    if (!document.getElementById('page-' + p)) return null;
+    return { page: p, id: q.get('id') || null };
+  } catch(e) { return null; }
+}
+
+function _destAppliquer(d) {
+  if (!d) return false;
+  try {
+    if (d.page === 'project-detail' && d.id) window._currentProjectDetailId = parseInt(d.id);
+    navigate(d.page);
+    return true;
+  } catch(e) { console.warn('[notif] destination ignoree', e); return false; }
+}
+
+// Appele a la fin de la connexion
+function s33OuvrirDestinationNotif() {
+  const d = _destNotif || _destLire();
+  _destNotif = null;
+  if (!d) return;
+  _destAppliquer(d);
+  // Nettoyer l'adresse : un simple rafraichissement ne doit pas rouvrir
+  // la meme page indefiniment.
+  try { history.replaceState(null, '', location.pathname); } catch(_) {}
+}
+
+// L'app est deja ouverte : le service worker nous envoie la destination
+try {
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', function(e) {
+      if (!e.data || e.data.type !== 's33-nav') return;
+      const d = _destLire(e.data.url);
+      if (!d) return;
+      if (window.currentUser) _destAppliquer(d);
+      else _destNotif = d;          // pas encore connectee : on garde pour apres
+    });
+  }
+} catch(e) { console.warn('[notif] ecoute service worker', e); }
 
 function navigate(page) {
   // Bloquer l'accès à Administratif pour les co-admins avec no_administratif
@@ -8420,7 +8473,7 @@ async function saveProject() {
       toast('Projet créé');
       if (typeof s33SendPush === 'function') {
         const pname = obj.name || 'Nouveau projet';
-        s33SendPush({ roles: ['staff'] }, 'Nouveau projet', pname, '/', 'proj_' + Date.now());
+        s33SendPush({ roles: ['staff'] }, 'Nouveau projet', pname, 'projects', 'proj_' + Date.now());
       }
     }
     await loadDB();
@@ -9208,7 +9261,7 @@ async function saveConcours() {
   toast(editId ? 'Modifié ✓' : 'Ajouté ✓');
   if (!editId && typeof s33SendPush === 'function') {
     const coLabel = obj.type === 'concours' ? 'Concours' : 'Consultation';
-    s33SendPush({ roles: ['staff'] }, coLabel, obj.title + (obj.ville ? ' — ' + obj.ville : ''), '/', 'co_' + Date.now());
+    s33SendPush({ roles: ['staff'] }, coLabel, obj.title + (obj.ville ? ' — ' + obj.ville : ''), 'concours', 'co_' + Date.now());
   }
   closeModal('concours-modal');
   renderConcours();
@@ -9386,7 +9439,7 @@ async function saveIncident() {
     // Notifier l'admin
     if (currentUser?.role !== 'admin' && typeof s33SendPush === 'function') {
       const by = obj.reported_by || currentUser?.name || 'Équipe';
-      s33SendPush({ roles: ['admin'] }, 'Signalement bureau', by + ' — ' + obj.category + ' : ' + title, '/', 'incident_' + Date.now());
+      s33SendPush({ roles: ['admin'] }, 'Signalement bureau', by + ' — ' + obj.category + ' : ' + title, 'signalements', 'incident_' + Date.now());
     }
   }
   closeModal('incident-modal');
@@ -11499,7 +11552,7 @@ async function saveLibraryItem() {
     if (typeof s33SendPush === 'function') {
       const catLabels = { normes: 'Normes marocaines', details: 'Détails techniques', peinture: 'Références peinture', cahiers: 'Cahiers des charges' };
       const catLabel = catLabels[obj.cat] || obj.cat;
-      s33SendPush({ roles: ['staff'] }, 'Bibliothèque', obj.title + ' — ' + catLabel, '/', 'lib_' + Date.now());
+      s33SendPush({ roles: ['staff'] }, 'Bibliothèque', obj.title + ' — ' + catLabel, 'library', 'lib_' + Date.now());
     }
   }
 
@@ -15208,7 +15261,7 @@ async function executeSamiaActions(text, mode) {
           if (typeof renderRapport === 'function') renderRapport();
           // Push notify admin (only if the submitter isn't the admin)
           if (currentUser.role !== 'admin' && typeof s33SendPush === 'function') {
-            s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + proj.name + ' (' + hours + 'h)', '/', 'report_' + (r[0].id || Date.now()));
+            s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + proj.name + ' (' + hours + 'h)', 'equipe', 'report_' + (r[0].id || Date.now()));
           }
         } else {
           resultMsg = `Échec de l'enregistrement du rapport.`;
@@ -15282,7 +15335,7 @@ async function executeSamiaActions(text, mode) {
           const authUuid = (typeof s33ResolveAuthUuid === 'function') ? s33ResolveAuthUuid(assignedUserId) : String(assignedUserId);
           if (authUuid && authUuid !== String(currentUser.id)) {
             const dlTxt = newTask.deadline ? ' — échéance ' + new Date(newTask.deadline).toLocaleDateString('fr-FR') : '';
-            s33SendPush({ userIds: [authUuid] }, 'Nouvelle tâche assignée', proj.name + ' — ' + newTask.name + dlTxt, '/', 'task_' + proj.id + '_' + newTask.id);
+            s33SendPush({ userIds: [authUuid] }, 'Nouvelle tâche assignée', proj.name + ' — ' + newTask.name + dlTxt, 'taches', 'task_' + proj.id + '_' + newTask.id);
           }
         }
         break;
@@ -16745,7 +16798,7 @@ async function s33CommitAssignees(projId, taskId) {
       list.filter(a => avant.indexOf(a.name) === -1).forEach(a => {
         const uuid = (typeof s33ResolveAuthUuid === 'function') ? s33ResolveAuthUuid(a.id) : String(a.id);
         if (uuid && uuid !== String(currentUser.id)) {
-          s33SendPush({ userIds: [uuid] }, 'Tâche assignée', (p ? p.name + ' — ' : '') + (task.name || ''), '/', 'task_' + projId + '_' + taskId);
+          s33SendPush({ userIds: [uuid] }, 'Tâche assignée', (p ? p.name + ' — ' : '') + (task.name || ''), 'taches', 'task_' + projId + '_' + taskId);
         }
       });
     }
@@ -16769,7 +16822,7 @@ async function s33ReassignTask(projId, taskId, whoName) {
     if (who && typeof s33SendPush === 'function' && task) {
       const authUuid = (typeof s33ResolveAuthUuid === 'function') ? s33ResolveAuthUuid(who.id) : String(who.id);
       if (authUuid && authUuid !== String(currentUser.id)) {
-        s33SendPush({ userIds: [authUuid] }, 'Tâche assignée', (p ? p.name + ' — ' : '') + (task.name || ''), '/', 'task_' + projId + '_' + taskId);
+        s33SendPush({ userIds: [authUuid] }, 'Tâche assignée', (p ? p.name + ' — ' : '') + (task.name || ''), 'taches', 'task_' + projId + '_' + taskId);
       }
     }
   } catch(e) { console.error('reassign', e); toast('Transfert impossible — réessayez'); }
@@ -19135,7 +19188,7 @@ async function saveConge() {
   }
   // Push notify admin
   if (currentUser.role !== 'admin' && typeof s33SendPush === 'function') {
-    s33SendPush({ roles: ['admin'] }, 'Demande de congé', currentUser.name + ' — ' + start + ' au ' + end, '/', 'conge_' + (obj.id || Date.now()));
+    s33SendPush({ roles: ['admin'] }, 'Demande de congé', currentUser.name + ' — ' + start + ' au ' + end, 'calendar', 'conge_' + (obj.id || Date.now()));
   }
 }
 
@@ -19477,7 +19530,7 @@ async function saveNewTask() {
     const authUuid = (typeof s33ResolveAuthUuid === 'function') ? s33ResolveAuthUuid(assignedUserId) : String(assignedUserId);
     if (authUuid && authUuid !== String(currentUser.id)) {
       const dlTxt = deadline ? ' — échéance ' + new Date(deadline).toLocaleDateString('fr-FR') : '';
-      s33SendPush({ userIds: [authUuid] }, 'Nouvelle tâche assignée', proj.name + ' — ' + name + dlTxt, '/', 'task_' + proj.id + '_' + newId);
+      s33SendPush({ userIds: [authUuid] }, 'Nouvelle tâche assignée', proj.name + ' — ' + name + dlTxt, 'taches', 'task_' + proj.id + '_' + newId);
     }
   }
 }
@@ -20243,7 +20296,7 @@ async function s33RelancerRapport(memberIds, dateStr, sansConfirmation) {
         { userIds: uuids },
         'Rapport journalier',
         'Votre rapport du ' + dateJolie + ' n\'est pas encore déposé.',
-        '/', 'rappel-rapport'
+        'rapport', 'rappel-rapport'
       );
     } catch(err) { console.warn('[relance] push', err); }
   }
@@ -23570,7 +23623,7 @@ function escHTML(str) {
         const label = ok > 1
           ? (ok + ' projets · ' + totalHours + 'h')
           : (((db.projects || []).find(p => String(p.id) === String(entries[0].projectId)) || {}).name || 'projet') + ' · ' + totalHours + 'h';
-        s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + label, '/', 'report_' + Date.now());
+        s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + label, 'equipe', 'report_' + Date.now());
       }
     }
 
@@ -27209,9 +27262,20 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
     }
   };
 
+  // Une notification doit savoir OU elle mene. Les appelants passent
+  // simplement le nom de la page ('taches', 'equipe'...) ; on en fait
+  // l'adresse que le service worker ouvrira. Une vraie adresse passe telle
+  // quelle, pour qu'un appel oublie continue de fonctionner.
+  function _pushUrl(dest) {
+    const d = String(dest || '').trim();
+    if (!d) return '/';
+    if (d.charAt(0) === '/' || d.charAt(0) === '?' || /^https?:/i.test(d)) return d;
+    return '/?p=' + encodeURIComponent(d);
+  }
+
   // Send a push via the Edge Function.
   //   target:  { userIds?: string[], roles?: string[] }
-  //   title, body, url, tag
+  //   title, body, url (nom de page ou adresse), tag
   window.s33SendPush = async function(target, title, body, url, tag) {
     try {
       if (!target) return;
@@ -27231,7 +27295,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
           roles: roles,
           title: title || 'Studio 33',
           body: body || '',
-          url: url || '/',
+          url: _pushUrl(url),
           tag: tag || 'studio33-notif'
         })
       });
@@ -31594,7 +31658,7 @@ window.addEventListener('appinstalled', () => {
     const targets = ch === 'team' ? roster().map(m => String(m.user_id)) : [channelOther(ch)].filter(Boolean);
     if (!targets.length) return;
     const title = ch === 'team' ? (myName() + ' · Équipe') : myName();
-    if (typeof s33SendPush === 'function') { try { s33SendPush({ userIds: targets }, title, preview, '/', 'msg_' + ch); } catch(_) {} }
+    if (typeof s33SendPush === 'function') { try { s33SendPush({ userIds: targets }, title, preview, 'messagerie', 'msg_' + ch); } catch(_) {} }
     targets.forEach(uid => { try { createNotification(uid, '<span class="mi mi-sm">forum</span> ' + title, preview, 'message', 'messagerie', null); } catch(_) {} });
   }
 

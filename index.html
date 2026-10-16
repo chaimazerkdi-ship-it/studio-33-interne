@@ -3095,7 +3095,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-08.2 — les documents se rouvrent apres une heure';
+const S33_BUILD = '2026-10-16.1 — le client telecharge son devis signe';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -12515,20 +12515,23 @@ function s33PrintHTML(html) {
 // ── Vrai PDF du devis (téléchargement direct, sans menu d'impression) ──
 // Mise en page maîtrisée : signatures et contacts ancrés en bas de page,
 // une seule page garantie pour un échéancier standard.
-async function s33DevisPdf() {
-  const ref = document.getElementById('dv-ref')?.value || '';
-  const clientName = (typeof s33DvClientName === 'function' ? s33DvClientName() : (document.getElementById('dv-client')?.value || ''));
-  const projet = document.getElementById('dv-projet')?.value || '';
-  const ht = parseFloat(document.getElementById('dv-ht')?.value) || 0;
-  const _tvaIn = parseFloat(document.getElementById('dv-tva')?.value);
+// Mise en page du devis — une seule, partagée par le bureau et par l'espace
+// client, pour que les deux documents ne puissent pas diverger.
+//   d = { ref, clientName, projet, ht, tvaRate, dateStr, phases, logo, sigs }
+//   logo = { data, w, h } ; sigs = { studio, client }
+async function s33BuildDevisPdf(d) {
+  d = d || {};
+  const ref = d.ref || '';
+  const clientName = d.clientName || '';
+  const projet = d.projet || '';
+  const ht = parseFloat(d.ht) || 0;
+  const _tvaIn = parseFloat(d.tvaRate);
   const tvaRate = isNaN(_tvaIn) ? 20 : _tvaIn;
   const ttc = ht * (1 + tvaRate / 100);
-  const dateStr = (document.getElementById('dv-date')?.value
-    ? new Date(document.getElementById('dv-date').value + 'T00:00') : new Date()).toLocaleDateString('fr-FR');
-  if (!clientName && !ht) { toast('Remplissez d\'abord le devis'); return; }
-
-  toast('Préparation du PDF…');
-  try {
+  const dateStr = d.dateStr || new Date().toLocaleDateString('fr-FR');
+  const phases = Array.isArray(d.phases) ? d.phases : [];
+  const _sigs = d.sigs || {};
+  {
     if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
     if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
     const { jsPDF } = window.jspdf;
@@ -12548,18 +12551,11 @@ async function s33DevisPdf() {
       const n = s33PdfMixed(doc, String(r[1] || ''), M + 26, yRefD, { maxW: 92 }) || 1;
       yRefD += 5.4 + (n - 1) * 4;
     });
-    // Logo depuis l'aperçu (déjà en base64 dans la page)
+    // Logo fourni par l'appelant (apercu interne, ou logo embarque cote client)
     try {
-      const img = document.querySelector('#devis-doc .lh-img');
-      if (img && img.naturalWidth) {
-        const c = document.createElement('canvas');
-        const k = Math.min(1, 640 / img.naturalWidth);
-        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-        const cx2 = c.getContext('2d');
-        cx2.fillStyle = '#ffffff'; cx2.fillRect(0, 0, c.width, c.height);
-        cx2.drawImage(img, 0, 0, c.width, c.height);
-        const lw = 46, lh = lw * c.height / c.width;
-        doc.addImage(c.toDataURL('image/jpeg', 0.88), 'JPEG', W - M - lw, y - 4, lw, lh);
+      if (d.logo && d.logo.data && d.logo.w) {
+        const lw = 46, lh = lw * d.logo.h / d.logo.w;
+        doc.addImage(d.logo.data, 'JPEG', W - M - lw, y - 4, lw, lh);
       }
     } catch(_) {}
     y = Math.max(y + 22, yRefD + 5);
@@ -12596,7 +12592,7 @@ async function s33DevisPdf() {
 
     // Échéancier
     let cumul = 0, prevPhase = null;
-    const body = devisPhases.map(row => {
+    const body = phases.map(row => {
       cumul += row.taux;
       const cell = row.phase !== prevPhase ? row.phase : '';
       prevPhase = row.phase;
@@ -12608,7 +12604,7 @@ async function s33DevisPdf() {
       startY: y, margin: { left: M, right: M },
       head: [['PHASE', 'CONTENU / MISSION', 'TAUX', 'CUMUL', 'MONTANT TTC']],
       body: body,
-      foot: [[{ content: 'TOTAL', colSpan: 2 }, Math.round(devisPhases.reduce((a, r) => a + r.taux, 0)) + '%', '', money(ttc) + ' MAD']],
+      foot: [[{ content: 'TOTAL', colSpan: 2 }, Math.round(phases.reduce((a, r) => a + r.taux, 0)) + '%', '', money(ttc) + ' MAD']],
       theme: 'plain',
       styles: { fontSize: 8.6, cellPadding: { top: 2.4, bottom: 2.4, left: 2.5, right: 2.5 }, textColor: INK, lineWidth: 0 },
       headStyles: { fillColor: BEIGE, fontStyle: 'bold', fontSize: 7.8, textColor: INK },
@@ -12658,9 +12654,6 @@ async function s33DevisPdf() {
 
     // Signatures : ancrées vers le bas de page (nouvelle page si nécessaire)
     // Les vraies signatures enregistrées (sur place ou à distance) sont dessinées dans les cadres
-    const _dSig = (typeof currentDevisId !== 'undefined' && currentDevisId)
-      ? ((db.devis || []).find(x => x.id === currentDevisId) || {}) : {};
-    const _sigs = _dSig.signatures || {};
     let ySig = Math.max(y + 6, 232);
     if (ySig > 250) { doc.addPage(); ySig = 232; }
     const sig = (x, title, name, label, sd) => {
@@ -12698,28 +12691,47 @@ async function s33DevisPdf() {
     doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, GOLD);
     doc.text('WWW.STUDIO33ARCHITECTS.COM', W - M, yB + 10, { align: 'right' });
 
-    // Téléchargement direct (feuille de partage iOS si disponible)
-    const fname = 'Devis_' + (ref || 'S33').replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf';
-    const blob = doc.output('blob');
-    // Feuille de partage uniquement sur téléphone/tablette ; sur ordinateur
-    // (Windows, Mac) on télécharge directement le fichier
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-      || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-    if (isMobile) {
-      try {
-        const file = new File([blob], fname, { type: 'application/pdf' });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: fname });
-          return;
-        }
-      } catch(e) { if (e && e.name === 'AbortError') return; }
+    return doc;
+  }
+}
+
+// Cote bureau : rassemble les champs du formulaire, puis telecharge
+async function s33DevisPdf() {
+  const ref = document.getElementById('dv-ref')?.value || '';
+  const clientName = (typeof s33DvClientName === 'function' ? s33DvClientName() : (document.getElementById('dv-client')?.value || ''));
+  const projet = document.getElementById('dv-projet')?.value || '';
+  const ht = parseFloat(document.getElementById('dv-ht')?.value) || 0;
+  const _tvaIn = parseFloat(document.getElementById('dv-tva')?.value);
+  const tvaRate = isNaN(_tvaIn) ? 20 : _tvaIn;
+  const dateStr = (document.getElementById('dv-date')?.value
+    ? new Date(document.getElementById('dv-date').value + 'T00:00') : new Date()).toLocaleDateString('fr-FR');
+  if (!clientName && !ht) { toast('Remplissez d\'abord le devis'); return; }
+
+  // Logo pris dans l'apercu, converti une fois pour toutes
+  let logo = null;
+  try {
+    const img = document.querySelector('#devis-doc .lh-img');
+    if (img && img.naturalWidth) {
+      const c = document.createElement('canvas');
+      const k = Math.min(1, 640 / img.naturalWidth);
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      const cx2 = c.getContext('2d');
+      cx2.fillStyle = '#ffffff'; cx2.fillRect(0, 0, c.width, c.height);
+      cx2.drawImage(img, 0, 0, c.width, c.height);
+      logo = { data: c.toDataURL('image/jpeg', 0.88), w: c.width, h: c.height };
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = fname;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-    toast('PDF téléchargé : ' + fname);
+  } catch(_) {}
+
+  const _dSig = (typeof currentDevisId !== 'undefined' && currentDevisId)
+    ? ((db.devis || []).find(x => x.id === currentDevisId) || {}) : {};
+
+  toast('Préparation du PDF…');
+  try {
+    const doc = await s33BuildDevisPdf({
+      ref: ref, clientName: clientName, projet: projet, ht: ht, tvaRate: tvaRate,
+      dateStr: dateStr, phases: devisPhases, logo: logo, sigs: _dSig.signatures || {}
+    });
+    await s33DownloadPdf(doc, 'Devis_' + (ref || 'S33').replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf');
   } catch(e) {
     console.error('s33DevisPdf', e);
     toast('Erreur PDF — vérifiez la connexion et réessayez');
@@ -34881,6 +34893,7 @@ window.addEventListener('appinstalled', () => {
       fetch(FN_BASE + '/devis-sign?token=' + encodeURIComponent(signToken))
         .then(r => r.json())
         .then(d => {
+          _devis = d;
           if (!d || d.error) {
             host.innerHTML = shell('<div style="text-align:center;padding:40px 20px;color:#777;">Ce lien n\'est plus valide.<br>Contactez Studio 33 pour en obtenir un nouveau.</div>');
             return;
@@ -34889,7 +34902,8 @@ window.addEventListener('appinstalled', () => {
             host.innerHTML = shell('<div style="text-align:center;padding:40px 20px;">' +
               '<div style="font-size:44px;color:#16a34a;">✓</div>' +
               '<div style="font-size:17px;font-weight:700;margin-top:8px;">Devis déjà signé</div>' +
-              '<div style="font-size:13px;color:#777;margin-top:6px;">Signé par ' + esc(d.signer_name || '') + '. Merci pour votre confiance — nous revenons vers vous très vite.</div></div>');
+              '<div style="font-size:13px;color:#777;margin-top:6px;">Signé par ' + esc(d.signer_name || '') + '. Merci pour votre confiance — nous revenons vers vous très vite.</div>' +
+              btnPdfHtml + '</div>');
             return;
           }
           host.innerHTML = shell(
@@ -34926,6 +34940,41 @@ window.addEventListener('appinstalled', () => {
         })
         .catch(() => { host.innerHTML = shell('<div style="text-align:center;padding:40px 20px;color:#777;">Connexion impossible — vérifiez votre réseau et rechargez la page.</div>'); });
     };
+
+    // Donnees du devis renvoyees par le serveur, gardees pour le PDF
+    let _devis = null;
+
+    // Le client repart avec son devis signé, à joindre au bon de commande
+    window.s33sTelechargerPdf = async function(btn) {
+      const d = _devis;
+      if (!d) { alert('Rechargez la page et réessayez.'); return; }
+      const txt = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Préparation du PDF…'; }
+      try {
+        const ttc = parseFloat(d.ttc) || 0;
+        const tva = (d.tva_rate === 0 || d.tva_rate) ? parseFloat(d.tva_rate) : 20;
+        // Si le serveur ne renvoie pas encore le HT, on le retrouve depuis le TTC
+        const ht = (d.ht || d.ht === 0) ? parseFloat(d.ht) : (ttc / (1 + tva / 100));
+        let dateStr = '';
+        try { dateStr = d.date_val ? new Date(d.date_val + 'T00:00').toLocaleDateString('fr-FR') : ''; } catch(_) {}
+        const doc = await s33BuildDevisPdf({
+          ref: d.num || '', clientName: d.client_name || '', projet: d.projet || '',
+          ht: ht, tvaRate: tva, dateStr: dateStr,
+          phases: Array.isArray(d.phases) ? d.phases : [],
+          logo: (typeof S33_LOGO_BW !== 'undefined') ? { data: S33_LOGO_BW, w: 1000, h: 384 } : null,
+          sigs: d.signature ? { client: d.signature } : {}
+        });
+        const nom = 'Devis_' + String(d.num || 'S33').replace(/[^a-zA-Z0-9_-]/g, '_') + '_signe.pdf';
+        await s33DownloadPdf(doc, nom);
+      } catch(e) {
+        console.error('[devis] pdf client', e);
+        alert('Téléchargement impossible — vérifiez votre connexion et réessayez.');
+      }
+      if (btn) { btn.disabled = false; btn.textContent = txt; }
+    };
+
+    const btnPdfHtml = '<button onclick="s33sTelechargerPdf(this)" style="width:100%;margin-top:18px;padding:13px;background:#1a1a1a;color:#fff;border:none;border-radius:99px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Télécharger le devis signé (PDF)</button>' +
+      '<div style="font-size:11px;color:#aaa;margin-top:8px;">À joindre à votre bon de commande.</div>';
 
     let _drawn = false;
     function initPad() {
@@ -34994,11 +35043,18 @@ window.addEventListener('appinstalled', () => {
         });
         const j = await r.json();
         if (j && j.ok) {
+          // Le devis vient d'etre signe : on connait deja la signature, elle
+          // part dans le PDF sans attendre un rechargement de la page.
+          if (_devis) {
+            _devis.signed = true;
+            _devis.signature = { image: image, signer_name: name.trim(), signed_at: (j.signed_at || new Date().toISOString()), via: 'lien_distant' };
+          }
           const host = document.getElementById('s33-portal');
           host.innerHTML = '<div style="max-width:560px;margin:0 auto;padding:60px 18px;text-align:center;font-family:Inter,system-ui,sans-serif;">' +
             '<div style="font-size:52px;color:#16a34a;">✓</div>' +
             '<div style="font-size:19px;font-weight:800;margin-top:10px;color:#1a1a1a;">Merci, votre devis est signé !</div>' +
-            '<div style="font-size:13px;color:#777;margin-top:8px;">Studio 33 a été prévenu. Nous revenons vers vous très rapidement pour la suite.</div></div>';
+            '<div style="font-size:13px;color:#777;margin-top:8px;">Studio 33 a été prévenu. Nous revenons vers vous très rapidement pour la suite.</div>' +
+            btnPdfHtml + '</div>';
         } else { throw new Error((j && j.error) || 'err'); }
       } catch(e) {
         btn.disabled = false; btn.textContent = 'J\'accepte et je signe';

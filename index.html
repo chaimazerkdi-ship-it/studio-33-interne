@@ -3095,7 +3095,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-16.1 — le client telecharge son devis signe';
+const S33_BUILD = '2026-10-22.1 — prevenue quand l equipe depose quelque chose';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5943,8 +5943,76 @@ async function s33ConfigSetJSON(key, obj) {
   }
   return true;
 }
-async function sbInsert(table, body) { return sbFetch(table, 'POST', body, '', false); }
-async function sbInsertOrThrow(table, body) { return sbFetch(table, 'POST', body, '', true); }
+/* ══════════════════════════════════════════════════════════════
+   PREVENIR LA DIRECTION QUAND L'EQUIPE DEPOSE QUELQUE CHOSE
+   Chaima veut etre prevenue des qu'une collaboratrice depose
+   quoi que ce soit. Le piege, c'est le volume : une collaboratrice
+   depose jusqu'a 128 documents dans une journee. On REGROUPE donc :
+   un envoi de 12 photos = UNE notification, pas douze.
+   ══════════════════════════════════════════════════════════════ */
+const S33_DEPOTS = {
+  media:         { un: 'document',    plur: 'documents',    verbe: 'déposé', page: 'mediatheque' },
+  reunions:      { un: 'compte-rendu de réunion', plur: 'comptes-rendus de réunion', verbe: 'écrit', page: 'pv' },
+  clients:       { un: 'fiche client', plur: 'fiches client', verbe: 'créé', page: 'clients' },
+  prospects:     { un: 'prospect',    plur: 'prospects',    verbe: 'créé', page: 'prospects' },
+  contacts_pro:  { un: 'contact',     plur: 'contacts',     verbe: 'créé', page: 'contacts' },
+  mat_suppliers: { un: 'fournisseur', plur: 'fournisseurs', verbe: 'créé', page: 'materiaux' },
+  invoices:      { un: 'facture',     plur: 'factures',     verbe: 'créé', page: 'invoices' },
+  devis:         { un: 'devis',       plur: 'devis',        verbe: 'créé', page: 'devis' }
+};
+const _depotsLots = {};   // regroupement en cours, par table + projet
+
+function _depotEstDirection() {
+  return !!(currentUser && (currentUser.role === 'admin' || (currentUser.permissions || {}).is_co_admin === true));
+}
+
+function _depotEnvoyer(cle) {
+  const lot = _depotsLots[cle];
+  delete _depotsLots[cle];
+  if (!lot || !lot.n) return;
+  const d = S33_DEPOTS[lot.table];
+  if (!d) return;
+  const quoi = lot.n + ' ' + (lot.n > 1 ? d.plur : d.un);
+  const ou   = lot.projet ? ' dans ' + lot.projet : '';
+  const texte = lot.qui + ' a ' + d.verbe + ' ' + quoi + ou;
+  try {
+    const admins = (db.teamMembers || []).filter(function(m) {
+      return m.active !== false && (m.role === 'admin' || (m.permissions || {}).is_co_admin === true);
+    });
+    admins.forEach(function(ad) {
+      if (String(ad.user_id) === String(currentUser && currentUser.id)) return;
+      createNotification(ad.user_id, '<span class="mi mi-sm">inbox</span> Nouveau dépôt', texte, 'depot', d.page, null);
+    });
+    if (typeof s33SendPush === 'function') {
+      s33SendPush({ roles: ['admin'] }, 'Nouveau dépôt', texte, d.page, 'depot_' + lot.table + '_' + Date.now());
+    }
+  } catch(e) { console.warn('[depot] notification', e); }
+}
+
+// Appelee a chaque enregistrement ; ne doit JAMAIS faire echouer celui-ci.
+function s33SignalerDepot(table, body) {
+  try {
+    if (!S33_DEPOTS[table]) return;              // table non suivie
+    if (_depotEstDirection()) return;            // pas de notification a soi-meme
+    if (!currentUser) return;
+    // Le PDF d'un PV est depose par l'app elle-meme : le PV a deja sa notification
+    if (table === 'media' && body && body.doc_type === 'pv_chantier') return;
+    let projet = '';
+    if (body && body.project_id) {
+      const p = (db.projects || []).find(function(x) { return String(x.id) === String(body.project_id); });
+      if (p) projet = p.name || '';
+    }
+    const cle = table + '|' + projet;
+    const lot = _depotsLots[cle] || (_depotsLots[cle] = { table: table, projet: projet, n: 0, qui: (currentUser.name || currentUser.username || 'Quelqu un'), minuteur: null });
+    lot.n++;
+    // On attend 5 s apres le DERNIER depot du lot avant de prevenir
+    if (lot.minuteur) clearTimeout(lot.minuteur);
+    lot.minuteur = setTimeout(function() { _depotEnvoyer(cle); }, 5000);
+  } catch(e) { console.warn('[depot] signalement', e); }
+}
+
+async function sbInsert(table, body) { const r = await sbFetch(table, 'POST', body, '', false); s33SignalerDepot(table, body); return r; }
+async function sbInsertOrThrow(table, body) { const r = await sbFetch(table, 'POST', body, '', true); s33SignalerDepot(table, body); return r; }
 
 // ── Chargement différé (lazy) des données binaires media ─────────────
 // La colonne `data` (base64) n'est PAS chargée au démarrage.
@@ -33805,6 +33873,12 @@ window.addEventListener('appinstalled', () => {
         for (const ad of admins) {
           if (String(ad.user_id) === String(currentUser.id)) continue;
           await createNotification(ad.user_id, '<span class="mi mi-sm">fact_check</span> PV à valider', _cur.ref + ' — ' + projName(_cur.project_id) + ' (par ' + myName() + ')', 'pv', 'pvchantier', null);
+        }
+        // La cloche dans l'app ne suffit pas : prevenir aussi sur le telephone
+        if (admins.length && typeof s33SendPush === 'function') {
+          s33SendPush({ roles: ['admin'] }, 'PV à valider',
+            _cur.ref + ' — ' + projName(_cur.project_id) + ' (par ' + myName() + ')',
+            'pvchantier', 'pv_' + _cur.id);
         }
       } catch(_) {}
 

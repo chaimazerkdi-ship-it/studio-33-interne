@@ -3118,7 +3118,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-22.2 — projets en 2 colonnes, les plus recents en tete';
+const S33_BUILD = '2026-10-22.3 — compresser un PDF trop lourd dans l app';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -22601,6 +22601,168 @@ function escHTML(str) {
   const S33_MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100 Mo par vidéo de chantier
   const S33_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v'];
 
+  /* ══════════════════════════════════════════════════════════════
+     COMPRESSION DES PDF TROP LOURDS, DANS L'APP
+     Avant, un PDF de plus de 9 Mo etait refuse avec un message qui
+     renvoyait vers ilovepdf.com — il fallait sortir de l'app, passer
+     par un site, revenir. Desormais on le compresse sur place.
+     Methode : chaque page est redessinee puis reinseree en JPEG, a la
+     taille exacte de la page d'origine. C'est ce que font les outils
+     en ligne en mode fort ; le texte devient une image, on le dit.
+     ══════════════════════════════════════════════════════════════ */
+  const S33_PDF_OFFRE_BYTES = 4 * 1024 * 1024;   // au-dela, on propose
+  const S33_PDF_MAX_PAGES   = 80;                // au-dela, on refuse proprement
+  const S33_PDF_PRESETS = {
+    ecran: { libelle: 'Lecture écran', echelle: 1.5, qualite: 0.68, pour: 'scans, courriers, dossiers' },
+    plan:  { libelle: 'Plan détaillé', echelle: 2.2, qualite: 0.85, pour: 'plans, traits fins au zoom' }
+  };
+
+  async function _pdfOutils() {
+    if (!window.pdfjsLib) {
+      try { await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); }
+      catch(_) { await pvLoadScript('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'); }
+      if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      try { await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'); }
+      catch(_) { await pvLoadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'); }
+    }
+    if (!window.pdfjsLib || !window.jspdf) throw new Error('outils PDF indisponibles');
+  }
+
+  // Renvoie { blob, octets } — ou null si le resultat n'est pas plus leger
+  // que l'original : on ne rend jamais un fichier pire qu'il n'etait.
+  window.s33CompresserPdf = async function(file, presetNom, onProgress) {
+    const preset = S33_PDF_PRESETS[presetNom] || S33_PDF_PRESETS.ecran;
+    await _pdfOutils();
+    const buf = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    if (pdf.numPages > S33_PDF_MAX_PAGES) {
+      throw new Error('Ce PDF fait ' + pdf.numPages + ' pages. Au-delà de ' + S33_PDF_MAX_PAGES + ', la compression sur téléphone n\'est pas possible.');
+    }
+    let doc = null;
+    for (let i = 1; i <= pdf.numPages; i++) {
+      if (typeof onProgress === 'function') onProgress(i, pdf.numPages);
+      const page = await pdf.getPage(i);
+      const vp = page.getViewport({ scale: preset.echelle });
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(vp.width));
+      cv.height = Math.max(1, Math.round(vp.height));
+      const cx = cv.getContext('2d');
+      cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, cv.width, cv.height);   // pas de fond noir
+      await page.render({ canvasContext: cx, viewport: vp }).promise;
+      const img = cv.toDataURL('image/jpeg', preset.qualite);
+      // Taille de la page d'origine, en points (72 ppp) : le PDF garde son format
+      const base = page.getViewport({ scale: 1 });
+      const lp = base.width, hp = base.height;
+      if (!doc) {
+        doc = new window.jspdf.jsPDF({ orientation: lp > hp ? 'landscape' : 'portrait', unit: 'pt', format: [lp, hp] });
+      } else {
+        doc.addPage([lp, hp], lp > hp ? 'landscape' : 'portrait');
+      }
+      doc.addImage(img, 'JPEG', 0, 0, lp, hp, undefined, 'FAST');
+      // Liberer la memoire page par page (telephones)
+      cv.width = 0; cv.height = 0;
+      try { page.cleanup(); } catch(_) {}
+    }
+    try { pdf.destroy(); } catch(_) {}
+    if (!doc) return null;
+    const blob = doc.output('blob');
+    if (!blob || blob.size >= file.size) return null;    // aucun gain : on garde l'original
+    return { blob: blob, octets: blob.size };
+  };
+
+  // Fenetre de choix. Renvoie le File a envoyer, ou null si annule.
+  window.s33ChoisirCompressionPdf = function(file) {
+    return new Promise(function(resolve) {
+      const trop = file.size > S33_MAX_PDF_BYTES;
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;';
+      const fermer = function(val) { try { ov.remove(); } catch(_) {} resolve(val); };
+      ov.innerHTML =
+        '<div style="background:var(--surface);border-radius:16px;padding:22px;max-width:420px;width:100%;" onclick="event.stopPropagation()">' +
+          '<div style="font-size:16px;font-weight:800;color:var(--text);">PDF volumineux</div>' +
+          '<div id="s33cp-msg" style="font-size:13px;color:var(--text-dim);margin-top:6px;line-height:1.5;">' +
+            'Ce PDF fait <b>' + formatSize(file.size) + '</b>' +
+            (trop ? ' — la limite est ' + formatSize(S33_MAX_PDF_BYTES) + '.' : '.') +
+            '<br>Calcul des versions allégées…' +
+          '</div>' +
+          '<div id="s33cp-prog" style="margin-top:12px;height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">' +
+            '<div id="s33cp-bar" style="height:100%;width:0;background:var(--gold);transition:width .2s;"></div></div>' +
+          '<div id="s33cp-choix" style="margin-top:16px;display:flex;flex-direction:column;gap:8px;"></div>' +
+          '<div style="font-size:11px;color:var(--text-faint);margin-top:12px;line-height:1.5;">' +
+            'Le texte du PDF devient une image : il ne sera plus sélectionnable ni cherchable.</div>' +
+          '<button id="s33cp-annuler" style="margin-top:14px;width:100%;padding:10px;background:none;border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;color:var(--text-dim);cursor:pointer;">Annuler</button>' +
+        '</div>';
+      ov.addEventListener('click', function(e) { if (e.target === ov) fermer(null); });
+      document.body.appendChild(ov);
+      ov.querySelector('#s33cp-annuler').onclick = function() { fermer(null); };
+
+      const msg = ov.querySelector('#s33cp-msg');
+      const bar = ov.querySelector('#s33cp-bar');
+      const choix = ov.querySelector('#s33cp-choix');
+
+      (async function() {
+        const faits = {};
+        try {
+          const noms = ['ecran', 'plan'];
+          for (let k = 0; k < noms.length; k++) {
+            const nom = noms[k];
+            faits[nom] = await window.s33CompresserPdf(file, nom, function(i, n) {
+              const pct = Math.round(((k * n + i) / (noms.length * n)) * 100);
+              bar.style.width = pct + '%';
+              msg.innerHTML = 'Ce PDF fait <b>' + formatSize(file.size) + '</b>.<br>' +
+                S33_PDF_PRESETS[nom].libelle + ' — page ' + i + ' sur ' + n + '…';
+            });
+          }
+        } catch(e) {
+          msg.innerHTML = '<span style="color:var(--red);">' + escHTML(e.message || 'Compression impossible') + '</span>';
+          bar.parentElement.style.display = 'none';
+          return;
+        }
+        bar.parentElement.style.display = 'none';
+        msg.innerHTML = 'Ce PDF fait <b>' + formatSize(file.size) + '</b>' +
+          (trop ? ' — la limite est ' + formatSize(S33_MAX_PDF_BYTES) + '.' : '.');
+
+        const bouton = function(nom) {
+          const r = faits[nom];
+          const p = S33_PDF_PRESETS[nom];
+          if (!r) {
+            return '<div style="padding:11px 14px;border:1px dashed var(--border);border-radius:12px;font-size:12.5px;color:var(--text-faint);">' +
+              p.libelle + ' — aucun gain sur ce fichier</div>';
+          }
+          const passe = r.octets <= S33_MAX_PDF_BYTES;
+          return '<button data-preset="' + nom + '"' + (passe ? '' : ' disabled') + ' style="width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid ' + (passe ? 'var(--gold)' : 'var(--border)') + ';background:' + (passe ? 'rgba(201,168,76,.08)' : 'var(--surface2)') + ';font-family:inherit;cursor:' + (passe ? 'pointer' : 'not-allowed') + ';opacity:' + (passe ? '1' : '.55') + ';">' +
+            '<div style="font-size:13.5px;font-weight:700;color:var(--text);">' + p.libelle + ' — ' + formatSize(r.octets) + '</div>' +
+            '<div style="font-size:11px;color:var(--text-faint);margin-top:2px;">' + p.pour + (passe ? '' : ' · encore au-dessus de la limite') + '</div>' +
+          '</button>';
+        };
+        let html = bouton('ecran') + bouton('plan');
+        html += '<button data-preset="original"' + (trop ? ' disabled' : '') + ' style="width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);font-family:inherit;cursor:' + (trop ? 'not-allowed' : 'pointer') + ';opacity:' + (trop ? '.55' : '1') + ';">' +
+          '<div style="font-size:13.5px;font-weight:700;color:var(--text);">Garder l\'original — ' + formatSize(file.size) + '</div>' +
+          '<div style="font-size:11px;color:var(--text-faint);margin-top:2px;">' + (trop ? 'impossible : au-dessus de la limite' : 'aucune perte de qualité') + '</div>' +
+        '</button>';
+        choix.innerHTML = html;
+
+        Array.prototype.forEach.call(choix.querySelectorAll('button[data-preset]'), function(b) {
+          b.onclick = function() {
+            const nom = b.getAttribute('data-preset');
+            if (nom === 'original') return fermer(file);
+            const r = faits[nom];
+            if (!r) return;
+            const base = file.name.replace(/\.pdf$/i, '');
+            fermer(new File([r.blob], base + ' (compresse).pdf', { type: 'application/pdf' }));
+          };
+        });
+      })();
+    });
+  };
+
+  // Un PDF doit-il passer par la fenetre de choix ?
+  function s33PdfADecider(file) {
+    return file && file.type === 'application/pdf' && file.size > S33_PDF_OFFRE_BYTES;
+  }
+
   // Vignette d'une vidéo : capture une image ~1 s après le début
   function s33VideoThumb(file) {
     return new Promise(resolve => {
@@ -22658,10 +22820,10 @@ function escHTML(str) {
     img.src = dataUrl;
   }
 
-  window.s33HandleUploadFile = function(input) {
+  window.s33HandleUploadFile = async function(input) {
     if (!input.files || !input.files.length) return;
     if (input.files.length > 1) { s33HandleBatch(input.files); return; }
-    const file = input.files[0];
+    let file = input.files[0];
     if (!file) return;
     // Les vidéos passent par le circuit direct vers le Storage (pas de base64)
     if (S33_VIDEO_TYPES.includes(file.type)) { s33HandleBatch(input.files); return; }
@@ -22671,12 +22833,13 @@ function escHTML(str) {
       return;
     }
 
-    // Vérification taille PDF (non compressible)
-    if (file.type === 'application/pdf' && file.size > S33_MAX_PDF_BYTES) {
-      const mb = (file.size / 1024 / 1024).toFixed(1);
-      alert(`Ce PDF fait ${mb} Mo. La limite pour les PDFs est 9 Mo.\nCompressez-le en ligne (ex: ilovepdf.com) avant de l'uploader.`);
+    // PDF volumineux : on le compresse ICI, dans l'app. Avant, il fallait
+    // sortir, passer par un site de compression, et revenir.
+    if (s33PdfADecider(file)) {
+      const choisi = await window.s33ChoisirCompressionPdf(file);
       input.value = '';
-      return;
+      if (!choisi) return;              // annule
+      file = choisi;
     }
 
     const dzInner = document.getElementById('s33-dz-inner');
@@ -22756,9 +22919,17 @@ function escHTML(str) {
 
     let ok = 0, fail = 0;
     for (let i = 0; i < valid.length; i++) {
-      const file = valid[i];
+      let file = valid[i];
       setProgress(i, valid.length, file.name, 'lecture…');
       try {
+        // PDF volumineux : au lieu de l'ignorer en silence comme avant, on
+        // s'arrete sur ce fichier et on propose de le compresser.
+        if (s33PdfADecider(file)) {
+          setProgress(i, valid.length, file.name, 'PDF volumineux…');
+          const choisi = await window.s33ChoisirCompressionPdf(file);
+          if (!choisi) { fail++; continue; }        // annule : on passe au suivant
+          file = choisi;
+        }
         if (file.type === 'application/pdf' && file.size > S33_MAX_PDF_BYTES) {
           console.warn('PDF trop volumineux ignoré :', file.name, file.size);
           fail++; continue;

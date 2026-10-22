@@ -1634,6 +1634,50 @@
   .mobile-more-item .mnav-icon { font-size: 18px; color: var(--gold); display: inline-flex; align-items: center; vertical-align: middle; }
   .mobile-more-item .mnav-icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; }
 
+  /* Menu "Plus" : grille de tuiles (3 par ligne) plutot qu'une longue liste */
+  #mobile-more-overlay .mobile-more-sheet {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    align-content: start;
+    padding: 18px 12px calc(14px + env(safe-area-inset-bottom));
+    max-height: 88vh;
+  }
+  #mobile-more-overlay .mobile-more-title {
+    grid-column: 1 / -1;
+    padding: 0 8px 10px;
+    margin-bottom: 0;
+  }
+  #mobile-more-overlay .mobile-more-item {
+    position: relative;
+    flex-direction: column;
+    justify-content: center;
+    gap: 7px;
+    padding: 12px 6px;
+    min-height: 84px;
+    text-align: center;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 11px;
+    letter-spacing: 0;
+    line-height: 1.25;
+    overflow: hidden;
+  }
+  #mobile-more-overlay .mobile-more-item:active { background: var(--surface3); }
+  #mobile-more-overlay .mobile-more-item .mnav-icon { font-size: 24px; }
+  #mobile-more-overlay .mobile-more-item .mnav-icon svg { width: 24px; height: 24px; }
+  /* badges (notifications, messagerie, PV, outils) : en coin de tuile */
+  #mobile-more-overlay .mobile-more-item > span:not(.mnav-icon) {
+    position: absolute;
+    top: 5px; right: 5px;
+    margin-left: 0 !important;
+  }
+  @media (min-width: 600px) {
+    #mobile-more-overlay .mobile-more-sheet { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+
   /* TABLET: 768px - 1024px — icon-only sidebar */
   @media (max-width: 1024px) and (min-width: 768px) {
     .sidebar {
@@ -3118,7 +3162,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-22.3 — compresser un PDF trop lourd dans l app';
+const S33_BUILD = '2026-10-22.4 — menu Plus en grille de tuiles';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -14603,7 +14647,7 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></span> Notifications
       <span id="notif-count-mobile" style="display:none;margin-left:auto;background:var(--gold);color:#fff;font-size:10px;font-weight:800;border-radius:99px;padding:2px 8px;">0</span>
     </div>
-    <div class="mobile-more-item" onclick="openProfilePanel(); closeMobileMore()" style="border-bottom:1px solid var(--border);margin-bottom:8px;padding-bottom:16px;">
+    <div class="mobile-more-item" onclick="openProfilePanel(); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Mon profil
     </div>
     <div class="mobile-more-item" id="mnav-more-rapport" onclick="mobileNavigate('rapport'); closeMobileMore()">
@@ -14660,7 +14704,7 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     <div class="mobile-more-item" onclick="closeMobileMore(); openTrash()">
       <span class="mnav-icon"><span class="mi">delete</span></span> Corbeille
     </div>
-    <div class="mobile-more-item" style="margin-top:8px;border-top:1px solid var(--border);padding-top:16px;" onclick="toggleTheme(); closeMobileMore()">
+    <div class="mobile-more-item" onclick="toggleTheme(); closeMobileMore()">
       <span id="theme-toggle-mobile" class="mnav-icon"><span class="mi">dark_mode</span></span> Mode jour/nuit
     </div>
     <div class="mobile-more-item" style="color:var(--text-faint);" onclick="logout(); closeMobileMore()">

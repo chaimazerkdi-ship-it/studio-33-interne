@@ -1729,8 +1729,31 @@
     /* Tables → scroll horizontal */
     table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-    /* Grilles projets (styles inline en repeat(3,1fr)) */
-    #proj-pinned-grid, #proj-cards-grid { grid-template-columns: 1fr !important; }
+    /* Grilles projets (styles inline en repeat(3,1fr)) :
+       DEUX projets par ligne sur telephone — on voit 4 a 6 projets d'un coup
+       au lieu de 2. Les cartes sont donc compactees en consequence. */
+    #proj-pinned-grid, #proj-cards-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 10px !important;
+    }
+    #proj-pinned-grid .proj-card, #proj-cards-grid .proj-card { padding: 12px 11px; }
+    #proj-pinned-grid .proj-card-name, #proj-cards-grid .proj-card-name {
+      font-size: 12.5px;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;            /* titre long : 3 lignes puis « … » */
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    #proj-pinned-grid .proj-card-client, #proj-cards-grid .proj-card-client {
+      font-size: 10px;
+      margin-bottom: 8px;
+    }
+    #proj-pinned-grid .proj-card-top, #proj-cards-grid .proj-card-top { margin-bottom: 7px; }
+    #proj-pinned-grid .proj-card-meta, #proj-cards-grid .proj-card-meta { margin-bottom: 8px; }
+    #proj-pinned-grid .proj-card-footer, #proj-cards-grid .proj-card-footer { font-size: 10px; }
+    /* Le numero de Rokhass prend toute une ligne pour rien dans une demi-carte */
+    #proj-cards-grid .proj-card > div[style*="f0f4ff"] { display: none !important; }
 
     /* Modales : au-dessus de la barre de navigation (z-index 1000),
        sinon le bouton Enregistrer reste caché dessous */
@@ -3095,7 +3118,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-22.1 — prevenue quand l equipe depose quelque chose';
+const S33_BUILD = '2026-10-22.2 — projets en 2 colonnes, les plus recents en tete';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5962,6 +5985,41 @@ const S33_DEPOTS = {
 };
 const _depotsLots = {};   // regroupement en cours, par table + projet
 
+/* Derniere activite d'un projet : tout ajout ou toute modification le fait
+   remonter en tete de liste. On regroupe la aussi — une rafale de 12 photos
+   ne doit ecrire qu'une seule fois sur le projet. */
+const _projetsTouches = {};
+let _stampEnCours = false;
+
+function s33ToucherProjet(projectId) {
+  try {
+    if (_stampEnCours) return;                 // ne pas se declencher soi-meme
+    const id = projectId == null ? null : String(projectId).trim();
+    if (!id || id === 'null' || id === 'undefined') return;
+    if (!(db.projects || []).some(function(p) { return String(p.id) === id; })) return;
+    if (_projetsTouches[id]) clearTimeout(_projetsTouches[id]);
+    _projetsTouches[id] = setTimeout(function() {
+      delete _projetsTouches[id];
+      const quand = new Date().toISOString();
+      const p = (db.projects || []).find(function(x) { return String(x.id) === id; });
+      if (p) p.updated_at = quand;             // l'ordre change tout de suite a l'ecran
+      _stampEnCours = true;
+      Promise.resolve(sbFetch('projects', 'PATCH', { updated_at: quand }, '?id=eq.' + id, false))
+        .catch(function(e) { console.warn('[projet] horodatage', e); })
+        .then(function() { _stampEnCours = false; });
+    }, 5000);
+  } catch(e) { console.warn('[projet] touche', e); }
+}
+
+// Quel projet une ecriture concerne-t-elle ?
+function _projetConcerne(table, body, query) {
+  if (table === 'projects') {
+    const m = String(query || '').match(/id=eq\.(\d+)/);
+    return m ? m[1] : null;
+  }
+  return (body && body.project_id != null) ? body.project_id : null;
+}
+
 function _depotEstDirection() {
   return !!(currentUser && (currentUser.role === 'admin' || (currentUser.permissions || {}).is_co_admin === true));
 }
@@ -6011,8 +6069,8 @@ function s33SignalerDepot(table, body) {
   } catch(e) { console.warn('[depot] signalement', e); }
 }
 
-async function sbInsert(table, body) { const r = await sbFetch(table, 'POST', body, '', false); s33SignalerDepot(table, body); return r; }
-async function sbInsertOrThrow(table, body) { const r = await sbFetch(table, 'POST', body, '', true); s33SignalerDepot(table, body); return r; }
+async function sbInsert(table, body) { const r = await sbFetch(table, 'POST', body, '', false); s33SignalerDepot(table, body); s33ToucherProjet(_projetConcerne(table, body, '')); return r; }
+async function sbInsertOrThrow(table, body) { const r = await sbFetch(table, 'POST', body, '', true); s33SignalerDepot(table, body); s33ToucherProjet(_projetConcerne(table, body, '')); return r; }
 
 // ── Chargement différé (lazy) des données binaires media ─────────────
 // La colonne `data` (base64) n'est PAS chargée au démarrage.
@@ -6193,8 +6251,8 @@ function applyLazyMediaImages() {
     imgs.forEach(img => loadImg(img));
   }
 }
-async function sbUpdate(table, id, body) { return sbFetch(table, 'PATCH', body, `?id=eq.${id}`, false); }
-async function sbUpdateOrThrow(table, id, body) { return sbFetch(table, 'PATCH', body, `?id=eq.${id}`, true); }
+async function sbUpdate(table, id, body) { const r = await sbFetch(table, 'PATCH', body, `?id=eq.${id}`, false); s33ToucherProjet(_projetConcerne(table, body, `?id=eq.${id}`)); return r; }
+async function sbUpdateOrThrow(table, id, body) { const r = await sbFetch(table, 'PATCH', body, `?id=eq.${id}`, true); s33ToucherProjet(_projetConcerne(table, body, `?id=eq.${id}`)); return r; }
 async function sbDelete(table, id) { return sbFetch(table, 'DELETE', null, `?id=eq.${id}`); }
 async function sbUpsert(table, body) { return sbFetch(table, 'POST', body, ''); }
 
@@ -7581,10 +7639,14 @@ function getFilteredProjects() {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
     if (projSortOrder === 'recent') {
-      // Primary: id descending (Supabase auto-increment = insertion order)
+      // D'abord la derniere activite : tout ajout ou modification dans un
+      // projet le fait remonter en tete (demande de Chaima).
+      const ta = Date.parse(a.updated_at || '') || 0;
+      const tb = Date.parse(b.updated_at || '') || 0;
+      if (ta !== tb) return tb - ta;
+      // A egalite, l'ordre de creation, comme avant
       const idDiff = (Number(b.id) || 0) - (Number(a.id) || 0);
       if (idDiff !== 0) return idDiff;
-      // Fallback: created_at
       return new Date(b.created_at || 0) - new Date(a.created_at || 0);
     }
     return a.name.localeCompare(b.name, 'fr');

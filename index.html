@@ -1659,10 +1659,11 @@
     max-height: 92vh;
   }
   #mobile-more-overlay .mobile-more-title {
-    padding: 0 2px 12px;
+    padding: 0 2px 10px;
     margin-bottom: 0;
     border-bottom: none;
-    font-size: 15px;
+    font-size: 12.5px;
+    letter-spacing: .01em;
   }
 
   /* la recherche, seule en haut */
@@ -1674,7 +1675,7 @@
   .s33-nav-search .s33-nav-loupe { display: flex; color: var(--text); flex-shrink: 0; }
   .s33-nav-search .s33-nav-loupe svg { width: 16px; height: 16px; }
   .s33-nav-search .s33-nav-ph {
-    flex: 1; min-width: 0; font-size: 12px; color: var(--text-dim);
+    flex: 1; min-width: 0; font-size: 11.5px; color: var(--text-dim);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
@@ -1682,10 +1683,10 @@
     display: flex; align-items: center; justify-content: space-between;
     gap: 10px; padding: 0 2px 10px; margin-top: 20px;
   }
-  .s33-nav-sec-h .t { font-size: 15px; font-weight: 800; color: var(--text); }
+  .s33-nav-sec-h .t { font-size: 13px; font-weight: 800; color: var(--text); letter-spacing: .01em; }
   .s33-nav-sec-h .v {
     background: none; border: none; font-family: inherit; cursor: pointer; padding: 0;
-    font-size: 12px; font-weight: 700; color: var(--gold);
+    font-size: 10.5px; font-weight: 700; color: var(--gold);
     display: inline-flex; align-items: center; gap: 1px;
   }
   .s33-nav-grid, .s33-nav-quick {
@@ -1725,7 +1726,7 @@
   /* deplacement par appui long */
   .s33-nav-bouge { opacity: .4; }
   .s33-nav-aide {
-    font-size: 9.5px; color: var(--text-faint);
+    font-size: 9px; color: var(--text-faint);
     padding: 0 2px 9px; display: flex; align-items: center; gap: 5px;
   }
   /* badges (notifications, messagerie, PV, outils) : en coin de carte */
@@ -1750,19 +1751,19 @@
   }
   .s33-np-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .s33-np-ini {
-    font-family: 'Cormorant Garamond', serif; font-size: 32px; font-weight: 600;
+    font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 600;
     color: var(--gold); letter-spacing: .04em;
   }
   .s33-np-b { padding: 10px 11px 12px; }
   .s33-np-n {
-    font-size: 11.5px; font-weight: 800; color: var(--text); line-height: 1.3;
+    font-size: 10.5px; font-weight: 800; color: var(--text); line-height: 1.3;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .s33-np-c { font-size: 10px; color: var(--text-faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s33-np-c { font-size: 9px; color: var(--text-faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .s33-np-av { display: flex; align-items: center; gap: 7px; margin-top: 9px; }
   .s33-np-bar { flex: 1; height: 4px; background: var(--surface3); border-radius: 99px; overflow: hidden; }
   .s33-np-fill { height: 100%; background: var(--gold); border-radius: 99px; }
-  .s33-np-pct { font-size: 10px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; }
+  .s33-np-pct { font-size: 9px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; }
 
   @media (min-width: 600px) {
     .s33-nav-grid, .s33-nav-quick { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -3252,7 +3253,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-23.3 — cartes comme la maquette, rangement a la main';
+const S33_BUILD = '2026-10-23.4 — ecriture plus fine dans le menu Plus';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;

@@ -3253,7 +3253,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-23.5 — suivi du paiement des salaires';
+const S33_BUILD = '2026-10-23.6 — reprendre les charges de salaire en un bouton';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -39623,7 +39623,10 @@ window.addEventListener('appinstalled', () => {
     if (!gens.length) {
       html += '<div class="card" style="margin-top:12px;padding:22px;text-align:center;">' +
         '<div style="font-size:13px;color:var(--text-dim);margin-bottom:14px;">Aucune personne enregistrée.</div>' +
-        '<button onclick="s33SalAjouterEquipe()" style="padding:10px 20px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">Ajouter l\'équipe</button>' +
+        (chargesSalaire().length
+          ? '<button onclick="s33SalReprendreCharges()" style="padding:10px 20px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">Reprendre mes ' + chargesSalaire().length + ' charges de salaire</button>' +
+            '<div style="font-size:11px;color:var(--text-faint);margin-top:10px;">Les montants sont déjà dans tes charges mensuelles : rien à retaper.</div>'
+          : '<button onclick="s33SalAjouterEquipe()" style="padding:10px 20px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">Ajouter l\'équipe</button>') +
       '</div>';
       box.innerHTML = html;
       return;
@@ -39825,6 +39828,7 @@ window.addEventListener('appinstalled', () => {
         '<div id="s33sal-liste"></div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">' +
           '<button onclick="s33SalAjouterEquipe()" style="padding:9px 15px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Ajouter l\'équipe</button>' +
+          (chargesSalaire().length ? '<button onclick="s33SalReprendreCharges()" style="padding:9px 15px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Reprendre ' + chargesSalaire().length + ' charges de salaire</button>' : '') +
           '<button onclick="s33SalAjouterUn()" style="padding:9px 15px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+ Une personne</button>' +
         '</div>' +
         '<div style="display:flex;justify-content:flex-end;margin-top:18px;">' +
@@ -39892,6 +39896,69 @@ window.addEventListener('appinstalled', () => {
       if (Array.isArray(r) && r[0]) _gens.push(r[0]);
       dessinerGerer();
     } catch (e) { toast('Ajout impossible', 'error'); }
+  };
+
+  // ── Reprendre les charges mensuelles de salaire ───────────────
+  // Chaima avait deja ses salaires en charges mensuelles (« Salaire Nadia »,
+  // « Chauffeur »…). Les ressaisir ici aurait double le montant du mois : la
+  // charge recurrente ET celle creee a la validation. Ce bouton fait la
+  // bascule en une fois — les montants sont repris, les charges mensuelles
+  // retirees, et c'est desormais le paiement valide qui porte la depense.
+  function chargesSalaire() {
+    return (db.charges || []).filter(function(c) {
+      if (c.recur !== 'mensuel') return false;
+      var cat = String(c.cat || '').trim().toLowerCase();
+      var lib = String(c.label || '').trim().toLowerCase();
+      return cat === 'salaire' || cat === 'salaires' || /^salaires?\b/.test(lib);
+    });
+  }
+
+  function nomDepuisCharge(label) {
+    return String(label || '').replace(/^salaires?\s+(de\s+)?/i, '').trim() || String(label || '').trim();
+  }
+
+  window.s33SalReprendreCharges = async function() {
+    await salCharger();
+    var ch = chargesSalaire();
+    if (!ch.length) { toast('Aucune charge mensuelle de salaire à reprendre'); return; }
+    var total = ch.reduce(function(s2, c) { return s2 + Number(c.amount || 0); }, 0);
+    var liste = ch.map(function(c) { return nomDepuisCharge(c.label) + ' ' + num(c.amount); }).join(', ');
+    if (!confirm(ch.length + ' charges mensuelles vont devenir des salaires à payer :\n\n' + liste +
+                 '\n\nElles seront retirées des charges du mois. Ton total mensuel baissera de ' +
+                 num(total) + ' MAD tant que tu n\'auras pas validé les paiements — ensuite chaque ' +
+                 'paiement validé recrée la dépense sur le bon mois.')) return;
+
+    var faits = 0;
+    for (var i = 0; i < ch.length; i++) {
+      var c = ch[i];
+      var nom = nomDepuisCharge(c.label);
+      var deja = (_gens || []).find(function(g) {
+        return String(g.nom || '').toLowerCase() === nom.toLowerCase();
+      });
+      try {
+        if (deja) {
+          await sbUpdateOrThrow('salaires', deja.id, { montant: Number(c.amount || 0), actif: true });
+          deja.montant = Number(c.amount || 0); deja.actif = true;
+        } else {
+          var u = (typeof USERS !== 'undefined' ? USERS : []).find(function(x) {
+            return String(x.name || '').toLowerCase() === nom.toLowerCase();
+          });
+          var r = await sbInsertOrThrow('salaires', {
+            nom: nom, user_id: u ? String(u.id) : null, poste: (u && u.jobTitle) || '',
+            montant: Number(c.amount || 0), actif: true, position: (_gens || []).length + i
+          });
+          if (Array.isArray(r) && r[0]) _gens.push(r[0]);
+        }
+        // la charge mensuelle n'a plus lieu d'etre : le paiement la remplacera
+        await sbDelete('charges', c.id);
+        db.charges = (db.charges || []).filter(function(x) { return String(x.id) !== String(c.id); });
+        if (db._fixedCharges) db._fixedCharges = db._fixedCharges.filter(function(x) { return String(x.id) !== String(c.id); });
+        faits++;
+      } catch (e) { console.warn('reprise charge salaire', c.label, e); }
+    }
+    toast(faits + ' salaire' + (faits > 1 ? 's repris' : ' repris') + ' — les montants sont déjà renseignés', 'success');
+    if (document.getElementById('s33sal-gerer')) dessinerGerer();
+    if (typeof renderFinance === 'function') renderFinance();
   };
 
   window.s33SalAjouterEquipe = async function() {

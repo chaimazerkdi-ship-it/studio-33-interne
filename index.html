@@ -1551,7 +1551,9 @@
     position: fixed;
     bottom: 0; left: 0; right: 0;
     background: var(--surface);
-    border-top: 1px solid var(--border);
+    border-top: none;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -4px 20px rgba(0,0,0,.06);
     z-index: 1000;
     padding: 0;
     padding-bottom: env(safe-area-inset-bottom);
@@ -1561,8 +1563,20 @@
     display: flex;
     justify-content: space-around;
     align-items: center;
-    height: 56px;
+    height: 58px;
   }
+
+  /* Bouton "Ajouter" : le rond de la couleur de l'app, qui depasse en haut */
+  .mnav-add-ic {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: var(--gold); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: -20px; margin-bottom: 1px;
+    box-shadow: 0 4px 12px rgba(249, 115, 22, .32);
+    transition: transform .12s;
+  }
+  .mnav-add-ic svg { width: 24px; height: 24px; stroke: #fff; fill: none; }
+  #mnav-add:active .mnav-add-ic { transform: scale(.93); }
 
   .mobile-nav-item {
     display: flex;
@@ -3203,7 +3217,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-22.5 — ecran Plus : projets en cours et 3D de couverture';
+const S33_BUILD = '2026-10-23.1 — barre du bas : Accueil, Projets, Ajouter, Taches, Plus';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -7330,41 +7344,60 @@ function renderAll() {
 }
 
 // ===== DASHBOARD =====
+// ═══ ACTIONS RAPIDES ═══════════════════════════════════════════
+// Les memes boutons en haut du tableau de bord et derriere le "+" de la
+// barre du bas : une seule liste, une seule regle de permission.
+const S33_SHORTCUTS = [
+  { icon: 'person_add',     color: '#8b5cf6', label: 'Ajouter un prospect',        action: "openProspectModal()" },
+  { icon: 'request_quote',  color: '#c9a96e', label: 'Générer un devis',           action: "navigate('devis')",           perm: 'devis' },
+  { icon: 'contacts',       color: '#3b82f6', label: 'Ajouter un contact pro',     action: "openContactModal()",          perm: 'contacts' },
+  { icon: 'local_shipping', color: '#f59e0b', label: 'Ajouter un fournisseur',     action: "openSupplierModal()" },
+  { icon: 'fact_check',     color: '#10b981', label: 'PV de chantier',             action: "navigate('pvchantier')" },
+  { icon: 'groups',         color: '#0ea5e9', label: 'Réunion client',             action: "s33ReuNew()" },
+  { icon: 'event',          color: '#ef4444', label: 'Ajouter au calendrier',      action: "navigate('calendar');setTimeout(function(){openCalEventModal();},150)" },
+  { icon: 'edit_note',      color: '#06b6d4', label: 'Écrire mon rapport',         action: "navigate('rapport')" },
+  { icon: 'forum',          color: '#ec4899', label: 'Message à l\'équipe',        action: "navigate('messagerie')" },
+  { icon: 'report_problem', color: '#e74c3c', label: 'Signaler un problème',       action: "openIncidentModal()" }
+];
+
+// Permissions reelles (pas l'etat du menu, qui peut ne pas encore etre
+// applique au premier rendu — sinon un bouton apparait puis disparait).
+function s33ScPeutVoir(key) {
+  if (!currentUser) return false;
+  const perms = currentUser.permissions || {};
+  if (currentUser.role === 'admin') return true;
+  const sec = perms.sections || {};
+  if (perms.is_co_admin === true) return sec[key] !== false;
+  return sec[key] === true;
+}
+
+function s33ShortcutsHtml(avant) {
+  return S33_SHORTCUTS
+    .filter(s => !s.perm || s33ScPeutVoir(s.perm))
+    .map(s => {
+      const act = (avant || '') + s.action;
+      return '<button class="dash-sc" onclick="' + act.replace(/"/g, '&quot;') + '">' +
+        '<span class="sc-ic" style="background:' + s.color + '1f;color:' + s.color + ';"><span class="mi">' + s.icon + '</span></span>' +
+        '<span class="sc-label">' + s.label + '</span>' +
+      '</button>';
+    }).join('');
+}
+
+// Le "+" de la barre du bas ouvre ces memes actions rapides.
+function openMobileAdd() {
+  const g = document.getElementById('mobile-add-grid');
+  if (g) g.innerHTML = s33ShortcutsHtml('closeMobileAdd(); ');
+  const ov = document.getElementById('mobile-add-overlay');
+  if (ov) ov.classList.add('open');
+}
+function closeMobileAdd() {
+  const ov = document.getElementById('mobile-add-overlay');
+  if (ov) ov.classList.remove('open');
+}
+
 function renderDashboard() {
-  // ── Actions rapides ──────────────────────────────────────────
   const scEl = document.getElementById('dash-shortcuts');
-  if (scEl) {
-    // Permissions réelles (pas l'état du menu, qui peut ne pas encore être appliqué
-    // au premier rendu — sinon un bouton apparaît puis disparaît selon le moment)
-    const canSee = key => {
-      if (!currentUser) return false;
-      const perms = currentUser.permissions || {};
-      if (currentUser.role === 'admin') return true;
-      const sec = perms.sections || {};
-      if (perms.is_co_admin === true) return sec[key] !== false;
-      return sec[key] === true;
-    };
-    const SHORTCUTS = [
-      { icon: 'person_add',     color: '#8b5cf6', label: 'Ajouter un prospect',        action: "openProspectModal()" },
-      { icon: 'request_quote',  color: '#c9a96e', label: 'Générer un devis',           action: "navigate('devis')",           perm: 'devis' },
-      { icon: 'contacts',       color: '#3b82f6', label: 'Ajouter un contact pro',     action: "openContactModal()",          perm: 'contacts' },
-      { icon: 'local_shipping', color: '#f59e0b', label: 'Ajouter un fournisseur',     action: "openSupplierModal()" },
-      { icon: 'fact_check',     color: '#10b981', label: 'PV de chantier',             action: "navigate('pvchantier')" },
-      { icon: 'groups',         color: '#0ea5e9', label: 'Réunion client',             action: "s33ReuNew()" },
-      { icon: 'event',          color: '#ef4444', label: 'Ajouter au calendrier',      action: "navigate('calendar');setTimeout(function(){openCalEventModal();},150)" },
-      { icon: 'edit_note',      color: '#06b6d4', label: 'Écrire mon rapport',         action: "navigate('rapport')" },
-      { icon: 'forum',          color: '#ec4899', label: 'Message à l\'équipe',        action: "navigate('messagerie')" },
-      { icon: 'report_problem', color: '#e74c3c', label: 'Signaler un problème',       action: "openIncidentModal()" }
-    ];
-    scEl.innerHTML = SHORTCUTS
-      .filter(s => !s.perm || canSee(s.perm))
-      .map(s =>
-        '<button class="dash-sc" onclick="' + s.action.replace(/"/g, '&quot;') + '">' +
-          '<span class="sc-ic" style="background:' + s.color + '1f;color:' + s.color + ';"><span class="mi">' + s.icon + '</span></span>' +
-          '<span class="sc-label">' + s.label + '</span>' +
-        '</button>'
-      ).join('');
-  }
+  if (scEl) scEl.innerHTML = s33ShortcutsHtml();
 
   const activeProjects = db.projects.filter(p => !p.archived);
   document.getElementById('stat-projects').textContent = activeProjects.length;
@@ -14793,28 +14826,20 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
 <nav class="mobile-nav" id="mobile-nav">
   <div class="mobile-nav-inner">
     <div class="mobile-nav-item active" id="mnav-dashboard" onclick="mobileNavigate('dashboard')">
-      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
-      <span>Dashboard</span>
+      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></span>
+      <span>Accueil</span>
     </div>
     <div class="mobile-nav-item" id="mnav-projects" onclick="mobileNavigate('projects')">
-      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></span>
+      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></span>
       <span>Projets</span>
     </div>
-    <div class="mobile-nav-item" id="mnav-invoices" onclick="mobileNavigate('invoices')">
-      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span>
-      <span>Facturation</span>
+    <div class="mobile-nav-item" id="mnav-add" onclick="openMobileAdd()">
+      <span class="mnav-add-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+      <span>Ajouter</span>
     </div>
-    <div class="mobile-nav-item" id="mnav-taches" style="display:none;" onclick="mobileNavigate('taches')">
+    <div class="mobile-nav-item" id="mnav-taches" onclick="mobileNavigate('taches')">
       <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
       <span>Tâches</span>
-    </div>
-    <div class="mobile-nav-item" id="mnav-calendar" onclick="mobileNavigate('calendar')">
-      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
-      <span>Calendrier</span>
-    </div>
-    <div class="mobile-nav-item" id="mnav-rapport" style="display:none;" onclick="mobileNavigate('rapport')">
-      <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg></span>
-      <span>Rapport</span>
     </div>
     <div class="mobile-nav-item" id="mnav-more" onclick="openMobileMore()">
       <span class="mnav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></span>
@@ -14846,6 +14871,12 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     </div>
     <div class="mobile-more-item" id="mnav-more-profil" onclick="openProfilePanel(); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Mon profil
+    </div>
+    <div class="mobile-more-item" id="mnav-more-calendar" onclick="mobileNavigate('calendar'); closeMobileMore()">
+      <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span> Calendrier
+    </div>
+    <div class="mobile-more-item" id="mnav-more-invoices" style="display:none;" onclick="mobileNavigate('invoices'); closeMobileMore()">
+      <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span> Facturation
     </div>
     <div class="mobile-more-item" id="mnav-more-rapport" onclick="mobileNavigate('rapport'); closeMobileMore()">
       <span class="mnav-icon"><span class="mi">assignment</span></span> Mon Rapport
@@ -14912,6 +14943,14 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
   </div>
 </div>
 
+<!-- MOBILE : feuille "Ajouter" (les actions rapides du tableau de bord) -->
+<div class="mobile-more-overlay" id="mobile-add-overlay" onclick="closeMobileAdd()">
+  <div class="mobile-more-sheet" onclick="event.stopPropagation()" style="max-height:80vh;padding:20px 16px calc(16px + env(safe-area-inset-bottom));">
+    <div class="mobile-more-title" style="padding:0 2px 12px;">Ajouter</div>
+    <div id="mobile-add-grid" class="dash-sc-grid"></div>
+  </div>
+</div>
+
 <!-- MOBILE NOTIFICATIONS SHEET -->
 <div class="mobile-more-overlay" id="mobile-notif-overlay" onclick="closeMobileNotifs()">
   <div class="mobile-more-sheet" onclick="event.stopPropagation()" style="max-height:75vh;display:flex;flex-direction:column;">
@@ -14967,6 +15006,8 @@ function toggleDevisPanel() {
     'mnav-more-backup':       'Exporter toutes les donnees',
     'mnav-more-guide':        "Comment utiliser l'app",
     'mnav-more-rapport':      "Ce que j'ai fait aujourd'hui",
+    'mnav-more-calendar':     'Rendez-vous et echeances',
+    'mnav-more-invoices':     'Factures et paiements',
     'mnav-more-equipe':       'Rapports, planning, taches',
     'mnav-prospects':         'Pistes et relances',
     'mnav-more-devis':        'Redaction, envoi, signature',
@@ -14993,7 +15034,8 @@ function toggleDevisPanel() {
   var S33_NAV_QUICK = ['mnav-more-recherche','mnav-more-notifs','mnav-more-profil',
                        'mnav-more-messagerie','mnav-more-backup','mnav-more-guide'];
   var S33_NAV_BAS   = ['mnav-more-theme','mnav-more-corbeille','mnav-more-logout'];
-  var S33_NAV_MAIN  = ['mnav-more-rapport','mnav-more-equipe','mnav-prospects','mnav-more-devis',
+  var S33_NAV_MAIN  = ['mnav-more-rapport','mnav-more-calendar','mnav-more-equipe',
+                       'mnav-prospects','mnav-more-devis','mnav-more-invoices',
                        'mnav-more-clients','mnav-more-finance','mnav-pvchantier','mnav-more-pv',
                        'mnav-more-panneau','mnav-more-concours','mnav-more-mediatheque',
                        'mnav-more-library','mnav-more-materiaux','mnav-more-contacts',
@@ -20169,7 +20211,7 @@ function updateUIForUser() {
 
   // Reset gated items
   _setVis(['nav-clients','mnav-more-clients'], false);
-  _setVis(['nav-invoices','mnav-invoices'], false);
+  _setVis(['nav-invoices','mnav-invoices','mnav-more-invoices'], false);
   _setVis(['nav-devis','mnav-more-devis'], false);
   _setVis(['nav-finance','mnav-more-finance'], false);
   _setVis(['nav-section-finance'], false);
@@ -20182,7 +20224,7 @@ function updateUIForUser() {
   // Show based on permissions
   if (_canSee('equipe'))        _setVis(['nav-equipe','mnav-more-equipe'], true);
   if (_canSee('finance'))       _setVis(['nav-finance','mnav-more-finance'], true);
-  if (_canSee('invoices'))      _setVis(['nav-invoices','mnav-invoices'], true);
+  if (_canSee('invoices'))      _setVis(['nav-invoices','mnav-invoices','mnav-more-invoices'], true);
   if (_canSee('devis'))         _setVis(['nav-devis','mnav-more-devis'], true);
   if (_canSee('clients'))       _setVis(['nav-clients','mnav-more-clients'], true);
   if (_canSee('contacts'))      _setVis(['nav-contacts','mnav-more-contacts'], true);

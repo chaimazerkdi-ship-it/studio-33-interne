@@ -3253,7 +3253,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-23.4 — ecriture plus fine dans le menu Plus';
+const S33_BUILD = '2026-10-23.5 — suivi du paiement des salaires';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -39457,6 +39457,534 @@ window.addEventListener('appinstalled', () => {
   injectCSS(); injectNav(); injectPage();
 
   console.log('✓ Guide chargé');
+})();
+</script>
+
+<!-- ═══ SALAIRES — suivi mensuel du paiement ═══ -->
+<script>
+/* Chaima : « des fois, comme ces derniers mois, je n'ai pas pu payer les
+   salaires ». Il ne suffit donc pas de cocher payé / pas payé : il faut
+   garder ce qui RESTE DÛ, mois par mois et personne par personne.
+
+   Deux tables : salaires (les personnes et leur montant fixe) et
+   salaires_paiements (une ligne par personne et par mois, avec le detail
+   des versements). Chaque versement cree aussi la charge dans Finances,
+   pour que les totaux du mois soient justes sans double saisie.
+
+   Le bloc est reserve a l'admin au sens strict : un membre a qui la
+   permission « finance » est accordee ne doit pas voir les salaires de
+   ses collegues. */
+(function() {
+  'use strict';
+
+  var _gens = null;      // table salaires
+  var _pay  = null;      // table salaires_paiements
+  var _enCours = null;   // chargement en cours
+  var _moisOuverts = {}; // mois deja completes, pour ne pas reecrire
+
+  var MOIS_FR = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+                 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+  function estAdmin() { return !!(currentUser && currentUser.role === 'admin'); }
+  function num(n) { return (typeof formatNum === 'function') ? formatNum(n || 0) : String(Math.round(n || 0)); }
+  function esc(s) { return (typeof escHTML === 'function') ? escHTML(s) : String(s == null ? '' : s); }
+  function moisAffiche() {
+    return (typeof getFinanceMonth === 'function') ? getFinanceMonth().str : new Date().toISOString().slice(0, 7);
+  }
+  function moisReel() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function moisPrecedent() {
+    var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function moisLabel(m) {
+    var p = String(m || '').split('-');
+    return (MOIS_FR[parseInt(p[1], 10)] || m) + ' ' + p[0];
+  }
+  function dateLabel(d) {
+    if (!d) return '';
+    try { return new Date(d + 'T12:00:00').toLocaleDateString('fr-MA', { day: 'numeric', month: 'long' }); }
+    catch (e) { return d; }
+  }
+
+  // ── Chargement ────────────────────────────────────────────────
+  async function salCharger(force) {
+    if (_gens && !force) return;
+    if (_enCours) return _enCours;
+    _enCours = (async function() {
+      var r = await Promise.all([
+        sbGet('salaires', '?order=position,id').catch(function() { return []; }),
+        sbGet('salaires_paiements', '?order=mois').catch(function() { return []; })
+      ]);
+      _gens = Array.isArray(r[0]) ? r[0] : [];
+      _pay  = Array.isArray(r[1]) ? r[1] : [];
+    })();
+    try { await _enCours; } finally { _enCours = null; }
+  }
+  window.s33SalCharger = salCharger;
+
+  function actifs() { return (_gens || []).filter(function(g) { return g.actif !== false; }); }
+  function ligne(salaireId, mois) {
+    return (_pay || []).find(function(p) {
+      return String(p.salaire_id) === String(salaireId) && p.mois === mois;
+    });
+  }
+  function reste(p) {
+    if (!p) return 0;
+    return Math.max(0, Number(p.montant_du || 0) - Number(p.montant_paye || 0));
+  }
+
+  // Ouvre un mois : cree la ligne de chaque personne qui n'en a pas encore.
+  // Sans ca, un mois jamais paye ne laisserait aucune trace et le restant du
+  // serait faux. On n'ouvre jamais un mois a venir, ni une personne sans
+  // montant renseigne.
+  async function ouvrirMois(mois) {
+    if (!mois || mois > moisReel() || _moisOuverts[mois]) return;
+    var aCreer = actifs().filter(function(g) {
+      if (Number(g.montant || 0) <= 0 || ligne(g.id, mois)) return false;
+      // jamais de dette pour un mois deja fini avant que la personne existe :
+      // sinon, le jour ou Chaima cree sa liste, l'app lui reclame les mois
+      // d'avant qu'elle a peut-etre deja regles hors de l'app
+      var ne = String(g.created_at || '').slice(0, 7);
+      return !ne || ne <= mois;
+    });
+    _moisOuverts[mois] = true;
+    for (var i = 0; i < aCreer.length; i++) {
+      var g = aCreer[i];
+      try {
+        var r = await sbInsertOrThrow('salaires_paiements', {
+          salaire_id: g.id, mois: mois, montant_du: Number(g.montant || 0),
+          montant_paye: 0, statut: 'du', versements: []
+        });
+        if (Array.isArray(r) && r[0]) _pay.push(r[0]);
+      } catch (e) { /* ligne deja creee ailleurs : on ignore */ }
+    }
+  }
+
+  // ── Le bloc dans la page Finances ─────────────────────────────
+  function rendre() {
+    var page = document.getElementById('page-finance');
+    if (!page) return;
+    var box = document.getElementById('s33-salaires');
+    if (!estAdmin()) { if (box) box.innerHTML = ''; return; }
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 's33-salaires';
+      page.appendChild(box);
+    }
+    var mois = moisAffiche();
+    salCharger().then(function() {
+      return ouvrirMois(mois);
+    }).then(function() {
+      dessiner(box, mois);
+    }).catch(function(e) {
+      box.innerHTML = '<div class="card" style="margin-top:22px;"><div style="font-size:12.5px;color:var(--text-dim);">Salaires indisponibles — ' + esc(e && e.message || '') + '</div></div>';
+    });
+  }
+
+  function dessiner(box, mois) {
+    var gens = actifs();
+    var lignes = gens.map(function(g) {
+      var p = ligne(g.id, mois);
+      var dû = p ? Number(p.montant_du || 0) : Number(g.montant || 0);
+      var paye = p ? Number(p.montant_paye || 0) : 0;
+      var rst = Math.max(0, dû - paye);
+      var statut = !dû ? 'vide' : rst <= 0 ? 'paye' : paye > 0 ? 'partiel' : 'du';
+      return { g: g, p: p, du: dû, paye: paye, reste: rst, statut: statut };
+    });
+    var totalDu = lignes.reduce(function(s, l) { return s + l.du; }, 0);
+    var totalPaye = lignes.reduce(function(s, l) { return s + l.paye; }, 0);
+
+    // Restant du des mois precedents
+    var arrieres = [];
+    (_pay || []).forEach(function(p) {
+      if (p.mois >= mois) return;
+      var r = reste(p);
+      if (r <= 0) return;
+      var g = (_gens || []).find(function(x) { return String(x.id) === String(p.salaire_id); });
+      arrieres.push({ nom: g ? g.nom : '—', mois: p.mois, reste: r, id: p.salaire_id });
+    });
+    arrieres.sort(function(a, b) { return a.mois < b.mois ? -1 : 1; });
+    var totalArr = arrieres.reduce(function(s, a) { return s + a.reste; }, 0);
+
+    var puce = { paye: ['#16a34a', 'check_circle', 'Payé'],
+                 partiel: ['#f59e0b', 'schedule', 'Partiel'],
+                 du: ['#ef4444', 'radio_button_unchecked', 'À payer'],
+                 vide: ['var(--text-faint)', 'remove', 'Montant à renseigner'] };
+
+    var html =
+      '<div style="margin-top:26px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+        '<div class="section-title" style="margin:0;">Salaires — ' + esc(moisLabel(mois)) + '</div>' +
+        '<button onclick="s33SalGerer()" style="padding:7px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;"><span class="mi mi-sm">group</span> Gérer les personnes</button>' +
+      '</div>';
+
+    if (!gens.length) {
+      html += '<div class="card" style="margin-top:12px;padding:22px;text-align:center;">' +
+        '<div style="font-size:13px;color:var(--text-dim);margin-bottom:14px;">Aucune personne enregistrée.</div>' +
+        '<button onclick="s33SalAjouterEquipe()" style="padding:10px 20px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">Ajouter l\'équipe</button>' +
+      '</div>';
+      box.innerHTML = html;
+      return;
+    }
+
+    html += '<div class="card" style="margin-top:12px;padding:0;overflow:hidden;">';
+    lignes.forEach(function(l, i) {
+      var st = puce[l.statut];
+      var detail = l.statut === 'paye'
+        ? 'Payé' + (l.p && l.p.dernier_paiement ? ' le ' + dateLabel(l.p.dernier_paiement) : '') +
+          (l.p && (l.p.versements || []).length > 1 ? ' · ' + l.p.versements.length + ' versements' : '')
+        : l.statut === 'partiel'
+          ? num(l.paye) + ' payés' + (l.p && l.p.dernier_paiement ? ' le ' + dateLabel(l.p.dernier_paiement) : '') + ' — reste ' + num(l.reste) + ' MAD'
+          : l.statut === 'vide' ? 'Montant à renseigner' : 'À payer';
+      html +=
+        '<div style="display:flex;align-items:center;gap:12px;padding:13px 16px;' + (i ? 'border-top:1px solid var(--border);' : '') + 'flex-wrap:wrap;">' +
+          '<span class="mi" style="font-size:18px;color:' + st[0] + ';flex-shrink:0;">' + st[1] + '</span>' +
+          '<div style="flex:1;min-width:130px;">' +
+            '<div style="font-size:13px;font-weight:700;color:var(--text);">' + esc(l.g.nom) + (l.g.poste ? ' <span style="font-weight:500;color:var(--text-faint);font-size:11px;">· ' + esc(l.g.poste) + '</span>' : '') + '</div>' +
+            '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + esc(detail) + '</div>' +
+          '</div>' +
+          '<div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;">' + num(l.du) + ' MAD</div>' +
+          (l.statut === 'paye'
+            ? '<button onclick="s33SalAnnuler(' + l.g.id + ',\'' + mois + '\')" style="padding:6px 12px;background:none;color:var(--text-faint);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:11px;cursor:pointer;">Annuler</button>'
+            : l.statut === 'vide'
+              ? '<button onclick="s33SalGerer()" style="padding:6px 14px;background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;">Renseigner</button>'
+              : '<button onclick="s33SalPayer(' + l.g.id + ',\'' + mois + '\')" style="padding:6px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;">Payer</button>') +
+        '</div>';
+    });
+    html +=
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid var(--border);background:var(--surface2);">' +
+        '<span style="font-size:11.5px;color:var(--text-dim);font-weight:600;">Payé ce mois</span>' +
+        '<span style="font-size:13px;font-weight:800;color:' + (totalPaye >= totalDu && totalDu > 0 ? '#16a34a' : 'var(--text)') + ';">' + num(totalPaye) + ' / ' + num(totalDu) + ' MAD</span>' +
+      '</div></div>';
+
+    if (arrieres.length) {
+      html +=
+        '<div style="margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:10px;">' +
+          '<div class="section-title" style="margin:0;">Restant dû des mois précédents</div>' +
+          '<span style="font-size:13px;font-weight:800;color:var(--red);">' + num(totalArr) + ' MAD</span>' +
+        '</div>' +
+        '<div class="card" style="margin-top:10px;padding:0;overflow:hidden;">';
+      arrieres.forEach(function(a, i) {
+        html +=
+          '<div style="display:flex;align-items:center;gap:10px;padding:11px 16px;' + (i ? 'border-top:1px solid var(--border);' : '') + '">' +
+            '<span style="flex:1;font-size:12.5px;color:var(--text);">' + esc(a.nom) + ' <span style="color:var(--text-faint);">— ' + esc(moisLabel(a.mois)) + '</span></span>' +
+            '<span style="font-size:12.5px;font-weight:700;color:var(--red);white-space:nowrap;">' + num(a.reste) + ' MAD</span>' +
+            '<button onclick="s33SalPayer(' + a.id + ',\'' + a.mois + '\')" style="padding:5px 13px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">Payer</button>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+
+    box.innerHTML = html;
+  }
+
+  // ── Payer ─────────────────────────────────────────────────────
+  window.s33SalPayer = function(salaireId, mois) {
+    var g = (_gens || []).find(function(x) { return String(x.id) === String(salaireId); });
+    if (!g) return;
+    var p = ligne(salaireId, mois);
+    var rst = p ? reste(p) : Number(g.montant || 0);
+    var aujourd = new Date().toISOString().slice(0, 10);
+
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:var(--radius);padding:24px;width:100%;max-width:380px;box-shadow:var(--shadow-lg);" onclick="event.stopPropagation()">' +
+        '<div style="font-size:16px;font-weight:800;color:var(--text);">Salaire de ' + esc(g.nom) + '</div>' +
+        '<div style="font-size:12.5px;color:var(--text-dim);margin-top:4px;margin-bottom:18px;">' + esc(moisLabel(mois)) + ' — reste ' + num(rst) + ' MAD</div>' +
+        '<label style="font-size:10.5px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:7px;">Montant versé</label>' +
+        '<input type="number" id="s33sal-montant" value="' + rst + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;margin-bottom:16px;">' +
+        '<label style="font-size:10.5px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:7px;">Moyen</label>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:16px;">' +
+          ['Virement', 'Chèque', 'Espèces'].map(function(m, i) {
+            return '<button type="button" class="s33sal-moyen" data-m="' + m + '" onclick="s33SalMoyen(this)" style="padding:9px 4px;border:2px solid ' + (i === 0 ? 'var(--gold)' : 'var(--border)') + ';border-radius:var(--radius-sm);background:' + (i === 0 ? 'rgba(249,115,22,.1)' : 'var(--surface2)') + ';color:' + (i === 0 ? 'var(--gold)' : 'var(--text)') + ';font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;">' + m + '</button>';
+          }).join('') +
+        '</div>' +
+        '<input type="hidden" id="s33sal-moyen-val" value="Virement">' +
+        '<label style="font-size:10.5px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:7px;">Date du paiement</label>' +
+        '<input type="date" id="s33sal-date" value="' + aujourd + '" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;margin-bottom:20px;">' +
+        '<div style="display:flex;gap:9px;justify-content:flex-end;">' +
+          '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="padding:10px 18px;background:var(--surface2);color:var(--text);border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12.5px;cursor:pointer;">Annuler</button>' +
+          '<button id="s33sal-ok" onclick="s33SalValider(' + salaireId + ',\'' + mois + '\',this)" style="padding:10px 20px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">Enregistrer</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+  };
+
+  window.s33SalMoyen = function(btn) {
+    document.querySelectorAll('.s33sal-moyen').forEach(function(b) {
+      b.style.borderColor = 'var(--border)';
+      b.style.background = 'var(--surface2)';
+      b.style.color = 'var(--text)';
+    });
+    btn.style.borderColor = 'var(--gold)';
+    btn.style.background = 'rgba(249,115,22,.1)';
+    btn.style.color = 'var(--gold)';
+    document.getElementById('s33sal-moyen-val').value = btn.getAttribute('data-m');
+  };
+
+  window.s33SalValider = async function(salaireId, mois, btn) {
+    var montant = parseFloat((document.getElementById('s33sal-montant') || {}).value) || 0;
+    var date = (document.getElementById('s33sal-date') || {}).value || new Date().toISOString().slice(0, 10);
+    var moyen = (document.getElementById('s33sal-moyen-val') || {}).value || '';
+    if (montant <= 0) { toast('Montant à saisir'); return; }
+    btn.disabled = true; btn.textContent = 'Enregistrement…';
+
+    var g = (_gens || []).find(function(x) { return String(x.id) === String(salaireId); });
+    var p = ligne(salaireId, mois);
+
+    try {
+      // 1. la charge dans Finances, pour que le mois soit juste
+      var chargeId = null;
+      try {
+        var ch = await sbInsertOrThrow('charges', {
+          label: 'Salaire ' + (g ? g.nom : '') + ' — ' + moisLabel(mois),
+          cat: 'Salaires',
+          amount: montant,
+          recur: 'ponctuel',
+          month: mois
+        });
+        if (Array.isArray(ch) && ch[0]) {
+          chargeId = ch[0].id;
+          db.charges = db.charges || [];
+          db.charges.push(ch[0]);
+          if (db._chargesIdx) { (db._chargesIdx[mois] = db._chargesIdx[mois] || []).push(ch[0]); }
+        }
+      } catch (e) { console.warn('charge salaire', e); }
+
+      // 2. le paiement
+      var versement = { date: date, montant: montant, moyen: moyen, charge_id: chargeId };
+      if (p) {
+        var vers = (p.versements || []).concat([versement]);
+        var paye = vers.reduce(function(s, v) { return s + Number(v.montant || 0); }, 0);
+        var patch = {
+          montant_paye: paye,
+          versements: vers,
+          dernier_paiement: date,
+          statut: paye >= Number(p.montant_du || 0) ? 'paye' : 'partiel'
+        };
+        await sbUpdateOrThrow('salaires_paiements', p.id, patch);
+        Object.assign(p, patch);
+      } else {
+        var dû = Number(g && g.montant || 0) || montant;
+        var r = await sbInsertOrThrow('salaires_paiements', {
+          salaire_id: salaireId, mois: mois, montant_du: dû, montant_paye: montant,
+          statut: montant >= dû ? 'paye' : 'partiel', versements: [versement], dernier_paiement: date
+        });
+        if (Array.isArray(r) && r[0]) _pay.push(r[0]);
+      }
+      var ovv = btn.closest('[style*=fixed]'); if (ovv) ovv.remove();
+      toast('Salaire enregistré — ' + num(montant) + ' MAD le ' + dateLabel(date), 'success');
+      if (typeof renderFinance === 'function') renderFinance();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Enregistrer';
+      toast('Enregistrement impossible : ' + (e && e.message || 'erreur'), 'error');
+    }
+  };
+
+  // ── Annuler le dernier paiement d'un mois ─────────────────────
+  window.s33SalAnnuler = async function(salaireId, mois) {
+    var p = ligne(salaireId, mois);
+    if (!p) return;
+    if (!confirm('Annuler le paiement de ce mois ? La charge correspondante sera retirée des Finances.')) return;
+    var vers = (p.versements || []).slice();
+    try {
+      for (var i = 0; i < vers.length; i++) {
+        if (vers[i].charge_id) {
+          try {
+            await sbDelete('charges', vers[i].charge_id);
+            db.charges = (db.charges || []).filter(function(c) { return String(c.id) !== String(vers[i].charge_id); });
+            if (db._chargesIdx && db._chargesIdx[mois]) {
+              db._chargesIdx[mois] = db._chargesIdx[mois].filter(function(c) { return String(c.id) !== String(vers[i].charge_id); });
+            }
+          } catch (e) { console.warn('suppression charge', e); }
+        }
+      }
+      var patch = { montant_paye: 0, versements: [], dernier_paiement: null, statut: 'du' };
+      await sbUpdateOrThrow('salaires_paiements', p.id, patch);
+      Object.assign(p, patch);
+      toast('Paiement annulé', 'success');
+      if (typeof renderFinance === 'function') renderFinance();
+    } catch (e) {
+      toast('Annulation impossible : ' + (e && e.message || 'erreur'), 'error');
+    }
+  };
+
+  // ── Gérer les personnes ───────────────────────────────────────
+  window.s33SalGerer = function() {
+    var ov = document.createElement('div');
+    ov.id = 's33sal-gerer';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:18px;';
+    ov.innerHTML =
+      '<div style="background:var(--surface);border-radius:var(--radius);padding:22px;width:100%;max-width:460px;max-height:86vh;overflow-y:auto;box-shadow:var(--shadow-lg);" onclick="event.stopPropagation()">' +
+        '<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;">Personnes et salaires</div>' +
+        '<div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">Le montant mensuel est repris chaque mois. Tu peux toujours verser autre chose au moment de payer.</div>' +
+        '<div id="s33sal-liste"></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">' +
+          '<button onclick="s33SalAjouterEquipe()" style="padding:9px 15px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Ajouter l\'équipe</button>' +
+          '<button onclick="s33SalAjouterUn()" style="padding:9px 15px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">+ Une personne</button>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:18px;">' +
+          '<button onclick="s33SalFermerGerer()" style="padding:10px 20px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;">Terminé</button>' +
+        '</div>' +
+      '</div>';
+    ov.addEventListener('click', function(e) { if (e.target === ov) window.s33SalFermerGerer(); });
+    document.body.appendChild(ov);
+    salCharger().then(dessinerGerer);
+  };
+
+  function dessinerGerer() {
+    var z = document.getElementById('s33sal-liste');
+    if (!z) return;
+    var gens = actifs();
+    if (!gens.length) {
+      z.innerHTML = '<div style="font-size:12.5px;color:var(--text-faint);padding:10px 0;">Personne pour l\'instant.</div>';
+      return;
+    }
+    z.innerHTML = gens.map(function(g) {
+      return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);">' +
+        '<input value="' + esc(g.nom) + '" onchange="s33SalMaj(' + g.id + ',\'nom\',this.value)" style="flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:var(--radius-sm);font-family:inherit;font-size:12.5px;">' +
+        '<input type="number" value="' + (Number(g.montant) || 0) + '" onchange="s33SalMaj(' + g.id + ',\'montant\',this.value)" style="width:92px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:var(--radius-sm);font-family:inherit;font-size:12.5px;text-align:right;">' +
+        '<button onclick="s33SalRetirer(' + g.id + ')" title="Retirer de la liste" style="background:none;border:none;color:var(--text-faint);font-size:17px;cursor:pointer;padding:2px 4px;">&times;</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  window.s33SalMaj = async function(id, champ, valeur) {
+    var g = (_gens || []).find(function(x) { return String(x.id) === String(id); });
+    if (!g) return;
+    var v = champ === 'montant' ? (parseFloat(valeur) || 0) : String(valeur || '').trim();
+    if (champ === 'nom' && !v) { toast('Le nom ne peut pas être vide'); dessinerGerer(); return; }
+    var patch = {}; patch[champ] = v;
+    try {
+      await sbUpdateOrThrow('salaires', id, patch);
+      g[champ] = v;
+      // le montant du mois en cours suit, tant que rien n'a ete paye
+      if (champ === 'montant') {
+        var p = ligne(id, moisAffiche());
+        if (p && Number(p.montant_paye || 0) === 0) {
+          await sbUpdateOrThrow('salaires_paiements', p.id, { montant_du: v }).catch(function() {});
+          p.montant_du = v;
+        }
+      }
+    } catch (e) { toast('Enregistrement impossible', 'error'); }
+  };
+
+  window.s33SalRetirer = async function(id) {
+    var g = (_gens || []).find(function(x) { return String(x.id) === String(id); });
+    if (!g) return;
+    if (!confirm('Retirer ' + g.nom + ' de la liste des salaires ? L\'historique des paiements est conservé.')) return;
+    try {
+      await sbUpdateOrThrow('salaires', id, { actif: false });
+      g.actif = false;
+      dessinerGerer();
+    } catch (e) { toast('Impossible de retirer', 'error'); }
+  };
+
+  window.s33SalAjouterUn = async function() {
+    var nom = prompt('Nom de la personne (femme de ménage, gardien, stagiaire…)');
+    if (!nom || !nom.trim()) return;
+    try {
+      var r = await sbInsertOrThrow('salaires', { nom: nom.trim(), montant: 0, actif: true, position: (_gens || []).length });
+      if (Array.isArray(r) && r[0]) _gens.push(r[0]);
+      dessinerGerer();
+    } catch (e) { toast('Ajout impossible', 'error'); }
+  };
+
+  window.s33SalAjouterEquipe = async function() {
+    await salCharger();
+    var dejaLa = (_gens || []).map(function(g) { return String(g.user_id || '') + '|' + (g.nom || '').toLowerCase(); });
+    var aAjouter = (typeof USERS !== 'undefined' ? USERS : []).filter(function(u) {
+      if (u.role === 'admin') return false;
+      return !dejaLa.some(function(k) { return k === String(u.id) + '|' + (u.name || '').toLowerCase() || k.split('|')[1] === (u.name || '').toLowerCase(); });
+    });
+    if (!aAjouter.length) { toast('Toute l\'équipe est déjà dans la liste'); return; }
+    for (var i = 0; i < aAjouter.length; i++) {
+      var u = aAjouter[i];
+      try {
+        var r = await sbInsertOrThrow('salaires', {
+          nom: u.name, user_id: String(u.id), poste: u.jobTitle || '',
+          montant: 0, actif: true, position: (_gens || []).length + i
+        });
+        if (Array.isArray(r) && r[0]) _gens.push(r[0]);
+      } catch (e) { console.warn('ajout salaire', e); }
+    }
+    toast(aAjouter.length + ' personne' + (aAjouter.length > 1 ? 's ajoutées' : ' ajoutée') + ' — renseigne les montants', 'success');
+    if (document.getElementById('s33sal-gerer')) dessinerGerer();
+    else if (typeof renderFinance === 'function') renderFinance();
+  };
+
+  window.s33SalFermerGerer = function() {
+    var ov = document.getElementById('s33sal-gerer');
+    if (ov) ov.remove();
+    if (typeof renderFinance === 'function') renderFinance();
+  };
+
+  // ── Le rappel dans « Ton brief » du tableau de bord ────────────
+  async function brief() {
+    if (!estAdmin()) return;
+    var card = document.querySelector('#s33-brief .card');
+    if (!card) return;
+    await salCharger();
+    var mois = moisPrecedent();
+    await ouvrirMois(mois);
+    var impayes = (_pay || []).filter(function(p) { return p.mois === mois && reste(p) > 0; });
+    var vieux = document.getElementById('s33-sal-brief');
+    if (vieux) vieux.remove();
+    if (!impayes.length) return;
+    var total = impayes.reduce(function(s, p) { return s + reste(p); }, 0);
+    var d = document.createElement('div');
+    d.id = 's33-sal-brief';
+    d.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface2);flex-wrap:wrap;">' +
+        '<span class="mi" style="font-size:18px;color:#ef4444;flex-shrink:0;">payments</span>' +
+        '<span style="flex:1;font-size:12.5px;color:var(--text);min-width:150px;"><b>Salaires de ' + esc(moisLabel(mois)) + '</b> — ' +
+          impayes.length + ' personne' + (impayes.length > 1 ? 's' : '') + ' non payée' + (impayes.length > 1 ? 's' : '') +
+          ' · ' + num(total) + ' MAD</span>' +
+        '<button onclick="s33SalOuvrirMois(\'' + mois + '\')" style="padding:5px 14px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;">Payer</button>' +
+      '</div>';
+    // la ligne « Rien d'urgent » n'a plus lieu d'etre si on affiche quelque chose
+    Array.prototype.slice.call(card.children).forEach(function(c) {
+      if (/Rien d.urgent/.test(c.textContent || '')) c.remove();
+    });
+    var pv = document.getElementById('s33-brief-pv');
+    if (pv) card.insertBefore(d, pv); else card.appendChild(d);
+  }
+
+  window.s33SalOuvrirMois = function(mois) {
+    navigate('finance');
+    setTimeout(function() {
+      var p = String(mois).split('-');
+      var my = document.getElementById('finance-year');
+      var mm = document.getElementById('finance-month');
+      if (my) my.value = p[0];
+      if (mm) mm.value = String(parseInt(p[1], 10));
+      if (typeof renderFinance === 'function') renderFinance();
+      var box = document.getElementById('s33-salaires');
+      if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 350);
+  };
+
+  // ── Branchements ──────────────────────────────────────────────
+  if (typeof window.renderFinance === 'function') {
+    var _rf = window.renderFinance;
+    window.renderFinance = function() {
+      _rf.apply(this, arguments);
+      try { rendre(); } catch (e) { console.error('salaires', e); }
+    };
+  }
+  if (typeof window.renderDashboard === 'function') {
+    var _rd = window.renderDashboard;
+    window.renderDashboard = function() {
+      _rd.apply(this, arguments);
+      brief().catch(function(e) { console.warn('brief salaires', e); });
+    };
+  }
+
+  console.log('✓ Module salaires chargé');
 })();
 </script>
 

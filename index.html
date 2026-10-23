@@ -1634,48 +1634,89 @@
   .mobile-more-item .mnav-icon { font-size: 18px; color: var(--gold); display: inline-flex; align-items: center; vertical-align: middle; }
   .mobile-more-item .mnav-icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; }
 
-  /* Menu "Plus" : grille de tuiles (3 par ligne) plutot qu'une longue liste */
+  /* Menu "Plus" : un ecran a sections (raccourcis, projets en cours, cartes) */
   #mobile-more-overlay .mobile-more-sheet {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    align-content: start;
-    padding: 18px 12px calc(14px + env(safe-area-inset-bottom));
-    max-height: 88vh;
+    padding: 16px 12px calc(14px + env(safe-area-inset-bottom));
+    max-height: 92vh;
   }
-  #mobile-more-overlay .mobile-more-title {
-    grid-column: 1 / -1;
-    padding: 0 8px 10px;
-    margin-bottom: 0;
+  #mobile-more-overlay .mobile-more-title { padding: 0 6px 10px; margin-bottom: 10px; }
+
+  .s33-nav-sec-h {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 0 6px 8px; margin-top: 16px;
   }
+  .s33-nav-sec-h .t { font-size: 13px; font-weight: 800; color: var(--text); }
+  .s33-nav-sec-h .v {
+    background: none; border: none; font-family: inherit; cursor: pointer; padding: 0;
+    font-size: 11px; font-weight: 700; color: var(--gold);
+    display: inline-flex; align-items: center; gap: 1px;
+  }
+  .s33-nav-grid  { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .s33-nav-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+
+  /* une entree du menu = une carte icone + nom + description */
   #mobile-more-overlay .mobile-more-item {
-    position: relative;
-    flex-direction: column;
-    justify-content: center;
-    gap: 7px;
-    padding: 12px 6px;
-    min-height: 84px;
-    text-align: center;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-size: 11px;
-    letter-spacing: 0;
-    line-height: 1.25;
+    position: relative; align-items: center; gap: 9px; padding: 12px 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); color: var(--text);
+    font-size: 12.5px; font-weight: 700; letter-spacing: 0; line-height: 1.25;
     overflow: hidden;
   }
   #mobile-more-overlay .mobile-more-item:active { background: var(--surface3); }
-  #mobile-more-overlay .mobile-more-item .mnav-icon { font-size: 24px; }
-  #mobile-more-overlay .mobile-more-item .mnav-icon svg { width: 24px; height: 24px; }
-  /* badges (notifications, messagerie, PV, outils) : en coin de tuile */
-  #mobile-more-overlay .mobile-more-item > span:not(.mnav-icon) {
-    position: absolute;
-    top: 5px; right: 5px;
-    margin-left: 0 !important;
+  #mobile-more-overlay .mobile-more-item .mnav-icon {
+    width: 32px; height: 32px; flex-shrink: 0; border-radius: 9px; font-size: 19px;
+    background: rgba(201, 168, 76, .14); justify-content: center;
   }
+  #mobile-more-overlay .mobile-more-item .mnav-icon svg { width: 19px; height: 19px; }
+  .s33-nav-lab  { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .s33-nav-desc { font-size: 10.5px; font-weight: 500; color: var(--text-faint); line-height: 1.3; }
+  .s33-nav-chev { display: none; font-size: 17px; color: var(--text-faint); flex-shrink: 0; }
+  /* badges (notifications, messagerie, PV, outils) : en coin de carte */
+  #mobile-more-overlay .mobile-more-item > span[id$="badge"],
+  #mobile-more-overlay .mobile-more-item > #notif-count-mobile {
+    position: absolute; top: 5px; right: 5px; margin-left: 0 !important;
+  }
+  /* raccourcis du haut : tuiles compactes, sans description ni chevron */
+  #s33-nav-quick .mobile-more-item {
+    flex-direction: column; justify-content: center; text-align: center;
+    padding: 11px 6px; gap: 6px; font-size: 11px;
+  }
+  #s33-nav-quick .mobile-more-item .mnav-icon { width: 30px; height: 30px; }
+  #s33-nav-quick .s33-nav-desc, #s33-nav-quick .s33-nav-chev { display: none; }
+
+  /* projets en cours */
+  .s33-np-row {
+    display: flex; gap: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    padding: 2px 6px 4px; scroll-snap-type: x mandatory;
+  }
+  .s33-np-row::-webkit-scrollbar { display: none; }
+  .s33-np-card {
+    flex: 0 0 150px; scroll-snap-align: start; cursor: pointer; overflow: hidden;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  }
+  .s33-np-cover {
+    position: relative; height: 84px; background: var(--surface3);
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .s33-np-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .s33-np-ini {
+    font-family: 'Cormorant Garamond', serif; font-size: 30px; font-weight: 600;
+    color: var(--gold); letter-spacing: .04em;
+  }
+  .s33-np-b { padding: 9px 10px 11px; }
+  .s33-np-n {
+    font-size: 11.5px; font-weight: 700; color: var(--text); line-height: 1.25;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .s33-np-c { font-size: 10px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .s33-np-bar { height: 4px; background: var(--surface3); border-radius: 99px; overflow: hidden; margin-top: 7px; }
+  .s33-np-fill { height: 100%; background: var(--gold); border-radius: 99px; }
+  .s33-np-pct { font-size: 9.5px; font-weight: 700; color: var(--text-dim); margin-top: 3px; }
+
   @media (min-width: 600px) {
-    #mobile-more-overlay .mobile-more-sheet { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .s33-nav-grid  { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .s33-nav-quick { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    #s33-nav-main .s33-nav-chev { display: inline-flex; }
   }
 
   /* TABLET: 768px - 1024px — icon-only sidebar */
@@ -3162,7 +3203,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-22.4 — menu Plus en grille de tuiles';
+const S33_BUILD = '2026-10-22.5 — ecran Plus : projets en cours et 3D de couverture';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -7066,6 +7107,7 @@ function renderProjectDetailPage() {
       ${isAdmin ? `<button onclick="s33EntShare(${p.id})" title="Lien pour les artisans : plans à jour + réserves à corriger" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">engineering</span> Espace entreprise</button>` : ''}
       ${isAdmin ? `
         <button onclick="applyTemplateFromProject(${p.id})" style="padding:9px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">bolt</span> Template</button>
+        <button onclick="s33CouvertureProjet(${p.id})" title="L'image qui represente ce projet dans l'ecran Plus" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">${p.cover_media_id ? 'image' : 'add_photo_alternate'}</span> 3D de couverture</button>
         <button onclick="editProject(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">edit</span> Éditer</button>
         <button onclick="archiveProject(${p.id})" style="padding:9px 16px;background:${p.archived?'#f0fff4':'#f5f0ff'};color:${p.archived?'#27ae60':'#7c5cbf'};border:1px solid ${p.archived?'#a8d5b5':'#c9b8e8'};border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;">${p.archived ? '<span class="mi">undo</span> Restaurer' : '<span class="mi">inventory_2</span> Archiver'}</button>
         <button onclick="deleteProject(${p.id})" style="padding:9px 16px;background:#fff0f0;color:#c0392b;border:1px solid #f5c6cb;border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">delete</span> Supprimer</button>
@@ -7777,6 +7819,151 @@ function resetProjFilters() {
   projTypeFilter  = 'Tout';
   showAllProjects = false;
   renderProjects();
+}
+
+// ═══ 3D DE COUVERTURE D'UN PROJET ═══════════════════════════════
+// L'image qui represente le projet dans l'ecran "Plus". Elle part dans le
+// Storage comme n'importe quel document du projet (dossier « Rendus 3D »),
+// avec sa vignette 420 px ecrite tout de suite — donc rien a regenerer a
+// l'affichage — et le projet retient son identifiant dans cover_media_id.
+// Un projet sans couverture affiche ses initiales : rien n'est obligatoire.
+
+function _s33DataUrlVersBlob(dataUrl) {
+  const parts = String(dataUrl).split(',');
+  const mime = (parts[0].match(/:(.*?);/) || [])[1] || 'image/jpeg';
+  const bin = atob(parts[1]);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+function _s33LireFichier(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error('Fichier illisible'));
+    r.readAsDataURL(file);
+  });
+}
+
+window.s33CouvertureProjet = function(projectId) {
+  const p = (db.projects || []).find(x => x.id === projectId);
+  if (!p) return;
+  const aDeja = !!p.cover_media_id;
+
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:18px;';
+  const fermer = () => { try { ov.remove(); } catch(_) {} };
+  ov.innerHTML =
+    '<div style="background:var(--surface);border-radius:16px;padding:22px;max-width:380px;width:100%;" onclick="event.stopPropagation()">' +
+      '<div style="font-size:16px;font-weight:800;color:var(--text);">3D de couverture</div>' +
+      '<div style="font-size:13px;color:var(--text-dim);margin-top:6px;line-height:1.5;">' +
+        "L'image qui represente ce projet dans l'ecran « Plus ». " +
+        (aDeja ? 'Ce projet en a deja une.' : "Sans image, ce sont les initiales du projet qui s'affichent.") +
+      '</div>' +
+      '<div id="s33cv-apercu" style="margin-top:14px;"></div>' +
+      '<button id="s33cv-choisir" style="margin-top:14px;width:100%;padding:11px;background:var(--gold);color:#fff;border:none;border-radius:99px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">' +
+        (aDeja ? 'Choisir une autre image' : 'Choisir une image') + '</button>' +
+      (aDeja ? '<button id="s33cv-retirer" style="margin-top:8px;width:100%;padding:10px;background:none;border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--text-dim);cursor:pointer;">Retirer la couverture</button>' : '') +
+      '<button id="s33cv-annuler" style="margin-top:8px;width:100%;padding:10px;background:none;border:none;font-family:inherit;font-size:12.5px;color:var(--text-faint);cursor:pointer;">Annuler</button>' +
+    '</div>';
+  ov.addEventListener('click', e => { if (e.target === ov) fermer(); });
+  document.body.appendChild(ov);
+  ov.querySelector('#s33cv-annuler').onclick = fermer;
+
+  if (aDeja && typeof getMediaThumb === 'function') {
+    getMediaThumb(p.cover_media_id).then(src => {
+      const z = ov.querySelector('#s33cv-apercu');
+      if (src && z) z.innerHTML = '<img src="' + src + '" alt="" style="width:100%;height:120px;object-fit:cover;border-radius:10px;display:block;">';
+    }).catch(() => {});
+  }
+
+  const retirer = ov.querySelector('#s33cv-retirer');
+  if (retirer) retirer.onclick = async () => {
+    retirer.disabled = true; retirer.textContent = 'Retrait…';
+    try {
+      await sbUpdateOrThrow('projects', projectId, { cover_media_id: null });
+      p.cover_media_id = null;
+      fermer();
+      toast('Couverture retiree — l\'image reste dans les documents du projet', 'success');
+      if (typeof renderProjectDetailPage === 'function') renderProjectDetailPage();
+    } catch(e) {
+      retirer.disabled = false; retirer.textContent = 'Retirer la couverture';
+      toast('Retrait impossible : ' + (e.message || 'erreur'), 'error');
+    }
+  };
+
+  ov.querySelector('#s33cv-choisir').onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'image/*';
+    inp.onchange = async () => {
+      const file = inp.files && inp.files[0];
+      if (!file) return;
+      const btn = ov.querySelector('#s33cv-choisir');
+      btn.disabled = true; btn.textContent = 'Envoi…';
+      try {
+        await _s33CouvertureEnvoyer(projectId, file);
+        fermer();
+      } catch(e) {
+        btn.disabled = false; btn.textContent = 'Choisir une image';
+        toast('Envoi impossible : ' + (e.message || 'erreur'), 'error');
+      }
+    };
+    inp.click();
+  };
+};
+
+async function _s33CouvertureEnvoyer(projectId, file) {
+  const dataUrl  = await _s33LireFichier(file);
+  const grand    = (await s33DownscaleToJpeg(dataUrl, 1600, 0.82)) || dataUrl;
+  const vignette = await s33DownscaleToJpeg(dataUrl, 420, 0.72);
+  const blob     = _s33DataUrlVersBlob(grand);
+
+  const chemin = 'proj/' + projectId + '/Rendus_3D/' + Date.now() + '_couverture.jpg';
+  const res = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + chemin, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': blob.type, 'x-upsert': 'true' },
+    body: blob
+  });
+  if (!res.ok) throw new Error('envoi refuse (' + res.status + ')');
+
+  const docObj = {
+    name:           'Couverture 3D',
+    doc_type:       'rendu_3d',
+    folder:         'Rendus 3D',
+    is_project_doc: true,
+    is_pdf:         false,
+    mime:           'image/jpeg',
+    file_path:      chemin,
+    thumb:          vignette || null,
+    project_id:     projectId,
+    size:           blob.size < 1048576 ? Math.round(blob.size / 1024) + ' KB' : (blob.size / 1048576).toFixed(1) + ' MB',
+    added_by:       (currentUser && currentUser.name) || '',
+    added_at:       new Date().toLocaleDateString('fr-MA')
+  };
+  let ligne = null;
+  try {
+    const ins = await sbInsertOrThrow('media', docObj);
+    if (Array.isArray(ins) && ins[0]) ligne = ins[0];
+  } catch(e) {
+    // Colonne absente sur une vieille base : on reessaie sans les extras
+    const { folder, thumb, ...reste } = docObj;
+    const ins = await sbInsertOrThrow('media', reste);
+    if (Array.isArray(ins) && ins[0]) ligne = ins[0];
+  }
+  if (!ligne || !ligne.id) throw new Error('document non enregistre');
+
+  await sbUpdateOrThrow('projects', projectId, { cover_media_id: ligne.id });
+
+  const p = (db.projects || []).find(x => x.id === projectId);
+  if (p) p.cover_media_id = ligne.id;
+  db.media = db.media || [];
+  db.media.push({ ...ligne, isPDF: false, projectId: projectId, addedAt: ligne.added_at });
+  if (typeof _mediaThumbCache !== 'undefined' && vignette) _mediaThumbCache[ligne.id] = vignette;
+
+  toast('3D de couverture enregistree', 'success');
+  if (typeof renderProjectDetailPage === 'function') renderProjectDetailPage();
 }
 
 function makeProjectCard(p, small) {
@@ -14640,14 +14827,24 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
 <div class="mobile-more-overlay" id="mobile-more-overlay" onclick="closeMobileMore()">
   <div class="mobile-more-sheet" onclick="event.stopPropagation()">
     <div class="mobile-more-title">Navigation</div>
-    <div class="mobile-more-item" onclick="closeMobileMore(); openGlobalSearch()">
+    <div id="s33-nav-quick" class="s33-nav-quick"></div>
+    <div id="s33-nav-projets-sec" style="display:none;">
+      <div class="s33-nav-sec-h">
+        <span class="t">Projets en cours</span>
+        <button class="v" onclick="closeMobileMore(); mobileNavigate('projects')">Tout voir <span class="mi" style="font-size:15px;">chevron_right</span></button>
+      </div>
+      <div id="s33-nav-projets" class="s33-np-row"></div>
+    </div>
+    <div class="s33-nav-sec-h"><span class="t">Gestion du cabinet</span></div>
+    <div id="s33-nav-main" class="s33-nav-grid">
+    <div class="mobile-more-item" id="mnav-more-recherche" onclick="closeMobileMore(); openGlobalSearch()">
       <span class="mnav-icon"><span class="mi">search</span></span> Rechercher
     </div>
-    <div class="mobile-more-item" onclick="openMobileNotifs()">
+    <div class="mobile-more-item" id="mnav-more-notifs" onclick="openMobileNotifs()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg></span> Notifications
       <span id="notif-count-mobile" style="display:none;margin-left:auto;background:var(--gold);color:#fff;font-size:10px;font-weight:800;border-radius:99px;padding:2px 8px;">0</span>
     </div>
-    <div class="mobile-more-item" onclick="openProfilePanel(); closeMobileMore()">
+    <div class="mobile-more-item" id="mnav-more-profil" onclick="openProfilePanel(); closeMobileMore()">
       <span class="mnav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Mon profil
     </div>
     <div class="mobile-more-item" id="mnav-more-rapport" onclick="mobileNavigate('rapport'); closeMobileMore()">
@@ -14698,18 +14895,20 @@ document.getElementById('i-date') && (document.getElementById('i-date').value = 
     <div class="mobile-more-item" id="mnav-more-templates" style="display:none;" onclick="mobileNavigate('templates'); closeMobileMore()">
       <span class="mnav-icon"><span class="mi">dashboard_customize</span></span> Templates
     </div>
-    <div class="mobile-more-item" onclick="mobileNavigate('ai'); closeMobileMore()">
+    <div class="mobile-more-item" id="mnav-more-samia" onclick="mobileNavigate('ai'); closeMobileMore()">
       <span class="mnav-icon" style="color:var(--gold);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> Samia IA
     </div>
-    <div class="mobile-more-item" onclick="closeMobileMore(); openTrash()">
+    <div class="mobile-more-item" id="mnav-more-corbeille" onclick="closeMobileMore(); openTrash()">
       <span class="mnav-icon"><span class="mi">delete</span></span> Corbeille
     </div>
-    <div class="mobile-more-item" onclick="toggleTheme(); closeMobileMore()">
+    <div class="mobile-more-item" id="mnav-more-theme" onclick="toggleTheme(); closeMobileMore()">
       <span id="theme-toggle-mobile" class="mnav-icon"><span class="mi">dark_mode</span></span> Mode jour/nuit
     </div>
-    <div class="mobile-more-item" style="color:var(--text-faint);" onclick="logout(); closeMobileMore()">
+    <div class="mobile-more-item" id="mnav-more-logout" style="color:var(--text-faint);" onclick="logout(); closeMobileMore()">
       <span class="mnav-icon" style="color:var(--text-faint);">&#8592;</span> Deconnexion
     </div>
+    </div>
+    <div id="s33-nav-bas" class="s33-nav-grid" style="margin-top:14px;"></div>
   </div>
 </div>
 
@@ -14754,8 +14953,189 @@ function toggleDevisPanel() {
     if (main) main.scrollTop = 0;
   }
 
+  // ═══ ECRAN "PLUS" : raccourcis, projets en cours, cartes de menu ═══
+  // Les entrees de la feuille ne sont PAS touchees dans le HTML : elles sont
+  // rangees et completees a chaque ouverture. Six d'entre elles sont ajoutees
+  // par d'autres scripts (Messagerie, Sauvegarde, PV de chantier, Outils,
+  // Guide, Prospects) et peuvent arriver apres la premiere ouverture.
+
+  var S33_NAV_DESC = {
+    'mnav-more-recherche':    'Projet, client, devis',
+    'mnav-more-notifs':       'Alertes et rappels',
+    'mnav-more-profil':       'Compte et mot de passe',
+    'mnav-more-messagerie':   "Discuter avec l'equipe",
+    'mnav-more-backup':       'Exporter toutes les donnees',
+    'mnav-more-guide':        "Comment utiliser l'app",
+    'mnav-more-rapport':      "Ce que j'ai fait aujourd'hui",
+    'mnav-more-equipe':       'Rapports, planning, taches',
+    'mnav-prospects':         'Pistes et relances',
+    'mnav-more-devis':        'Redaction, envoi, signature',
+    'mnav-more-clients':      'Fiches et echanges',
+    'mnav-more-finance':      'Suivi, depenses, factures',
+    'mnav-pvchantier':        'Visites et reserves',
+    'mnav-more-pv':           'Notes et decisions',
+    'mnav-more-panneau':      'Panneau a imprimer',
+    'mnav-more-concours':     "Appels d'offres, dossiers",
+    'mnav-more-mediatheque':  'Photos, 3D, plans',
+    'mnav-more-library':      'References, inspirations',
+    'mnav-more-materiaux':    'Materiaux, fournisseurs',
+    'mnav-more-contacts':     'Partenaires, prestataires',
+    'mnav-more-administratif':'Contrats et documents',
+    'mnav-more-outils':       'Calculatrices, memos',
+    'mnav-more-generateurs':  'Textes, tableaux, modeles',
+    'mnav-more-templates':    'Modeles de projet',
+    'mnav-more-signalements': 'Problemes signales',
+    'mnav-more-samia':        'Assistante IA du cabinet',
+    'mnav-more-corbeille':    'Elements supprimes'
+  };
+
+  // Ordre d'affichage. Une entree inconnue va a la fin de "Gestion du cabinet".
+  var S33_NAV_QUICK = ['mnav-more-recherche','mnav-more-notifs','mnav-more-profil',
+                       'mnav-more-messagerie','mnav-more-backup','mnav-more-guide'];
+  var S33_NAV_BAS   = ['mnav-more-theme','mnav-more-corbeille','mnav-more-logout'];
+  var S33_NAV_MAIN  = ['mnav-more-rapport','mnav-more-equipe','mnav-prospects','mnav-more-devis',
+                       'mnav-more-clients','mnav-more-finance','mnav-pvchantier','mnav-more-pv',
+                       'mnav-more-panneau','mnav-more-concours','mnav-more-mediatheque',
+                       'mnav-more-library','mnav-more-materiaux','mnav-more-contacts',
+                       'mnav-more-administratif','mnav-more-outils','mnav-more-generateurs',
+                       'mnav-more-templates','mnav-more-signalements','mnav-more-samia'];
+
+  // Enveloppe le libelle (un simple texte dans le HTML) pour pouvoir lui
+  // ajouter sa description sous le nom.
+  function _s33NavLibelle(el) {
+    var lab = el.querySelector('.s33-nav-lab');
+    if (lab) return lab;
+    var textes = [];
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var n = el.childNodes[i];
+      if (n.nodeType === 3 && n.textContent.trim()) textes.push(n);
+    }
+    var nom = document.createElement('span');
+    nom.className = 's33-nav-nom';
+    nom.textContent = textes.map(function(n) { return n.textContent.trim(); }).join(' ');
+    textes.forEach(function(n) { n.parentNode.removeChild(n); });
+    lab = document.createElement('span');
+    lab.className = 's33-nav-lab';
+    lab.appendChild(nom);
+    var ic = el.querySelector('.mnav-icon');
+    if (ic && ic.nextSibling) el.insertBefore(lab, ic.nextSibling);
+    else el.appendChild(lab);
+    return lab;
+  }
+
+  function s33NavRanger() {
+    var sheet = document.querySelector('#mobile-more-overlay .mobile-more-sheet');
+    var quick = document.getElementById('s33-nav-quick');
+    var main  = document.getElementById('s33-nav-main');
+    var bas   = document.getElementById('s33-nav-bas');
+    if (!sheet || !quick || !main || !bas) return;
+
+    var items = Array.prototype.slice.call(sheet.querySelectorAll('.mobile-more-item'));
+    var rang = function(el, liste) { var i = liste.indexOf(el.id); return i < 0 ? 999 : i; };
+
+    items.forEach(function(el) {
+      var lab = _s33NavLibelle(el);
+      var d = S33_NAV_DESC[el.id];
+      if (d && !lab.querySelector('.s33-nav-desc')) {
+        var sp = document.createElement('span');
+        sp.className = 's33-nav-desc';
+        sp.textContent = d;
+        lab.appendChild(sp);
+      }
+      if (!el.querySelector('.s33-nav-chev')) {
+        var ch = document.createElement('span');
+        ch.className = 'mi s33-nav-chev';
+        ch.textContent = 'chevron_right';
+        el.appendChild(ch);
+      }
+    });
+
+    // Chaque bloc est rempli dans son ordre, a chaque ouverture : les entrees
+    // ajoutees entre-temps par un autre script retrouvent leur place.
+    [[quick, S33_NAV_QUICK], [bas, S33_NAV_BAS], [main, S33_NAV_MAIN]].forEach(function(paire) {
+      var cible = paire[0], ordre = paire[1];
+      var lot = items.filter(function(el) {
+        return ordre.indexOf(el.id) >= 0 ||
+               (cible === main && S33_NAV_QUICK.indexOf(el.id) < 0 && S33_NAV_BAS.indexOf(el.id) < 0);
+      });
+      lot.sort(function(a, b) { return rang(a, ordre) - rang(b, ordre); });
+      lot.forEach(function(el) { cible.appendChild(el); });
+    });
+  }
+
+  function _s33NavInitiales(nom) {
+    var mots = String(nom || '').replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+    if (!mots.length) return '?';
+    if (mots.length === 1) return mots[0].slice(0, 2).toUpperCase();
+    return (mots[0][0] + mots[1][0]).toUpperCase();
+  }
+
+  // Vignettes des couvertures : une seule requete pour toute la rangee,
+  // puis le cache de vignettes deja en place (420 px, partagees en base).
+  async function _s33NavCouvertures(box) {
+    var imgs = Array.prototype.slice.call(box.querySelectorAll('img[data-cover]'));
+    if (!imgs.length) return;
+    var cache = (typeof _mediaThumbCache !== 'undefined') ? _mediaThumbCache : {};
+    var ids = [];
+    imgs.forEach(function(im) {
+      var id = im.getAttribute('data-cover');
+      if (ids.indexOf(id) < 0 && cache[id] === undefined) ids.push(id);
+    });
+    if (ids.length) {
+      try {
+        var rows = await sbGet('media', '?select=id,thumb&id=in.(' + ids.join(',') + ')');
+        (rows || []).forEach(function(r) { if (r && r.thumb) cache[r.id] = r.thumb; });
+      } catch(e) { /* on retombe sur la vignette a la demande */ }
+    }
+    for (var k = 0; k < imgs.length; k++) {
+      var im = imgs[k], id = im.getAttribute('data-cover'), src = cache[id];
+      if (src === undefined && typeof getMediaThumb === 'function') {
+        try { src = await getMediaThumb(id); } catch(e) { src = null; }
+      }
+      if (src) im.src = src;
+      else if (im.parentNode) im.parentNode.removeChild(im); // il reste les initiales
+    }
+  }
+
+  function s33NavProjets() {
+    var sec = document.getElementById('s33-nav-projets-sec');
+    var box = document.getElementById('s33-nav-projets');
+    if (!sec || !box || typeof db === 'undefined') return;
+    var liste = (db.projects || []).filter(function(p) { return !p.archived; })
+      .sort(function(a, b) {
+        return (Date.parse(b.updated_at || '') || 0) - (Date.parse(a.updated_at || '') || 0);
+      })
+      .slice(0, 8);
+    if (!liste.length) { sec.style.display = 'none'; box.innerHTML = ''; return; }
+    sec.style.display = '';
+    box.innerHTML = liste.map(function(p) {
+      var cli = (db.clients || []).find(function(c) { return c.id === p.clientId; });
+      var taches = p.tasks || [];
+      var faites = taches.filter(function(t) { return isTaskDone(t); }).length;
+      var pct = taches.length ? Math.round(faites / taches.length * 100) : 0;
+      return '<div class="s33-np-card" onclick="closeMobileMore(); openProjectDetail(' + p.id + ')">' +
+        '<div class="s33-np-cover">' +
+          '<span class="s33-np-ini">' + escHTML(_s33NavInitiales(p.name)) + '</span>' +
+          (p.cover_media_id ? '<img alt="" data-cover="' + p.cover_media_id + '">' : '') +
+        '</div>' +
+        '<div class="s33-np-b">' +
+          '<div class="s33-np-n">' + escHTML(p.name) + '</div>' +
+          '<div class="s33-np-c">' + escHTML(cli ? cli.name : '—') + '</div>' +
+          (taches.length
+            ? '<div class="s33-np-bar"><div class="s33-np-fill" style="width:' + pct + '%"></div></div>' +
+              '<div class="s33-np-pct">' + pct + ' %</div>'
+            : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+    _s33NavCouvertures(box);
+  }
+  window.s33NavProjets = s33NavProjets;
+
   function openMobileMore() {
     document.getElementById('mobile-more-overlay').classList.add('open');
+    try { s33NavRanger(); } catch(e) { console.warn('nav', e); }
+    try { s33NavProjets(); } catch(e) { console.warn('nav projets', e); }
   }
 
   function closeMobileMore() {

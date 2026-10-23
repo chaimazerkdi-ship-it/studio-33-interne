@@ -3253,7 +3253,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-23.8 — suivre un mois passe et tout marquer paye';
+const S33_BUILD = '2026-10-23.9 — le rapport nomme la personne connectee';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -16838,7 +16838,17 @@ function renderRapport() {
   }
 
   // Pour admin : teamTodayHtml en premier, puis son propre formulaire, puis le récap, puis l'historique global
-  document.getElementById('rapport-content').innerHTML = teamTodayHtml + formHtml + weekBarsHtml + teamHtml + historyHtml;
+  // Qui depose ? Le 23 octobre, Zineb a rempli son rapport sur un poste reste
+  // connecte au compte de Nezha : la page ne nommait personne, rien ne l'a
+  // signale. Sur un ordinateur partage, le nom doit sauter aux yeux.
+  const quiHtml = `
+    <div class="card" style="margin-bottom:14px;padding:11px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span class="mi" style="font-size:18px;color:var(--gold);">account_circle</span>
+      <span style="flex:1;min-width:140px;font-size:13px;color:var(--text);">Rapport de <b>${escHTML(currentUser.name || '')}</b></span>
+      <button onclick="if(confirm('Se déconnecter pour changer de compte ?')) logout();" style="padding:5px 12px;background:var(--surface2);color:var(--text-dim);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">Ce n'est pas vous ?</button>
+    </div>`;
+
+  document.getElementById('rapport-content').innerHTML = quiHtml + teamTodayHtml + formHtml + weekBarsHtml + teamHtml + historyHtml;
 
   // If no report yet today, init the multi-project form
   if (!todayReport && typeof window.mrInit === 'function' && document.getElementById('rp-entries')) {
@@ -24407,6 +24417,12 @@ function escHTML(str) {
   }
 
   window.mrSubmit = async function(prefix, type) {
+    // ── AU NOM DE QUI ? ──────────────────────────────────────────
+    // Les deux boutons d'envoi passent par ici : une seule garde suffit.
+    // C'est le dernier moment ou une erreur de compte se voit encore.
+    var _nom = (currentUser && currentUser.name) || '';
+    if (_nom && !confirm('Enregistrer ce rapport au nom de ' + _nom + ' ?')) return;
+
     // ── VERROU ANTI-DOUBLE-CLIC ──────────────────────────────────
     if (window._mrSubmitting) { toast('Envoi déjà en cours…'); return; }
     window._mrSubmitting = true;

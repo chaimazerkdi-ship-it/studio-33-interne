@@ -1,110 +1,106 @@
-// Studio 33 — send-push Edge Function
-// Receives { user_ids?: string[], roles?: string[], title, body, url, tag }
-// and dispatches Web Push to every push_subscriptions row matching either
-// user_ids (auth UUIDs) and/or roles (e.g. "admin").
+// Studio 33 — send-push
+// Recoit { user_ids?: string[], roles?: string[], title, body, url, tag } et
+// envoie une notification a chaque telephone abonne (table push_subscriptions)
+// des personnes visees : par compte (user_ids) sinon par role (roles).
 //
-// Env vars (set as Supabase Function secrets):
-//   VAPID_PUBLIC_KEY
-//   VAPID_PRIVATE_KEY
-//   VAPID_SUBJECT  (e.g. "mailto:studio33architecture@gmail.com")
-//   SUPABASE_URL              (auto-injected by Supabase)
-//   SUPABASE_SERVICE_ROLE_KEY (auto-injected by Supabase)
+// Seuls peuvent l'appeler : un membre connecte de l'equipe (sa session est
+// relue aupres de Supabase Auth) ou une autre fonction du serveur (cle
+// serveur). Le lien ouvert au clic reste toujours sur le site de l'app.
+//
+// Secret : VAPID_PRIVATE_KEY. SUPABASE_URL, SUPABASE_ANON_KEY et
+// SUPABASE_SERVICE_ROLE_KEY sont fournis par Supabase.
 
 import webpush from 'npm:web-push@3.6.7';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const VAPID_PUBLIC  = Deno.env.get('VAPID_PUBLIC_KEY')  || '';
-const VAPID_PRIVATE = Deno.env.get('VAPID_PRIVATE_KEY') || '';
-const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT')     || 'mailto:admin@studio33.ma';
+const VAPID_PUBLIC_KEY = 'BM8EHs_PZIXvM4RzGr_HcnYJAsJPDg5AgE9rMVKi8-0hrLZKd68siyrb3MPIkw6j6upr5JEBb6ok8T-WweOxbas';
 const SB_URL  = Deno.env.get('SUPABASE_URL')!;
 const SB_SVC  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+const SB_ANON = Deno.env.get('SUPABASE_ANON_KEY') || SB_SVC;
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, content-type, apikey',
 };
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: cors });
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status, headers: { ...cors, 'Content-Type': 'application/json' },
+  });
+}
+
+async function autorise(req: Request) {
+  const jeton = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!jeton || jeton === SB_ANON) return false;
+  if (jeton === SB_SVC) return true;
+  const r = await fetch(`${SB_URL}/auth/v1/user`, {
+    headers: { 'apikey': SB_ANON, 'Authorization': `Bearer ${jeton}` },
+  });
+  return r.ok;
+}
+
+// Une page de l'app ('/?p=finance', '?p=taches') ; jamais un autre site.
+function lienInterne(u: unknown) {
+  let d = String(u || '/').trim();
+  if (d.charAt(0) === '?') d = '/' + d;
+  if (/^https:\/\/client\.studio33\.ma(\/|$)/i.test(d)) d = d.replace(/^https:\/\/client\.studio33\.ma/i, '') || '/';
+  if (d.charAt(0) !== '/' || d.charAt(1) === '/' || d.charAt(1) === '\\') return '/';
+  return d.slice(0, 300);
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: cors });
+  if (req.method !== 'POST') return json({ error: 'method' }, 405);
+  if (!(await autorise(req))) return json({ error: 'unauthorized' }, 401);
 
   try {
-    const body = await req.json();
-    const userIds: string[] = (body.user_ids || []).map((x: unknown) => String(x));
-    const roles:   string[] = (body.roles    || []).map((x: unknown) => String(x));
-    const payload = JSON.stringify({
-      title: body.title || 'Studio 33',
-      body:  body.body  || '',
-      url:   body.url   || '/',
-      tag:   body.tag   || 'studio33-notif',
-    });
+    const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY');
+    if (!VAPID_PRIVATE_KEY) throw new Error('VAPID_PRIVATE_KEY not set');
 
-    if (!userIds.length && !roles.length) {
-      return new Response(JSON.stringify({ ok: true, sent: 0, skipped: 'no recipients' }), {
-        headers: { ...cors, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Fetch subscriptions matching any of the target user_ids OR roles.
-    let query = '';
-    if (userIds.length && roles.length) {
-      // Combine with PostgREST OR
-      const uPart = `user_id.in.(${userIds.map(id => `"${id}"`).join(',')})`;
-      const rPart = `user_role.in.(${roles.map(r => `"${r}"`).join(',')})`;
-      query = `or=(${uPart},${rPart})`;
-    } else if (userIds.length) {
-      query = `user_id=in.(${userIds.map(id => `"${id}"`).join(',')})`;
-    } else {
-      query = `user_role=in.(${roles.map(r => `"${r}"`).join(',')})`;
-    }
-    const subRes = await fetch(
-      `${SB_URL}/rest/v1/push_subscriptions?${query}&select=id,endpoint,p256dh,auth`,
-      {
-        headers: {
-          'apikey': SB_SVC,
-          'Authorization': `Bearer ${SB_SVC}`,
-        },
-      },
+    webpush.setVapidDetails(
+      'mailto:contact@studio33.ma',
+      VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY
     );
-    if (!subRes.ok) {
-      const t = await subRes.text();
-      return new Response(JSON.stringify({ ok: false, error: 'fetch_subs_failed', detail: t }), {
-        status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
-      });
+
+    const { user_ids, roles, title, body, url, tag } = await req.json();
+
+    const supabase = createClient(SB_URL, SB_SVC);
+
+    // Personne de vise : on n'envoie rien (et surtout pas a tout le monde)
+    let query = supabase.from('push_subscriptions').select('endpoint, p256dh, auth');
+    if (Array.isArray(user_ids) && user_ids.length > 0) {
+      query = query.in('user_id', user_ids.map(String));
+    } else if (Array.isArray(roles) && roles.length > 0) {
+      query = query.in('user_role', roles.map(String));
+    } else {
+      return json({ sent: 0, failed: 0, total: 0, skipped: 'no recipients' });
     }
-    const subs = await subRes.json();
 
-    // Send push to each subscription
-    const results = await Promise.allSettled(subs.map(async (s: any) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          payload,
-        );
-        return { id: s.id, ok: true };
-      } catch (err: any) {
-        const status = err?.statusCode || 0;
-        // 404 / 410 → subscription expired or unsubscribed → delete from DB
-        if (status === 404 || status === 410) {
-          await fetch(`${SB_URL}/rest/v1/push_subscriptions?id=eq.${s.id}`, {
-            method: 'DELETE',
-            headers: { 'apikey': SB_SVC, 'Authorization': `Bearer ${SB_SVC}` },
-          });
-        }
-        return { id: s.id, ok: false, status, msg: err?.body || err?.message };
-      }
-    }));
+    const { data: subs, error } = await query;
+    if (error) throw error;
 
-    const sent = results.filter(r => r.status === 'fulfilled' && (r as any).value.ok).length;
-    const failed = results.length - sent;
-    return new Response(JSON.stringify({ ok: true, sent, failed, total: subs.length }), {
-      headers: { ...cors, 'Content-Type': 'application/json' },
+    const payload = JSON.stringify({
+      title: String(title || 'Studio 33').slice(0, 120),
+      body: String(body || '').slice(0, 400),
+      url: lienInterne(url),
+      tag: String(tag || 'studio33').slice(0, 80)
     });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ ok: false, error: err?.message || String(err) }), {
-      status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
-    });
+
+    const results = await Promise.allSettled(
+      (subs || []).map(sub =>
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        )
+      )
+    );
+
+    const sent = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.filter(r => r.status === 'rejected').length;
+
+    return json({ sent, failed, total: subs?.length || 0 });
+  } catch (e: any) {
+    return json({ error: e.message }, 500);
   }
 });

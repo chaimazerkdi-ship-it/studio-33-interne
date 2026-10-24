@@ -5,10 +5,13 @@
 // aucune trace et le restant du serait faux), et ne previent que s'il reste
 // quelqu'un a payer. Meme patron que `rappel-rapports` : garde par cle ?k=,
 // date Maroc = UTC+1, insertion dans `notifications` puis appel de `send-push`.
+//
+// La cle de garde n'est pas dans le code (le depot est public) : elle est
+// tiree au hasard dans la base, table `s33_cles_internes`, que seul le
+// serveur peut lire. La tache planifiee la lit au meme endroit.
 
 const URL_SB = Deno.env.get('SUPABASE_URL')!;
 const CLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GARDE = 'S33-SALAIRES-2026';
 
 const MOIS_FR = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
                  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -50,14 +53,27 @@ function fmt(n: number) {
   return Math.round(n).toLocaleString('fr-FR').replace(/ |,/g, ' ');
 }
 
+async function gardeOk(k: string | null) {
+  if (!k) return false;
+  try {
+    const r = await lire('s33_cles_internes?nom=eq.rappel-salaires&select=valeur');
+    return r.length === 1 && typeof r[0].valeur === 'string' && r[0].valeur.length >= 32 && r[0].valeur === k;
+  } catch (_) {
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   const u = new URL(req.url);
-  if (u.searchParams.get('k') !== GARDE) {
+  if (!(await gardeOk(u.searchParams.get('k')))) {
     return new Response('non', { status: 403 });
   }
 
   try {
     const mois = u.searchParams.get('mois') || moisEcoule();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mois)) {
+      return Response.json({ ok: false, erreur: 'mois invalide (AAAA-MM)' }, { status: 400 });
+    }
 
     const gens = await lire('salaires?actif=is.true&montant=gt.0&select=id,nom,montant,created_at&order=position,id');
     if (!gens.length) {
@@ -97,14 +113,15 @@ Deno.serve(async (req) => {
 
     // La cloche dans l'app, pour chaque admin. On lit les comptes Auth : se
     // fier aux abonnements push laisserait sans rien une admin qui n'a pas
-    // (encore) accepte les notifications sur son telephone.
+    // (encore) accepte les notifications sur son telephone. Le role lu est
+    // celui que seul le serveur peut ecrire (app_metadata).
     let ids: string[] = [];
     try {
       const r = await fetch(URL_SB + '/auth/v1/admin/users?per_page=200', { headers: entetes() });
       if (r.ok) {
         const j = await r.json();
         ids = (j.users || [])
-          .filter((x: any) => (x.user_metadata || {}).role === 'admin')
+          .filter((x: any) => (x.app_metadata || {}).s33_role === 'admin')
           .map((x: any) => x.id);
       }
     } catch (e) {

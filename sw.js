@@ -82,6 +82,10 @@ self.addEventListener('notificationclick', (event) => {
   else if (targetUrl.charAt(0) === '/') {
     try { targetUrl = new URL(targetUrl, self.registration.scope).href; } catch (e) {}
   }
+  // Jamais un autre site, meme si la notification le demande
+  try {
+    if (new URL(targetUrl).origin !== self.location.origin) targetUrl = self.registration.scope;
+  } catch (e) { targetUrl = self.registration.scope; }
   event.waitUntil((async () => {
     const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of allClients) {

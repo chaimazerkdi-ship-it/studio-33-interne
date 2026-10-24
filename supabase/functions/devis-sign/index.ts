@@ -9,6 +9,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const MIN_TOKEN = 15;
+const SIGNATURE_OK = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+\/]+={0,2}$/;
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -105,7 +106,8 @@ Deno.serve(async (req) => {
       const image = String(p.image || "");
       if (!token || token.length < MIN_TOKEN) return json({ error: "invalid_token" }, 400);
       if (!name) return json({ error: "name_required" }, 400);
-      if (!image.startsWith("data:image/") || image.length > 300000) return json({ error: "bad_signature" }, 400);
+      // Une vraie image et rien d'autre : la signature s'affiche ensuite dans l'app
+      if (!SIGNATURE_OK.test(image) || image.length > 300000) return json({ error: "bad_signature" }, 400);
       const d = await findDevis(token);
       if (!d) return json({ error: "not_found" }, 404);
       if (d.signatures && d.signatures.client && d.signatures.client.image) {

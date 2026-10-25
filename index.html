@@ -379,6 +379,8 @@
 
   .auth-btn:hover { background: var(--gold-light); }
   .auth-error { color: var(--red); font-size: 12px; margin-top: 12px; }
+  .auth-rester { display: flex; align-items: center; gap: 8px; margin: 2px 0 12px; font-size: 12px; color: var(--text-dim); cursor: pointer; text-align: left; }
+  .auth-rester input { width: 16px; height: 16px; accent-color: var(--gold); margin: 0; }
 
   /* MAIN LAYOUT */
   #app { display: none; }
@@ -3239,6 +3241,7 @@
     <div class="auth-sub">Studio 33 Architects — Espace Interne</div>
     <input class="auth-field" type="email" id="auth-user" placeholder="Email ou identifiant" autocomplete="username" />
     <input class="auth-field" type="password" id="auth-pass" placeholder="Mot de passe" autocomplete="current-password" />
+    <label class="auth-rester"><input type="checkbox" id="auth-rester"> Rester connectée sur cet appareil</label>
     <button class="auth-btn" onclick="login()">Accéder</button>
     <div class="auth-error" id="auth-error"></div>
     <div style="margin-top:14px;text-align:center;">
@@ -3276,8 +3279,18 @@ const S33_BUILD = '2026-10-25.3 — droits de l equipe : chacune voit ses sectio
   // L'ancienne méthode (ETag mémorisé au chargement) ne voyait jamais une
   // mise à jour déjà publiée AVANT l'ouverture de l'app.
   let _notified = false;
+  // On demande d'abord l'en-tete seul (quelques centaines d'octets) : si le
+  // fichier n'a pas change depuis la derniere fois, on s'arrete la. Avant,
+  // 256 Ko etaient telecharges toutes les 5 minutes, meme sans nouveaute.
+  let _s33EnteteVu = null;
   async function checkUpdate() {
-    if (_notified) return;
+    if (_notified || document.hidden) return;
+    try {
+      const h = await fetch('index.html', { method: 'HEAD', cache: 'no-cache' });
+      const empreinte = h.ok ? (h.headers.get('etag') || h.headers.get('last-modified')) : null;
+      if (empreinte && empreinte === _s33EnteteVu) return;
+      if (empreinte) _s33EnteteVu = empreinte;
+    } catch (_) {}
     try {
       const r = await fetch('index.html?s33up=' + Date.now(), {
         cache: 'no-store',
@@ -5949,6 +5962,7 @@ async function refreshSupabaseToken() {
       supabaseToken = data.access_token;
       supabaseRefreshToken = data.refresh_token || supabaseRefreshToken;
       scheduleTokenRefresh(data.expires_in || 3600);
+      s33SessionMemoriser();   // le jeton change a chaque renouvellement
       return true;
     }
   } catch(e) { console.warn('Token refresh failed:', e); }
@@ -6297,7 +6311,10 @@ function s33DownscaleToJpeg(src, maxDim, quality) {
         const c = document.createElement('canvas');
         c.width = Math.max(1, Math.round(w * k));
         c.height = Math.max(1, Math.round(h * k));
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';            // une PNG transparente ne devient pas noire
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
         resolve(c.toDataURL('image/jpeg', quality || 0.75));
       } catch(e) { resolve(null); }
     };
@@ -6305,6 +6322,22 @@ function s33DownscaleToJpeg(src, maxDim, quality) {
     img.src = src;
   });
 }
+
+// Photos : 2560 px au plus, JPEG qualite 0,82 (decision de Chaima, 25/10/2026),
+// soit environ 900 Ko au lieu de 3 a 5 Mo. Une image deja legere reste telle
+// quelle ; une PNG legere (plan, capture d'ecran) garde son format.
+const S33_PHOTO_MAX_PX = 2560;
+async function s33AllegerPhoto(dataUrl, mime) {
+  const avant = Math.round(String(dataUrl).length * 0.75);
+  if (mime === 'image/gif' || mime === 'image/svg+xml') return { data: dataUrl, octets: avant };
+  if (mime === 'image/png' && avant < 1.5 * 1024 * 1024) return { data: dataUrl, octets: avant };
+  const j = await s33DownscaleToJpeg(dataUrl, S33_PHOTO_MAX_PX, 0.82);
+  if (j && j.length < dataUrl.length) return { data: j, octets: Math.round(j.length * 0.75) };
+  return { data: dataUrl, octets: avant };
+}
+// Vignette fabriquee a l'envoi : avant, l'app retelechargeait la photo entiere
+// pour la fabriquer plus tard.
+function s33VignettePhoto(dataUrl) { return s33DownscaleToJpeg(dataUrl, 420, 0.72); }
 
 async function getMediaThumb(id) {
   if (_mediaThumbCache[id] !== undefined) return _mediaThumbCache[id];
@@ -6871,15 +6904,11 @@ async function login() {
       supabaseToken = data.access_token;
       supabaseRefreshToken = data.refresh_token || null;
       scheduleTokenRefresh(data.expires_in || 3600);
-      const meta = data.user?.user_metadata || {};
-      resolvedUser = {
-        id: data.user.id,
-        email,
-        username: meta.username || u,
-        name: meta.name || u.charAt(0).toUpperCase() + u.slice(1),
-        role: meta.role || 'member',
-        avatar: meta.avatar || (meta.name || u).substring(0, 2).toUpperCase()
-      };
+      resolvedUser = s33UtilisateurDepuis(data.user, email);
+      // Rester connectee : cochee, le jeton de renouvellement reste sur
+      // l'appareil ; sinon, rien n'y est garde (PC partage du bureau)
+      const rester = document.getElementById('auth-rester');
+      s33SessionChoix(!!(rester && rester.checked));
     } else {
       const errData = await res.json().catch(() => ({}));
       if (res.status === 400) errEl.textContent = 'Email ou mot de passe incorrect.';
@@ -6889,7 +6918,73 @@ async function login() {
     errEl.textContent = 'Impossible de joindre le serveur. Vérifiez votre connexion.';
   }
 
-  if (resolvedUser) {
+  if (resolvedUser) await s33EntrerDansApp(resolvedUser);
+}
+
+// L'utilisatrice, a partir du compte renvoye par Supabase Auth
+function s33UtilisateurDepuis(user, email) {
+  const meta = (user && user.user_metadata) || {};
+  const mail = email || (user && user.email) || '';
+  const u = (mail.split('@')[0] || '').toLowerCase();
+  return {
+    id: user.id,
+    email: mail,
+    username: meta.username || u,
+    name: meta.name || u.charAt(0).toUpperCase() + u.slice(1),
+    role: meta.role || 'member',
+    avatar: meta.avatar || (meta.name || u).substring(0, 2).toUpperCase()
+  };
+}
+
+// ── Rester connectee ─────────────────────────────────────────────────
+// Seul le jeton de renouvellement est garde (jamais le mot de passe). Il
+// change a chaque renouvellement ; « Se deconnecter » l'efface et le revoque.
+const S33_SESSION_CLE = 's33_session';
+let _s33Rester = false;
+function s33SessionChoix(rester) {
+  _s33Rester = rester;
+  if (rester) s33SessionMemoriser();
+  else { try { localStorage.removeItem(S33_SESSION_CLE); } catch (_) {} }
+}
+function s33SessionMemoriser() {
+  if (!_s33Rester || !supabaseRefreshToken) return;
+  try { localStorage.setItem(S33_SESSION_CLE, JSON.stringify({ r: supabaseRefreshToken, le: Date.now() })); } catch (_) {}
+}
+// A l'ouverture : si une session est gardee, on la reprend sans mot de passe
+async function s33ReprendreSession() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(S33_SESSION_CLE) || 'null'); } catch (_) {}
+  if (!s || !s.r) return false;
+  showLoadingOverlay(true);
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY },
+      body: JSON.stringify({ refresh_token: s.r })
+    });
+    if (!res.ok) {
+      // Jeton expire ou revoque : on oublie la session, retour au mot de passe
+      if (res.status === 400 || res.status === 401) { try { localStorage.removeItem(S33_SESSION_CLE); } catch (_) {} }
+      showLoadingOverlay(false);
+      return false;
+    }
+    const data = await res.json();
+    supabaseToken = data.access_token;
+    supabaseRefreshToken = data.refresh_token || s.r;
+    scheduleTokenRefresh(data.expires_in || 3600);
+    _s33Rester = true;
+    s33SessionMemoriser();
+    await s33EntrerDansApp(s33UtilisateurDepuis(data.user));
+    return true;
+  } catch (e) {
+    // Pas de reseau : la session reste gardee, on reessaiera
+    console.warn('[session] reprise impossible', e);
+    showLoadingOverlay(false);
+    return false;
+  }
+}
+
+async function s33EntrerDansApp(resolvedUser) {
     currentUser = resolvedUser;
     window.currentUser = resolvedUser; // expose for Sprint 2 IIFEs that run outside script #1 scope
     document.getElementById('auth-screen').style.display = 'none';
@@ -6906,7 +7001,6 @@ async function login() {
     s33PaintNudge();
     try { s33OuvrirDestinationNotif(); } catch(e) { console.warn('[notif] destination', e); }
     setTimeout(() => s33SendDiag('apres-connexion'), 5000);
-  }
 }
 
 document.getElementById('auth-pass').addEventListener('keydown', e => {
@@ -6914,6 +7008,7 @@ document.getElementById('auth-pass').addEventListener('keydown', e => {
 });
 
 async function logout() {
+  s33SessionChoix(false);   // plus de session gardee sur cet appareil
   if (window._reportPollInterval) { clearInterval(window._reportPollInterval); window._reportPollInterval = null; }
   // Révoquer le token Supabase si on était connecté via vrai auth
   if (_tokenRefreshTimer) { clearTimeout(_tokenRefreshTimer); _tokenRefreshTimer = null; }
@@ -13367,22 +13462,41 @@ function handleMediaUpload(input) {
       let data = e.target.result;
       let thumb = null;
       if (!isPDF) {
-        const compressed = await s33DownscaleToJpeg(data, 1920, 0.82);
-        if (compressed && compressed.length < data.length) data = compressed;
-        thumb = await s33DownscaleToJpeg(data, 420, 0.72);
+        data = (await s33AllegerPhoto(data, file.type)).data;
+        thumb = await s33VignettePhoto(data);
       }
+      // Le fichier va dans le stockage, la table ne garde que son chemin
+      // (avant : le fichier entier dans la table, en base64)
+      const mime = (String(data).match(/^data:([^;,]+)/) || [])[1] || file.type || 'application/octet-stream';
+      const ext = mime === 'application/pdf' ? '.pdf' : mime === 'image/png' ? '.png' : '.jpg';
+      const chemin = 'mediatheque/' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '_' +
+        (file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'fichier') + ext;
+      let depose = false;
+      try {
+        const bin = atob(String(data).split(',')[1] || '');
+        const arr = new Uint8Array(bin.length);
+        for (let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
+        const up = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + chemin, {
+          method: 'POST',
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY), 'Content-Type': mime, 'x-upsert': 'true' },
+          body: new Blob([arr], { type: mime })
+        });
+        depose = up.ok;
+      } catch (_) {}
       const mediaObj = {
         name: file.name.replace(/\.[^.]+$/, ''),
         type,
         is_pdf: isPDF,
-        data,
+        mime,
+        file_path: chemin,
+        data: null,
         thumb,
         project_id: projectId === 'all' || projectId === 'general' ? null : parseInt(projectId),
         is_general: projectId === 'general',
         size: isPDF ? formatFileSize(file.size) : formatFileSize(Math.round(data.length * 0.75)),
         added_at: s33Aujourdhui()
       };
-      const res = await sbInsert('media', mediaObj);
+      const res = depose ? await sbInsert('media', mediaObj) : null;
       // Ajout local sans recharger toute la base (loadDB complet = très lourd)
       if (res && res[0]) {
         const r = res[0];
@@ -20559,6 +20673,7 @@ function updateUIForUser() {
     if (window._reportPollInterval) { clearInterval(window._reportPollInterval); window._reportPollInterval = null; }
     // Use polling fallback: check for new reports every 30s when page is on equipe
     window._reportPollInterval = setInterval(async () => {
+      if (document.hidden) return;   // app en arriere-plan : rien
       if (currentPage === 'equipe' || currentPage === 'dashboard' || currentPage === 'rapport') {
         const latest = await sbGet('daily_reports', '?order=submitted_at.desc&limit=30');
         if (latest && Array.isArray(latest)) {
@@ -23566,11 +23681,12 @@ function escHTML(str) {
           return;
         }
         window._s33UploadData = data;
-        window._s33UploadMime = file.type;
+        // format reel du fichier envoye (une photo allegee devient un JPEG)
+        window._s33UploadMime = (String(data).match(/^data:([^;,]+)/) || [])[1] || file.type;
         window._s33UploadSize = formatSize(file.size);
         window._s33UploadFileName = file.name;
         const shortName = file.name.length > 34 ? file.name.slice(0,31) + '...' : file.name;
-        const wasCompressed = isImage && file.size > S33_MAX_IMG_BYTES;
+        const wasCompressed = isImage && finalSize < file.size * 0.9;
         const compressedLabel = wasCompressed
           ? `<div style="font-size:10px;color:var(--green);margin-top:2px;">✓ Comprimée : ${formatSize(finalSize)}</div>`
           : '';
@@ -23585,12 +23701,10 @@ function escHTML(str) {
         btn.disabled = false; btn.style.opacity = '1';
       };
 
-      if (isImage && file.size > S33_MAX_IMG_BYTES) {
+      if (isImage) {
         // Montrer un indicateur de compression en cours
         dzInner.innerHTML = '<span class="mi mi-lg" style="color:var(--gold);">hourglass_top</span><div style="margin-top:8px;font-size:13px;color:var(--text-dim);">Compression en cours…</div>';
-        s33CompressImage(rawData, file.type, S33_MAX_IMG_BYTES * 1.33, (compressed, bytes) => {
-          finalize(compressed, bytes);
-        });
+        s33AllegerPhoto(rawData, file.type).then(a => finalize(a.data, a.octets));
       } else {
         finalize(rawData, Math.round(rawData.length * 0.75));
       }
@@ -23716,16 +23830,17 @@ function escHTML(str) {
         let data = rawData;
         let finalBytes = file.size;
         const isImage = file.type !== 'application/pdf';
-        if (isImage && file.size > S33_MAX_IMG_BYTES) {
-          setProgress(i, valid.length, file.name, 'compression…');
-          const cmp = await new Promise(res => s33CompressImage(rawData, file.type, S33_MAX_IMG_BYTES * 1.33, (c, b) => res({ c, b })));
-          data = cmp.c; finalBytes = cmp.b;
+        if (isImage) {
+          setProgress(i, valid.length, file.name, 'allègement…');
+          const a = await s33AllegerPhoto(rawData, file.type);
+          data = a.data; finalBytes = a.octets;
         }
         if (isImage && window._s33UploadFolder === 'Photos de chantier' && typeof s33StampChantier === 'function') {
           setProgress(i, valid.length, file.name, 'horodatage…');
           data = await s33StampChantier(data);
           finalBytes = Math.round(data.length * 0.75);
         }
+        const vignette = isImage ? await s33VignettePhoto(data) : null;
         setProgress(i, valid.length, file.name, 'envoi…');
         // Upload to Storage
         const parts = data.split(',');
@@ -23748,6 +23863,9 @@ function escHTML(str) {
           });
           if (res.ok) storagePath = path;
         } catch(e) { console.warn('Storage upload err', file.name, e); }
+        // Fichier non depose : on le dit (avant, il partait DANS la table, en
+        // base64 — c'est ce qui avait gonfle la base a 175 Mo)
+        if (!storagePath) { fail++; nonEnvoyes.push(file.name); continue; }
 
         const legacyType =
           window._s33UploadFolder === 'Photos de chantier'        ? 'photo_chantier'  :
@@ -23763,8 +23881,9 @@ function escHTML(str) {
           is_project_doc: true,
           is_pdf:         mimeStr === 'application/pdf',
           mime:           mimeStr,
-          file_path:      storagePath || null,
-          data:           storagePath ? null : data,
+          file_path:      storagePath,
+          data:           null,
+          thumb:          vignette,
           project_id:     window._s33UploadProjId,
           size:           formatSize(finalBytes),
           added_by:       (currentUser && currentUser.name) || '',
@@ -23873,8 +23992,16 @@ function escHTML(str) {
         console.warn('Storage upload failed:', res.status, await res.text().catch(()=>''));
       }
     } catch(e) {
-      console.warn('Storage upload error (will fall back to base64):', e);
+      console.warn('Storage upload error:', e);
     }
+    // Fichier non depose : on le dit et la fenetre reste ouverte (plus de
+    // copie base64 dans la table, qui avait gonfle la base a 175 Mo)
+    if (!storagePath) {
+      toast('« ' + name + ' » non envoyé — vérifiez la connexion et réessayez');
+      btn.disabled = false; btn.textContent = 'Enregistrer';
+      return;
+    }
+    const vignetteSimple = String(window._s33UploadMime || '').startsWith('image/') ? await s33VignettePhoto(window._s33UploadData) : null;
 
     // ── 2. Build DB record (file_path if Storage worked, else data) ─
     const legacyType =
@@ -23891,9 +24018,9 @@ function escHTML(str) {
       is_project_doc: true,
       is_pdf:         window._s33UploadMime === 'application/pdf',
       mime:           window._s33UploadMime || null,
-      // Storage path OR base64 fallback — never both
-      file_path:      storagePath || null,
-      data:           storagePath ? null : window._s33UploadData,
+      file_path:      storagePath,
+      data:           null,
+      thumb:          vignetteSimple,
       project_id:     window._s33UploadProjId,
       size:           window._s33UploadSize,
       added_by:       (currentUser && currentUser.name) || '',
@@ -32164,16 +32291,23 @@ window.addEventListener('appinstalled', () => {
   }
   // Chaque membre publie « je suis là » toutes les ~60 s tant que l'app est ouverte
   let _hbLast = 0;
+  let _presenceCree = false;
   async function _heartbeat() {
     if (!window.currentUser || !myId()) return;
     if (Date.now() - _hbLast < 55000) return;
     _hbLast = Date.now();
     try {
+      if (document.hidden) return;   // en arriere-plan, on n'est pas « en ligne »
       const q = '?user_id=eq.' + encodeURIComponent(myId());
-      const ex = await sbGet('presence', q + '&select=user_id');
       const row = { last_seen_at: new Date().toISOString(), user_name: myName() };
-      if (ex && ex.length) await sbFetch('presence', 'PATCH', row, q);
-      else await sbInsert('presence', Object.assign({ user_id: myId() }, row));
+      // Une seule requete d'habitude : mise a jour ; creation la premiere fois
+      if (!_presenceCree) {
+        const ex = await sbGet('presence', q + '&select=user_id');
+        if (!(ex && ex.length)) await sbInsert('presence', Object.assign({ user_id: myId() }, row));
+        _presenceCree = true;
+        return;
+      }
+      await sbFetch('presence', 'PATCH', row, q);
     } catch(_) {}
   }
   setInterval(_heartbeat, 60000);
@@ -32209,11 +32343,28 @@ window.addEventListener('appinstalled', () => {
     let n = 0; chans.forEach(c => n += unread(c)); return n;
   }
 
-  async function fetchMessages() {
+  // Donnees mobiles : relire les 300 derniers messages toutes les 20 s
+  // coutait plusieurs Mo par heure. On ne demande plus que les NOUVEAUX
+  // messages ; une lecture complete (modifications, suppressions) a lieu
+  // au plus toutes les 5 minutes, a l'ouverture et apres un envoi.
+  const MSG_CHAMPS = '?select=id,channel,sender_id,sender_name,body,created_at,att_mime,att_name,edited_at';
+  let _msgDernierComplet = 0;
+  async function fetchMessages(complet) {
     // RLS restreint déjà aux canaux autorisés (équipe + mes DM).
     // Les données lourdes (att_data, miniatures) sont chargées à part, à la demande.
-    const rows = await sbGet('messages', '?select=id,channel,sender_id,sender_name,body,created_at,att_mime,att_name,edited_at&order=created_at.desc&limit=300');
-    _msgCache = Array.isArray(rows) ? rows.slice().reverse() : [];
+    const reels = _msgCache.filter(m => !String(m.id).startsWith('_tmp_'));
+    if (complet || !reels.length || Date.now() - _msgDernierComplet > 300000) {
+      const rows = await sbGet('messages', MSG_CHAMPS + '&order=created_at.desc&limit=300');
+      if (Array.isArray(rows)) { _msgCache = rows.slice().reverse(); _msgDernierComplet = Date.now(); }
+    } else {
+      const dernier = reels.reduce((a, m) => (m.created_at > a ? m.created_at : a), '');
+      const rows = await sbGet('messages', MSG_CHAMPS + '&created_at=gt.' + encodeURIComponent(dernier) + '&order=created_at.asc&limit=100');
+      if (Array.isArray(rows) && rows.length) {
+        const vus = new Set(_msgCache.map(m => String(m.id)));
+        rows.forEach(r => { if (!vus.has(String(r.id))) _msgCache.push(r); });
+      }
+      return _msgCache;
+    }
     if (isAdm()) {
       try {
         const [rd, pr] = await Promise.all([sbGet('message_reads', ''), sbGet('presence', '')]);
@@ -32486,9 +32637,9 @@ window.addEventListener('appinstalled', () => {
     if (_msgPoll) clearInterval(_msgPoll);
     _msgPoll = setInterval(async () => {
       const active = (typeof currentPage !== 'undefined' && currentPage === 'messagerie') || window._s33MsgDockOpen;
-      if (!active) return;
+      if (!active || document.hidden) return;   // app en arriere-plan : rien
       await fetchMessages(); renderConvList(); renderThread(true);
-    }, 4000);
+    }, 8000);
   };
 
   window.s33MsgOpen = function(ch, noScrollKeep) {
@@ -32535,7 +32686,7 @@ window.addEventListener('appinstalled', () => {
     }
     _msgSending = false;
     if (sent) {
-      await fetchMessages();
+      await fetchMessages(true);   // complet : remplace le message provisoire
       localStorage.setItem(readKey(ch), new Date().toISOString());
     }
     renderConvList(); renderThread(false);
@@ -32763,12 +32914,17 @@ window.addEventListener('appinstalled', () => {
     targets.forEach(uid => { try { createNotification(uid, '<span class="mi mi-sm">forum</span> ' + title, preview, 'message', 'messagerie', null); } catch(_) {} });
   }
 
-  // Badge en arrière-plan (même hors de la page)
+  // Badge (même hors de la page) : chaque minute, seulement si l'app est
+  // a l'ecran ; au retour sur l'app, mise a jour immediate.
   setInterval(async () => {
-    if (!window.currentUser) return;
+    if (!window.currentUser || document.hidden) return;
     if ((typeof currentPage !== 'undefined' && currentPage === 'messagerie') || window._s33MsgDockOpen) return;
     try { await fetchMessages(); updateBadges(); } catch(_) {}
-  }, 20000);
+  }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !window.currentUser) return;
+    fetchMessages().then(() => { updateBadges(); }).catch(() => {});
+  });
 
   // Hook renderPage
   const _origRP = window.renderPage;
@@ -40330,6 +40486,22 @@ window.addEventListener('appinstalled', () => {
   }
 
   console.log('✓ Module salaires chargé');
+})();
+
+// ── Rester connectee : reprise a l'ouverture ─────────────────────────
+// Tous les modules sont charges : on peut entrer dans l'app. Jamais sur les
+// pages destinees aux clients (espace client, signature de devis ou de PV,
+// portail entreprise). Case cochee d'office sur telephone, pas sur ordinateur
+// (le PC du bureau est partage).
+(function() {
+  try {
+    const c = document.getElementById('auth-rester');
+    if (c) c.checked = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768;
+    const q = new URLSearchParams(location.search);
+    if (document.documentElement.classList.contains('s33-portal-mode') || q.get('sign')) return;
+    const reprendre = () => { if (!window.currentUser) s33ReprendreSession(); };
+    if (document.readyState === 'complete') reprendre(); else window.addEventListener('load', reprendre);
+  } catch (e) { console.warn('[session]', e); }
 })();
 </script>
 

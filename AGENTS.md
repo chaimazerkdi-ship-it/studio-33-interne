@@ -54,6 +54,19 @@ ligne), sans framework ni étape de compilation.
   même jour décrivent le même travail ; on garde le plus grand des deux, on
   n'additionne jamais.
 
+## Légèreté (données mobiles, base)
+- **Fichiers** : toujours dans le stockage (`file_path`), **jamais** dans la
+  colonne `media.data` en base64 (c'est ce qui avait gonflé la base à 175 Mo).
+  Si le dépôt échoue, on le dit ; on ne met pas le fichier dans la table.
+- **Photos** : `s33AllegerPhoto(dataUrl, mime)` (2560 px, JPEG 0,82) puis
+  `s33VignettePhoto(data)` → colonne `thumb`, fabriquée à l'envoi.
+- **Boucles réseau** (`setInterval`) : ne rien faire quand `document.hidden`
+  (app en arrière-plan) ; ne demander que le nouveau (ex. messages :
+  `created_at=gt.<dernier>`).
+- **Session** : « Rester connectée » garde le seul jeton de renouvellement
+  (`s33_session`), jamais le mot de passe ; `logout()` l'efface.
+- Journaux techniques : vidés chaque nuit après 7 jours (`s33_purger_journaux`).
+
 ## Droits de l'équipe
 - Chaque personne voit des **sections** (réglées par l'admin dans l'onglet
   Équipe). Une seule règle : `s33PeutVoir(section)` dans l'app, sa copie

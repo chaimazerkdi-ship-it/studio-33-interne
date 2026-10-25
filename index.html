@@ -6753,6 +6753,54 @@ async function s33NumeroSuivant(type) {
   return n;
 }
 
+// ── Toutes les factures naissent ici ─────────────────────────────────
+// Formulaire, devis valide, echeancier (fiche projet et page Facturation),
+// Samia : meme numero (base), meme echeance par defaut (date + delai de
+// paiement), meme TVA par defaut (celle des factures du projet, sinon 20 %),
+// meme ajout a la liste, meme lien avec l'etape d'echeancier. Avant, chaque
+// chemin avait ses regles (Samia ne mettait ni echeance ni TVA, et le
+// formulaire annoncait « creee » meme quand l'enregistrement avait echoue).
+// f : { client_id, project_id, object, amount (TTC), date?, due_date?,
+//       status?, tva_rate?, payment_method?, echeance_id? }
+// Renvoie la facture enregistree ; leve une erreur si rien n'est enregistre.
+async function s33CreerFacture(f) {
+  const entier = v => (v == null || v === '' || isNaN(parseInt(v, 10))) ? null : parseInt(v, 10);
+  const projetId = entier(f.project_id);
+  const date = f.date || s33Aujourdhui();
+  const ligne = {
+    num: await s33NumeroSuivant('facture'),
+    client_id: entier(f.client_id),
+    project_id: projetId,
+    object: f.object || '',
+    amount: Number(f.amount) || 0,
+    date,
+    due_date: f.due_date || s33DueDateFrom(date),
+    status: f.status || 'En attente',
+    tva_rate: (f.tva_rate != null && !isNaN(parseFloat(f.tva_rate))) ? parseFloat(f.tva_rate) : s33TvaHabituelle(projetId)
+  };
+  if (f.payment_method) ligne.payment_method = f.payment_method;
+  let ins;
+  try { ins = await sbInsertOrThrow('invoices', ligne); }
+  catch (e) {
+    if (!ligne.payment_method) throw e;
+    delete ligne.payment_method;          // base sans cette colonne : on reessaie sans
+    ins = await sbInsertOrThrow('invoices', ligne);
+  }
+  const inv = Array.isArray(ins) ? ins[0] : null;
+  if (!inv) throw new Error('facture non enregistrée');
+  db.invoices = db.invoices || [];
+  db.invoices.push({ ...inv, clientId: inv.client_id, projectId: inv.project_id });
+  if (f.echeance_id) await sbUpdate('honoraires_echeances', f.echeance_id, { invoice_id: inv.id, due_date: ligne.due_date });
+  return inv;
+}
+// TVA des dernieres factures du projet (sinon 20 %)
+function s33TvaHabituelle(projetId) {
+  const prev = (db.invoices || [])
+    .filter(i => projetId != null && String(i.projectId ?? i.project_id) === String(projetId) && i.tva_rate != null)
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
+  return prev ? s33InvTvaRate(prev) : 20;
+}
+
 function showLoadingOverlay(show) {
   let el = document.getElementById('loading-overlay');
   if (!el) return;
@@ -11372,22 +11420,11 @@ async function saveInvoice() {
     toast('Facture modifiée');
   } else {
     // MODE CRÉATION
-    obj.status = 'En attente';
-    let num;
-    try { num = await s33NumeroSuivant('facture'); }
-    catch (e) { toast('Pas de connexion — facture non créée, réessayez'); return; }
-    obj.num = num;
-    if (obj.payment_method) localStorage.setItem('s33_paymethod_pending_' + num, obj.payment_method);
-    let insertedInv;
-    try {
-      insertedInv = await sbInsertOrThrow('invoices', obj);
-    } catch(e) {
-      delete obj.payment_method;
-      insertedInv = await sbInsert('invoices', obj);
-    }
-    if (insertedInv && insertedInv[0] && obj.payment_method) {
-      localStorage.setItem('s33_paymethod_' + insertedInv[0].id, obj.payment_method);
-    }
+    let inv;
+    try { inv = await s33CreerFacture(obj); }
+    catch (e) { toast('Facture non créée — vérifiez la connexion et réessayez'); return; }   // la fenetre reste ouverte
+    const num = inv.num;
+    if (obj.payment_method) localStorage.setItem('s33_paymethod_' + inv.id, obj.payment_method);
     closeModal('invoice-modal');
     await loadDB();
     renderInvoices();
@@ -13046,15 +13083,13 @@ async function s33ConfirmerValidationDevis(devisId) {
     }
 
     // 4. Première facture : acompte de signature, échéance +15 j
-    const num = await s33NumeroSuivant('facture');
-    const insI = await sbInsertOrThrow('invoices', {
-      num, client_id: clientId, project_id: projectId,
+    const { num } = await s33CreerFacture({
+      client_id: clientId, project_id: projectId,
       object: 'Honoraires — ' + rows[0].label + ' (' + rows[0].pct + '%)',
       amount: rows[0].montant, date: today,
-      due_date: s33DueDateFrom(today), status: 'En attente',
-      tva_rate: (function() { const r = parseFloat(d.tvaRate ?? d.tva_rate); return isNaN(r) ? 20 : r; })()
+      tva_rate: (function() { const r = parseFloat(d.tvaRate ?? d.tva_rate); return isNaN(r) ? 20 : r; })(),
+      echeance_id: echIds[0]
     });
-    await sbUpdate('honoraires_echeances', echIds[0], { invoice_id: insI[0].id, due_date: s33DueDateFrom(today) });
 
     // 5. Devis accepté
     await sbUpdate('devis', devisId, { status: 'Accepté' });
@@ -16322,10 +16357,11 @@ async function executeSamiaActions(text, mode) {
         let clientId = null, projectId = null;
         if (actionData.clientName) { const cl = db.clients.find(c => c.name.toLowerCase()===actionData.clientName.toLowerCase()); if (cl) clientId = cl.id; }
         if (actionData.projectName) { const pr = db.projects.find(p => p.name.toLowerCase()===actionData.projectName.toLowerCase()); if (pr) projectId = pr.id; }
-        const num = await s33NumeroSuivant('facture');
-        const ni = { num, client_id: clientId, project_id: projectId, amount: actionData.amount||0, status: actionData.status||'En attente', object: actionData.description||'', date: s33Aujourdhui() };
-        const r = await sbInsert('invoices', ni);
-        if (r && r.length > 0) { db.invoices.push({...r[0], id: r[0].id, clientId: r[0].client_id, projectId: r[0].project_id}); resultMsg = `Facture <strong>${num}</strong> de <strong>${ni.amount.toLocaleString('fr-MA')} MAD</strong> créée !`; if (typeof renderInvoices==='function') renderInvoices(); }
+        // Meme chemin que le reste de l'app : echeance et TVA par defaut
+        const inv = await s33CreerFacture({ client_id: clientId, project_id: projectId, amount: actionData.amount||0,
+          status: actionData.status||'En attente', object: actionData.description||'' });
+        resultMsg = `Facture <strong>${inv.num}</strong> de <strong>${(Number(inv.amount)||0).toLocaleString('fr-MA')} MAD</strong> créée !`;
+        if (typeof renderInvoices==='function') renderInvoices();
         break;
       }
       case 'assign_task': {
@@ -33441,20 +33477,13 @@ window.addEventListener('appinstalled', () => {
     const today = s33Aujourdhui();
     const due = (typeof s33DueDateFrom === 'function') ? s33DueDateFrom(today) : today;
     try {
-      const num = await s33NumeroSuivant('facture');
-      const ins = await sbInsertOrThrow('invoices', {
-        num, client_id: p.clientId ?? p.client_id, project_id: p.id,
+      const inv = await s33CreerFacture({
+        client_id: p.clientId ?? p.client_id, project_id: p.id,
         object: 'Honoraires — ' + (r.label || r.phase),
-        amount: montant, date: today, due_date: due, status: 'En attente',
-        tva_rate: (function() {
-          const prev = (db.invoices || []).filter(i => i.projectId === r.project_id && i.tva_rate != null)
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
-          return prev ? s33InvTvaRate(prev) : 20;
-        })()
+        amount: montant, date: today, due_date: due, echeance_id: id
       });
-      db.invoices.push({ ...ins[0], clientId: ins[0].client_id, projectId: ins[0].project_id });
-      await sbUpdate('honoraires_echeances', id, { invoice_id: ins[0].id, due_date: due });
-      r.invoice_id = ins[0].id; r.due_date = due;
+      const num = inv.num;
+      r.invoice_id = inv.id; r.due_date = due;
       renderSection();
       toast('Facture ' + num + ' créée — échéance le ' + due);
     } catch(e) { console.error(e); toast('Facture non créée — réessayez'); }
@@ -35660,20 +35689,13 @@ window.addEventListener('appinstalled', () => {
     const today = s33Aujourdhui();
     const due = (typeof s33DueDateFrom === 'function') ? s33DueDateFrom(today) : today;
     try {
-      const num = await s33NumeroSuivant('facture');
-      const ins = await sbInsertOrThrow('invoices', {
-        num, client_id: p.clientId != null ? p.clientId : p.client_id, project_id: p.id,
+      const inv = await s33CreerFacture({
+        client_id: p.clientId != null ? p.clientId : p.client_id, project_id: p.id,
         object: 'Honoraires — ' + (r.label || ''),
-        amount: montant, date: today, due_date: due, status: 'En attente',
-        tva_rate: (function() {
-          const prev = (db.invoices || []).filter(i => i.projectId === r.project_id && i.tva_rate != null)
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
-          return prev ? s33InvTvaRate(prev) : 20;
-        })()
+        amount: montant, date: today, due_date: due, echeance_id: echId
       });
-      db.invoices.push({ ...ins[0], clientId: ins[0].client_id, projectId: ins[0].project_id });
-      await sbUpdate('honoraires_echeances', echId, { invoice_id: ins[0].id, due_date: due });
-      r.invoice_id = ins[0].id;
+      const num = inv.num;
+      r.invoice_id = inv.id;
       _echCache = null;
       toast('Facture ' + num + ' créée — échéance le ' + due);
       renderInvoices();

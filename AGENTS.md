@@ -48,8 +48,19 @@ ligne), sans framework ni étape de compilation.
   (fonction SQL `s33_prochain_numero`, sous verrou, jamais sous le plus haut
   numéro existant). Ne jamais calculer un numéro depuis un compteur local ni
   réécrire `app_config` : c'est ce qui a remis le compteur à 1 en juillet 2026.
+- **Créer une facture** : toujours `await s33CreerFacture({...})` (formulaire,
+  validation de devis, échéances d'honoraires, Samia) : numéro par la base,
+  échéance, TVA habituelle du projet, échéance d'honoraires liée. Pas
+  d'insertion directe dans `invoices`.
 - **Montant d'une facture** (`invoices.amount`) : **TTC**. Le HT se déduit avec
   `s33InvTvaRate(inv)`.
+- **Visites de chantier** : un seul module, le **PV de chantier**
+  (`pv_chantier`). « Nouvelle visite » sur un projet → `s33PvNouveauPour(pid)` ;
+  un PV rédigé par Samia → `s33PvBrouillonTexte(pid, texte)` (brouillon à
+  compléter). L'avancement (`avancement_pct`, `notes`) est dans le PV ; la
+  fiche projet montre les PV et les comptes-rendus de réunion (`reunions`).
+  Une réserve levée : `statut: 'levée'` (avec accent) et `levee_date`.
+  `chantier_visites` n'est plus écrite.
 - **Heures travaillées** : `s33HeuresFusionnees()` — le chrono et le rapport du
   même jour décrivent le même travail ; on garde le plus grand des deux, on
   n'additionne jamais.

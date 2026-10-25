@@ -3256,7 +3256,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-25.3 — droits de l equipe : chacune voit ses sections';
+const S33_BUILD = '2026-10-25.4 — app plus legere, PV de chantier unique, factures unifiees';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -7401,7 +7401,7 @@ function renderProjectDetailPage() {
       </div>
       <span class="badge ${phaseColors[p.phase]||'badge-dim'}">${p.phase}</span>
       ${p.archived ? `<span style="padding:6px 14px;background:#f0f4ff;color:#4a6fa5;border-radius:var(--radius-pill);font-size:11px;font-weight:700;letter-spacing:.05em;"><span class="mi mi-sm">inventory_2</span> ARCHIVÉ</span>` : ''}
-      <button onclick="openVisitReport(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">assignment</span> Rapport visite</button>
+      <button onclick="s33PvNouveauPour(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">fact_check</span> PV de chantier</button>
       ${isAdmin ? `<button onclick="openClientPortalShare(${p.id})" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">share</span> Espace client</button>` : ''}
       ${isAdmin ? `<button onclick="s33ModeReunion(${p.id})" title="Affiche uniquement la vue client de ce projet — rien de confidentiel à l'écran" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">co_present</span> Mode réunion</button>` : ''}
       ${isAdmin ? `<button onclick="s33EntShare(${p.id})" title="Lien pour les artisans : plans à jour + réserves à corriger" style="padding:9px 16px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:12px;font-weight:600;cursor:pointer;"><span class="mi">engineering</span> Espace entreprise</button>` : ''}
@@ -10789,6 +10789,13 @@ window.s33ReuOpen = function(id) {
   };
   reuRender();
   window.scrollTo(0, 0);
+};
+
+// Depuis l'historique d'un projet : ouvrir le compte-rendu dans sa page
+window.s33ReuVoir = async function(id) {
+  if (currentPage !== 'pv') navigate('pv');
+  if (!_reuLoaded || !_reuRows.some(x => x.id === id)) await reuLoad();
+  window.s33ReuOpen(id);
 };
 
 window.s33ReuClose = function() { _reuCur = null; reuRender(); };
@@ -16406,80 +16413,28 @@ async function executeSamiaActions(text, mode) {
 }
 
 // ══════════════════════════════
-// ── Sauvegarde d'un PV généré par Samia dans le projet ──
+// ── PV rédigé par Samia : devient un brouillon de PV de chantier du projet ──
 async function saveSamiaPV(btn, textContent) {
-  const titleEl = document.getElementById('_samia-pv-title');
-  const projEl  = document.getElementById('_samia-pv-proj');
-  const docTitle = (titleEl ? titleEl.value.trim() : '') || 'PV de chantier';
-  const projId   = projEl ? parseInt(projEl.value) : null;
+  const projEl = document.getElementById('_samia-pv-proj');
+  const projId = projEl ? parseInt(projEl.value) : null;
   if (!projId) { toast('Choisissez un projet', 'warning'); return; }
+  if (typeof window.s33PvBrouillonTexte !== 'function') { toast('Module PV indisponible — rechargez l\'app'); return; }
 
   btn.disabled = true;
   btn.innerHTML = '<span class="mi" style="font-size:14px;">hourglass_top</span> Enregistrement…';
-
   try {
-    // Convertir le texte en fichier HTML simple uploadable
-    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
-<title>${docTitle}</title>
-<style>body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 20px;color:#222;line-height:1.7;}
-h1,h2,h3{color:#8B6914;}hr{border:none;border-top:1px solid #ddd;margin:24px 0;}
-pre{white-space:pre-wrap;font-family:inherit;}</style>
-</head><body><pre>${textContent.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
-
-    const blob = new Blob([html], { type: 'text/html' });
-    const safeName = docTitle.replace(/[^a-zA-Z0-9À-ɏ\s_-]/g, '').replace(/\s+/g, '_');
-    const filePath = `projects/${projId}/pv/${Date.now()}_${safeName}.html`;
-
-    // Upload vers Supabase Storage
-    const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${S33_STORAGE_BUCKET}/${filePath}`, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY),
-        'Content-Type': 'text/html',
-        'x-upsert': 'true'
-      },
-      body: blob
-    });
-
-    let dataUri = null;
-    if (uploadRes.ok) {
-      // Utiliser le file_path pour générer une URL signée à la lecture
-      dataUri = null; // on utilisera file_path
-    } else {
-      // Fallback : stocker en base64 directement dans media.data
-      const reader = new FileReader();
-      dataUri = await new Promise(res => { reader.onload = e => res(e.target.result); reader.readAsDataURL(blob); });
-    }
-
-    const docObj = {
-      name:           docTitle,
-      doc_type:       'pv_chantier',
-      is_project_doc: true,
-      is_pdf:         false,
-      project_id:     projId,
-      added_by:       currentUser?.name || 'Samia IA',
-      added_at:       new Date().toLocaleDateString('fr-MA'),
-      ...(uploadRes.ok ? { file_path: filePath } : { data: dataUri })
-    };
-
-    const res = await sbInsertOrThrow('media', docObj);
-    const inserted = Array.isArray(res) ? res[0] : res;
-    if (inserted) {
-      db.media = db.media || [];
-      db.media.push({ ...inserted, isPDF: false, isGeneral: false, addedAt: inserted.added_at, projectId: inserted.project_id });
-    }
-
-    // Remplacer la barre de sauvegarde par une confirmation
+    const pv = await window.s33PvBrouillonTexte(projId, textContent);
     const bar = btn.closest('div');
-    if (bar) bar.innerHTML = `<span class="mi" style="color:var(--green);font-size:16px;vertical-align:-3px;">check_circle</span> <span style="font-size:12px;color:var(--green);font-weight:600;">PV enregistré dans le projet</span> <button onclick="openProjectDetail(${projId})" style="margin-left:8px;padding:5px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-size:11px;cursor:pointer;color:var(--text);">Voir le projet →</button>`;
-    toast('PV enregistré ✓');
-
+    if (bar) bar.innerHTML = '<span class="mi" style="color:var(--green);font-size:16px;vertical-align:-3px;">check_circle</span> ' +
+      '<span style="font-size:12px;color:var(--green);font-weight:600;flex:1;">Brouillon ' + escHTML(pv.ref || 'PV') + ' créé dans les PV de chantier du projet</span>' +
+      '<button onclick="s33PvOuvrir(' + pv.id + ')" style="padding:7px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;">' +
+      '<span class="mi" style="font-size:15px;">edit</span> Compléter le PV</button>';
+    toast('Brouillon de PV créé — complétez-le puis terminez-le');
   } catch(e) {
     console.error('saveSamiaPV error:', e);
     btn.disabled = false;
     btn.innerHTML = '<span class="mi" style="font-size:14px;">save</span> Réessayer';
-    toast('Erreur lors de l\'enregistrement', 'error');
+    toast('PV non enregistré — vérifiez la connexion et réessayez', 'error');
   }
 }
 
@@ -16729,10 +16684,7 @@ async function aiPageSend() {
       const saveBar = document.createElement('div');
       saveBar.style.cssText = 'margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;';
       saveBar.innerHTML = `
-        <span style="font-size:11px;color:var(--text-faint);flex:1;">Enregistrer ce PV dans le projet</span>
-        <input id="_samia-pv-title" type="text" placeholder="Titre du document…"
-          value="PV de chantier — ${new Date().toLocaleDateString('fr-FR')}"
-          style="flex:2;min-width:160px;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-size:12px;border-radius:var(--radius-sm);font-family:'Inter',system-ui,sans-serif;outline:none;">
+        <span style="font-size:11px;color:var(--text-faint);flex:1;">En faire un brouillon de PV de chantier du projet</span>
         <select id="_samia-pv-proj" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-size:12px;border-radius:var(--radius-sm);font-family:'Inter',system-ui,sans-serif;outline:none;">
           ${(db.projects||[]).map(p => `<option value="${p.id}" ${p.id===capturedProjId?'selected':''}>${escHTML(p.name)}</option>`).join('')}
         </select>
@@ -31081,414 +31033,15 @@ window.addEventListener('appinstalled', () => {
 })();
 </script>
 
-<!-- ═══ RAPPORT DE VISITE DE CHANTIER (PDF avec photos) ═══ -->
-<style>
-  #vr-print { display: none; }
-  @media print {
-    html.vr-printing body > *:not(#vr-print) { display: none !important; }
-    html.vr-printing #vr-print { display: block !important; }
-    html.vr-printing #vr-print { margin: 0; }
-  }
-  .vr-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
-  .vr-row > * { min-width: 0; }
-  .vr-del {
-    background: rgba(220,50,50,.07); border: 1.5px solid rgba(220,50,50,.2); color: #c33;
-    border-radius: var(--radius-sm); width: 34px; height: 38px; cursor: pointer; font-size: 16px;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  }
-  .vr-add {
-    background: transparent; border: 1.5px dashed var(--gold); color: var(--gold);
-    border-radius: var(--radius-sm); padding: 8px 14px; font-size: 12px; font-weight: 600;
-    cursor: pointer; width: 100%; font-family: inherit; margin-top: 2px;
-  }
-  .vr-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 8px; }
-  .vr-photo-cell {
-    position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
-    border: 3px solid transparent; aspect-ratio: 1; background: var(--surface2);
-  }
-  .vr-photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .vr-photo-cell.sel { border-color: var(--gold); }
-  .vr-photo-cell.sel::after {
-    content: '✓'; position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
-    background: var(--gold); color: #fff; border-radius: 50%; font-size: 12px; font-weight: 800;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .vr-cap-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
-  .vr-cap-row img { width: 52px; height: 52px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
-</style>
-<div id="vr-print"></div>
+<!-- ═══ RAPPORT DE VISITE : remplace par le PV de chantier (oct. 2026) ═══ -->
 <script>
-(function() {
-  'use strict';
-  let VR = null; // état du rapport en cours { projectId, uploaded: [{src, caption}] }
-
-  const VR_STATUTS = ['Conforme', 'Non conforme', 'À corriger', 'En cours', 'Pour information'];
-  const VR_METEO = ['Ensoleillé', 'Nuageux', 'Pluvieux', 'Venteux', 'Autre'];
-
-  function vrDraftKey(pid) { return 's33_vr_draft_' + pid; }
-
-  function vrIsImage(m) {
-    if (m.is_pdf || m.isPDF) return false;
-    if (m.mime) return m.mime.startsWith('image/');
-    return m.doc_type === 'photo_chantier' || m.doc_type === 'plan_cadastral' || !m.doc_type;
-  }
-
-  window.openVisitReport = function(projectId) {
-    const p = db.projects.find(x => x.id === projectId);
-    if (!p) return;
-    VR = { projectId, uploaded: [] };
-    let draft = null;
-    try { draft = JSON.parse(localStorage.getItem(vrDraftKey(projectId)) || 'null'); } catch(_) {}
-
-    const client = db.clients.find(c => c.id === p.clientId);
-    const today = s33Aujourdhui();
-    const photos = (db.media || []).filter(m =>
-      String(m.project_id || m.projectId) === String(projectId) && vrIsImage(m));
-
-    const old = document.getElementById('vr-modal'); if (old) old.remove();
-    const ov = document.createElement('div');
-    ov.className = 'modal-overlay open';
-    ov.id = 'vr-modal';
-    ov.addEventListener('click', e => { if (e.target === ov) vrClose(); });
-    ov.innerHTML =
-      '<div class="modal" style="max-width:680px;" onclick="event.stopPropagation()">' +
-        '<button class="modal-close" onclick="vrClose()">×</button>' +
-        '<div class="modal-title">Rapport de visite — ' + escHTML(p.name) + '</div>' +
-        '<p style="font-size:11px;color:var(--text-faint);margin:-6px 0 16px;">' + escHTML(client ? client.name : '') + '</p>' +
-
-        '<div class="form-row">' +
-          '<div class="form-group"><label>Date de visite</label><input type="date" id="vr-date" value="' + (draft?.date || today) + '"></div>' +
-          '<div class="form-group"><label>Heure</label><input type="time" id="vr-heure" value="' + (draft?.heure || '') + '"></div>' +
-          '<div class="form-group"><label>Météo</label><select id="vr-meteo">' +
-            VR_METEO.map(m => '<option' + ((draft?.meteo || '') === m ? ' selected' : '') + '>' + m + '</option>').join('') +
-          '</select></div>' +
-        '</div>' +
-        '<div class="form-group" style="margin-bottom:14px;"><label>Rédigé par</label><input type="text" id="vr-auteur" value="' + escHTML(draft?.auteur || (currentUser?.name || '')) + '"></div>' +
-
-        '<div class="section-title" style="font-size:12px;margin:18px 0 8px;">Présents sur site</div>' +
-        '<div id="vr-presents"></div>' +
-        '<button class="vr-add" onclick="vrAddPresent()">+ Ajouter un présent</button>' +
-
-        '<div class="section-title" style="font-size:12px;margin:20px 0 8px;">Avancement général</div>' +
-        '<textarea id="vr-avancement" rows="3" placeholder="État d\'avancement du chantier, travaux en cours…">' + escHTML(draft?.avancement || '') + '</textarea>' +
-
-        '<div class="section-title" style="font-size:12px;margin:20px 0 8px;">Observations</div>' +
-        '<div id="vr-observations"></div>' +
-        '<button class="vr-add" onclick="vrAddObs()">+ Ajouter une observation</button>' +
-
-        '<div class="section-title" style="font-size:12px;margin:20px 0 8px;">Actions à prévoir</div>' +
-        '<div id="vr-actions"></div>' +
-        '<button class="vr-add" onclick="vrAddAction()">+ Ajouter une action</button>' +
-
-        '<div class="section-title" style="font-size:12px;margin:20px 0 8px;">Photos du rapport</div>' +
-        (photos.length
-          ? '<p style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Touchez les photos du projet à inclure :</p>' +
-            '<div class="vr-photo-grid" style="margin-bottom:12px;">' +
-            photos.map(m =>
-              '<div class="vr-photo-cell" data-vrmid="' + m.id + '" onclick="vrTogglePhoto(this)">' +
-                '<img src="" data-mid="' + m.id + '" alt="">' +
-              '</div>').join('') +
-            '</div>'
-          : '<p style="font-size:11px;color:var(--text-faint);margin-bottom:8px;">Aucune photo dans ce projet — ajoutez-en ci-dessous.</p>') +
-        '<label style="display:block;border:1.5px dashed var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center;font-size:12px;color:var(--text-dim);cursor:pointer;margin-bottom:12px;">' +
-          '<span class="mi mi-sm">add_a_photo</span> Ajouter des photos (appareil / galerie)' +
-          '<input type="file" accept="image/*" multiple style="display:none;" onchange="vrHandleUpload(this)">' +
-        '</label>' +
-        '<div id="vr-captions"></div>' +
-
-        '<div class="form-group" style="margin-top:16px;"><label>Prochaine visite (optionnel)</label><input type="date" id="vr-next" value="' + (draft?.next || '') + '"></div>' +
-
-        '<div class="form-actions">' +
-          '<button class="btn btn-outline" onclick="vrClose()">Fermer</button>' +
-          '<button class="btn btn-gold" id="vr-generate-btn" onclick="vrGenerate()"><span class="mi">picture_as_pdf</span> Générer le PDF</button>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(ov);
-
-    // Lignes dynamiques (restaurées du brouillon ou une ligne vide)
-    (draft?.presents?.length ? draft.presents : [{ nom: currentUser?.name || '', role: 'Architecte' }])
-      .forEach(x => vrAddPresent(x.nom, x.role));
-    (draft?.observations?.length ? draft.observations : [{}]).forEach(x => vrAddObs(x.texte, x.statut));
-    (draft?.actions?.length ? draft.actions : []).forEach(x => vrAddAction(x.texte, x.resp, x.echeance));
-
-    // Restaurer la sélection de photos du brouillon
-    (draft?.mediaIds || []).forEach(id => {
-      const cell = ov.querySelector('[data-vrmid="' + id + '"]');
-      if (cell) cell.classList.add('sel');
-    });
-    vrRenderCaptions(draft?.captions || {});
-
-    if (typeof applyLazyMediaImages === 'function') requestAnimationFrame(() => applyLazyMediaImages());
-    try { history.pushState({ s33vr: 1 }, ''); } catch(_) {}
-  };
-
-  window.vrClose = function() {
-    vrSaveDraft();
-    const m = document.getElementById('vr-modal');
-    if (m) m.remove();
-    if (history.state && history.state.s33vr) { try { history.back(); } catch(_) {} }
-  };
-  window.addEventListener('popstate', function() {
-    const m = document.getElementById('vr-modal');
-    if (m) { vrSaveDraft(); m.remove(); }
-  });
-
-  // ── Lignes dynamiques ──────────────────────────────────────────
-  window.vrAddPresent = function(nom, role) {
-    document.getElementById('vr-presents').insertAdjacentHTML('beforeend',
-      '<div class="vr-row">' +
-        '<input type="text" placeholder="Nom" value="' + escHTML(nom || '') + '" data-vr="pnom" style="flex:1.2;">' +
-        '<input type="text" placeholder="Qualité (Architecte, Entreprise, BET…)" value="' + escHTML(role || '') + '" data-vr="prole" style="flex:1;">' +
-        '<button class="vr-del" onclick="this.parentElement.remove()">×</button>' +
-      '</div>');
-  };
-  window.vrAddObs = function(texte, statut) {
-    document.getElementById('vr-observations').insertAdjacentHTML('beforeend',
-      '<div class="vr-row">' +
-        '<textarea rows="2" placeholder="Observation…" data-vr="otexte" style="flex:1;">' + escHTML(texte || '') + '</textarea>' +
-        '<select data-vr="ostatut" style="width:150px;flex-shrink:0;">' +
-          VR_STATUTS.map(s => '<option' + ((statut || '') === s ? ' selected' : '') + '>' + s + '</option>').join('') +
-        '</select>' +
-        '<button class="vr-del" onclick="this.parentElement.remove()">×</button>' +
-      '</div>');
-  };
-  window.vrAddAction = function(texte, resp, echeance) {
-    document.getElementById('vr-actions').insertAdjacentHTML('beforeend',
-      '<div class="vr-row">' +
-        '<input type="text" placeholder="Action / travaux à réaliser" value="' + escHTML(texte || '') + '" data-vr="atexte" style="flex:1.6;">' +
-        '<input type="text" placeholder="Responsable" value="' + escHTML(resp || '') + '" data-vr="aresp" style="flex:1;">' +
-        '<input type="date" value="' + (echeance || '') + '" data-vr="aech" style="width:140px;flex-shrink:0;">' +
-        '<button class="vr-del" onclick="this.parentElement.remove()">×</button>' +
-      '</div>');
-  };
-
-  // ── Photos ─────────────────────────────────────────────────────
-  window.vrTogglePhoto = function(cell) {
-    cell.classList.toggle('sel');
-    vrRenderCaptions(vrGetCaptions());
-  };
-
-  window.vrHandleUpload = function(input) {
-    const files = [...(input.files || [])];
-    input.value = '';
-    files.forEach(f => {
-      const reader = new FileReader();
-      reader.onload = () => vrDownscale(reader.result, (small) => {
-        VR.uploaded.push({ src: small, caption: '' });
-        vrRenderCaptions(vrGetCaptions());
-      });
-      reader.readAsDataURL(f);
-    });
-  };
-
-  function vrDownscale(dataUrl, cb) {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 1400;
-      let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) { const k = Math.min(MAX / w, MAX / h); w = Math.round(w * k); h = Math.round(h * k); }
-      const c = document.createElement('canvas');
-      c.width = w; c.height = h;
-      c.getContext('2d').drawImage(img, 0, 0, w, h);
-      cb(c.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = () => cb(dataUrl);
-    img.src = dataUrl;
-  }
-
-  function vrSelectedMediaIds() {
-    return [...document.querySelectorAll('#vr-modal .vr-photo-cell.sel')].map(c => c.getAttribute('data-vrmid'));
-  }
-
-  function vrGetCaptions() {
-    const caps = {};
-    document.querySelectorAll('#vr-captions [data-vrcap]').forEach(inp => {
-      caps[inp.getAttribute('data-vrcap')] = inp.value;
-    });
-    return caps;
-  }
-
-  window.vrRenderCaptions = function(prev) {
-    prev = prev || {};
-    const box = document.getElementById('vr-captions');
-    if (!box) return;
-    const ids = vrSelectedMediaIds();
-    let html = '';
-    ids.forEach(id => {
-      const m = (db.media || []).find(x => String(x.id) === String(id));
-      html += '<div class="vr-cap-row">' +
-        '<img src="" data-mid="' + id + '" alt="">' +
-        '<input type="text" placeholder="Légende — ' + escHTML(m ? m.name : 'photo') + '" data-vrcap="m' + id + '" value="' + escHTML(prev['m' + id] || '') + '" style="flex:1;">' +
-      '</div>';
-    });
-    VR.uploaded.forEach((u, i) => {
-      html += '<div class="vr-cap-row">' +
-        '<img src="' + u.src + '" alt="">' +
-        '<input type="text" placeholder="Légende" data-vrcap="u' + i + '" value="' + escHTML(prev['u' + i] || u.caption || '') + '" style="flex:1;">' +
-        '<button class="vr-del" style="height:34px;" onclick="vrRemoveUpload(' + i + ')">×</button>' +
-      '</div>';
-    });
-    box.innerHTML = html;
-    if (typeof applyLazyMediaImages === 'function') requestAnimationFrame(() => applyLazyMediaImages());
-  };
-  window.vrRemoveUpload = function(i) {
-    VR.uploaded.splice(i, 1);
-    vrRenderCaptions(vrGetCaptions());
-  };
-
-  // ── Collecte + brouillon ───────────────────────────────────────
-  function vrCollect() {
-    const g = id => (document.getElementById(id) || {}).value || '';
-    const rows = (boxId, map) => [...document.querySelectorAll('#' + boxId + ' .vr-row')].map(map)
-      .filter(x => Object.values(x).some(v => (v || '').trim()));
-    return {
-      date: g('vr-date'), heure: g('vr-heure'), meteo: g('vr-meteo'), auteur: g('vr-auteur'),
-      avancement: g('vr-avancement'), next: g('vr-next'),
-      presents: rows('vr-presents', r => ({ nom: r.querySelector('[data-vr=pnom]').value, role: r.querySelector('[data-vr=prole]').value })),
-      observations: rows('vr-observations', r => ({ texte: r.querySelector('[data-vr=otexte]').value, statut: r.querySelector('[data-vr=ostatut]').value })),
-      actions: rows('vr-actions', r => ({ texte: r.querySelector('[data-vr=atexte]').value, resp: r.querySelector('[data-vr=aresp]').value, echeance: r.querySelector('[data-vr=aech]').value })),
-      mediaIds: vrSelectedMediaIds(),
-      captions: vrGetCaptions()
-    };
-  }
-
-  function vrSaveDraft() {
-    if (!VR || !document.getElementById('vr-modal')) return;
-    try { localStorage.setItem(vrDraftKey(VR.projectId), JSON.stringify(vrCollect())); } catch(_) {}
-  }
-
-  // ── Génération du PDF ──────────────────────────────────────────
-  window.vrGenerate = async function() {
-    const p = db.projects.find(x => x.id === VR.projectId);
-    if (!p) return;
-    const d = vrCollect();
-    vrSaveDraft();
-    const client = db.clients.find(c => c.id === p.clientId);
-    const btn = document.getElementById('vr-generate-btn');
-    if (btn) { btn.disabled = true; btn.innerHTML = 'Préparation…'; }
-
-    // Numéro de rapport (compteur local par projet)
-    let num = 1;
-    try {
-      num = parseInt(localStorage.getItem('s33_vr_counter_' + VR.projectId) || '0', 10) + 1;
-      localStorage.setItem('s33_vr_counter_' + VR.projectId, String(num));
-    } catch(_) {}
-    const ref = 'RV-' + String(num).padStart(2, '0');
-
-    // Résoudre les photos sélectionnées (data URL ou URL signée Storage)
-    const photoList = [];
-    for (const id of d.mediaIds) {
-      try {
-        const src = await getMediaData(Number(id) || id);
-        if (src) photoList.push({ src, caption: d.captions['m' + id] || '' });
-      } catch(_) {}
-    }
-    VR.uploaded.forEach((u, i) => photoList.push({ src: u.src, caption: d.captions['u' + i] || '' }));
-
-    const fmtDate = s => { try { return new Date(s + 'T00:00').toLocaleDateString('fr-MA', { day: 'numeric', month: 'long', year: 'numeric' }); } catch(_) { return s; } };
-    const stColor = s => s === 'Conforme' ? '#15803d' : s === 'Non conforme' ? '#b91c1c' : s === 'À corriger' ? '#c2410c' : s === 'En cours' ? '#1d4ed8' : '#64748b';
-
-    const box = document.getElementById('vr-print');
-    box.innerHTML =
-      '<div style="font-family:Inter,system-ui,sans-serif;color:#1a1a1a;max-width:760px;margin:0 auto;padding:34px 30px;font-size:12.5px;line-height:1.55;background:#fff;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #C9A84C;padding-bottom:14px;margin-bottom:22px;">' +
-          '<div>' +
-            '<div style="font-size:21px;font-weight:800;letter-spacing:.04em;">STUDIO 33 ARCHITECTS</div>' +
-            '<div style="font-size:10.5px;color:#777;letter-spacing:.14em;text-transform:uppercase;margin-top:2px;">Rapport de visite de chantier</div>' +
-          '</div>' +
-          '<div style="text-align:right;font-size:11px;color:#555;">' +
-            '<div style="font-size:15px;font-weight:800;color:#C9A84C;">' + ref + '</div>' +
-            '<div>' + escHTML(fmtDate(d.date)) + (d.heure ? ' — ' + escHTML(d.heure) : '') + '</div>' +
-          '</div>' +
-        '</div>' +
-
-        '<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px;">' +
-          '<tr>' +
-            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;width:120px;border:1px solid #eee;">Projet</td>' +
-            '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(p.name) + '</td>' +
-            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;width:120px;border:1px solid #eee;">Client</td>' +
-            '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(client ? client.name : '—') + '</td>' +
-          '</tr><tr>' +
-            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;border:1px solid #eee;">Phase</td>' +
-            '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(p.phase || '—') + '</td>' +
-            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;border:1px solid #eee;">Météo</td>' +
-            '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(d.meteo) + '</td>' +
-          '</tr><tr>' +
-            '<td style="padding:6px 10px;background:#f7f5f0;font-weight:700;border:1px solid #eee;">Rédigé par</td>' +
-            '<td style="padding:6px 10px;border:1px solid #eee;" colspan="3">' + escHTML(d.auteur) + '</td>' +
-          '</tr>' +
-        '</table>' +
-
-        (d.presents.length ?
-          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:18px 0 8px;">Présents sur site</div>' +
-          '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
-            d.presents.map(x => '<tr><td style="padding:5px 10px;border:1px solid #eee;width:50%;">' + escHTML(x.nom) + '</td><td style="padding:5px 10px;border:1px solid #eee;color:#555;">' + escHTML(x.role) + '</td></tr>').join('') +
-          '</table>' : '') +
-
-        (d.avancement.trim() ?
-          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:18px 0 8px;">Avancement général</div>' +
-          '<div style="white-space:pre-wrap;border:1px solid #eee;border-radius:6px;padding:10px 12px;">' + escHTML(d.avancement) + '</div>' : '') +
-
-        (d.observations.length ?
-          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:18px 0 8px;">Observations</div>' +
-          '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
-            '<tr><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;width:34px;">#</th><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;">Observation</th><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;width:110px;">Statut</th></tr>' +
-            d.observations.map((o, i) =>
-              '<tr style="page-break-inside:avoid;">' +
-                '<td style="padding:6px 10px;border:1px solid #eee;color:#999;">' + (i + 1) + '</td>' +
-                '<td style="padding:6px 10px;border:1px solid #eee;white-space:pre-wrap;">' + escHTML(o.texte) + '</td>' +
-                '<td style="padding:6px 10px;border:1px solid #eee;font-weight:700;color:' + stColor(o.statut) + ';">' + escHTML(o.statut) + '</td>' +
-              '</tr>').join('') +
-          '</table>' : '') +
-
-        (d.actions.length ?
-          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:18px 0 8px;">Actions à prévoir</div>' +
-          '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
-            '<tr><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;">Action</th><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;width:130px;">Responsable</th><th style="padding:6px 10px;background:#1a1a1a;color:#fff;text-align:left;width:100px;">Échéance</th></tr>' +
-            d.actions.map(a =>
-              '<tr style="page-break-inside:avoid;">' +
-                '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(a.texte) + '</td>' +
-                '<td style="padding:6px 10px;border:1px solid #eee;">' + escHTML(a.resp) + '</td>' +
-                '<td style="padding:6px 10px;border:1px solid #eee;">' + (a.echeance ? escHTML(fmtDate(a.echeance)) : '—') + '</td>' +
-              '</tr>').join('') +
-          '</table>' : '') +
-
-        (photoList.length ?
-          '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#C9A84C;margin:20px 0 10px;">Photos (' + photoList.length + ')</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-            photoList.map((ph, i) =>
-              '<div style="page-break-inside:avoid;">' +
-                '<img src="' + ph.src + '" style="width:100%;border-radius:6px;border:1px solid #eee;" alt="">' +
-                '<div style="font-size:10.5px;color:#666;margin-top:4px;">Photo ' + (i + 1) + (ph.caption ? ' — ' + escHTML(ph.caption) : '') + '</div>' +
-              '</div>').join('') +
-          '</div>' : '') +
-
-        (d.next ?
-          '<div style="margin-top:20px;padding:10px 14px;background:#f7f5f0;border-left:3px solid #C9A84C;font-size:12px;"><strong>Prochaine visite :</strong> ' + escHTML(fmtDate(d.next)) + '</div>' : '') +
-
-        '<div style="display:flex;gap:40px;margin-top:40px;page-break-inside:avoid;">' +
-          '<div style="flex:1;text-align:center;"><div style="border-top:1px solid #999;padding-top:6px;font-size:11px;color:#555;">L\'Architecte</div></div>' +
-          '<div style="flex:1;text-align:center;"><div style="border-top:1px solid #999;padding-top:6px;font-size:11px;color:#555;">L\'Entreprise</div></div>' +
-          '<div style="flex:1;text-align:center;"><div style="border-top:1px solid #999;padding-top:6px;font-size:11px;color:#555;">Le Maître d\'ouvrage</div></div>' +
-        '</div>' +
-        '<div style="margin-top:26px;text-align:center;font-size:9.5px;color:#aaa;border-top:1px solid #eee;padding-top:10px;">Studio 33 Architects — Agadir, Maroc · Rapport généré le ' + new Date().toLocaleDateString('fr-MA') + '</div>' +
-      '</div>';
-
-    // Attendre le chargement des images avant d'imprimer (max 8 s)
-    const imgs = [...box.querySelectorAll('img')];
-    await Promise.race([
-      Promise.all(imgs.map(im => im.complete ? Promise.resolve() : new Promise(r => { im.onload = r; im.onerror = r; }))),
-      new Promise(r => setTimeout(r, 8000))
-    ]);
-
-    if (btn) { btn.disabled = false; btn.innerHTML = '<span class="mi">picture_as_pdf</span> Générer le PDF'; }
-    document.documentElement.classList.add('vr-printing');
-    const cleanup = () => document.documentElement.classList.remove('vr-printing');
-    window.addEventListener('afterprint', cleanup, { once: true });
-    setTimeout(cleanup, 60000); // filet de sécurité si afterprint ne vient pas
-    window.print();
-  };
-})();
+// L'ancien « rapport de visite » faisait la meme chose que le PV de chantier,
+// sans reserves numerotees ni validation, et ses visites n'apparaissaient pas
+// dans le PV. Il ne reste qu'un module : « Nouvelle visite » ouvre un PV.
+window.openVisitReport = function(pid) {
+  if (typeof window.s33PvNouveauPour === 'function') return window.s33PvNouveauPour(pid);
+  navigate('pvchantier');
+};
 </script>
 
 <!-- ═══ ESPACE CLIENT — rendu lecture seule via jeton ═══ -->
@@ -33002,9 +32555,9 @@ window.addEventListener('appinstalled', () => {
 
   const LOTS = ['Gros œuvre', 'Étanchéité', 'Électricité', 'Plomberie', 'Menuiserie', 'Revêtements', 'Peinture', 'Climatisation', 'Aménagements ext.', 'Autre'];
   let _chPid = null;
-  let _chVisites = [];
+  let _chPvs = [];       // PV de chantier du projet
+  let _chReunions = [];  // comptes-rendus de reunion du projet
   let _chReserves = [];
-  let _chVrPid = null; // projet du rapport de visite en cours
 
   const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
   const fmtD = s => { try { return new Date(s + 'T00:00').toLocaleDateString('fr-MA', { day: 'numeric', month: 'short', year: 'numeric' }); } catch(_) { return s || ''; } };
@@ -33029,19 +32582,32 @@ window.addEventListener('appinstalled', () => {
     document.head.appendChild(st);
   }
 
+  // Un seul historique : les PV de chantier et les comptes-rendus de reunion
+  // du projet (l'ancien « rapport de visite » est remplace par le PV).
   async function chLoad(pid) {
-    const [v, r] = await Promise.all([
-      sbGet('chantier_visites', '?project_id=eq.' + pid + '&order=visit_date.desc,id.desc'),
-      sbGet('chantier_reserves', '?project_id=eq.' + pid + '&order=id.desc')
+    const [v, r, m] = await Promise.all([
+      sbGet('pv_chantier', '?project_id=eq.' + pid + '&deleted_at=is.null&order=visit_date.desc,id.desc' +
+        '&select=id,ref,visit_date,heure,statut,auteur,avancement_pct,notes,pdf_media_id,created_by'),
+      sbGet('chantier_reserves', '?project_id=eq.' + pid + '&order=id.desc'),
+      sbGet('reunions', '?project_id=eq.' + pid + '&deleted_at=is.null&order=date.desc,id.desc&select=id,objet,date,heure,lieu,redacteur')
     ]);
-    _chVisites = Array.isArray(v) ? v : [];
+    // Du plus recent au plus ancien : l'avancement affiche est celui du dernier PV
+    _chPvs = (Array.isArray(v) ? v : []).slice().sort((x, y) => (y.visit_date || '').localeCompare(x.visit_date || '') || (y.id - x.id));
     _chReserves = Array.isArray(r) ? r : [];
+    _chReunions = Array.isArray(m) ? m : [];
   }
 
   function lastPct() {
-    const withPct = _chVisites.filter(v => v.avancement_pct != null);
+    const withPct = _chPvs.filter(v => v.avancement_pct != null);
     return withPct.length ? withPct[0].avancement_pct : null;
   }
+
+  const PV_STATUTS = {
+    brouillon:  { label: 'Brouillon',  c: '#8a8a8a' },
+    attente:    { label: 'À valider',  c: '#f59e0b' },
+    a_corriger: { label: 'À corriger', c: '#ef4444' },
+    valide:     { label: 'Validé',     c: '#16a34a' }
+  };
 
   function renderSection() {
     const box = document.getElementById('s33-chantier-box');
@@ -33054,10 +32620,10 @@ window.addEventListener('appinstalled', () => {
     box.innerHTML =
       '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:30px 0 14px;">' +
         '<div class="section-title" style="margin:0;">Suivi de chantier</div>' +
-        '<span class="ch-chip">' + _chVisites.length + ' visite' + (_chVisites.length > 1 ? 's' : '') + '</span>' +
+        '<span class="ch-chip">' + _chPvs.length + ' PV' + (_chReunions.length ? ' · ' + _chReunions.length + ' réunion' + (_chReunions.length > 1 ? 's' : '') : '') + '</span>' +
         (open.length ? '<span class="ch-badge ouverte">' + open.length + ' réserve' + (open.length > 1 ? 's' : '') + ' ouverte' + (open.length > 1 ? 's' : '') + '</span>' : '') +
         '<div style="flex:1;"></div>' +
-        '<button class="ch-btn" style="background:var(--gold);color:#fff;" onclick="openVisitReport(' + pid + ')"><span class="mi mi-sm">assignment</span> Nouvelle visite</button>' +
+        '<button class="ch-btn" style="background:var(--gold);color:#fff;" onclick="s33PvNouveauPour(' + pid + ')"><span class="mi mi-sm">fact_check</span> Nouveau PV de chantier</button>' +
         '<button class="ch-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);" onclick="s33ChReserveModal(' + pid + ')">+ Réserve</button>' +
       '</div>' +
       (pct != null ?
@@ -33069,43 +32635,51 @@ window.addEventListener('appinstalled', () => {
         '</div>' : '') +
       '<div class="ch-grid">' +
         '<div class="ch-card">' +
-          '<div style="font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:.05em;margin-bottom:10px;">HISTORIQUE DES VISITES</div>' +
-          (_chVisites.length ? _chVisites.map(visiteHTML).join('') :
-            '<div style="font-size:12px;color:var(--text-faint);padding:14px 0;">Aucune visite enregistrée. Les rapports de visite générés apparaîtront ici automatiquement.</div>') +
+          '<div style="font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:.05em;margin-bottom:10px;">HISTORIQUE DES VISITES ET RÉUNIONS</div>' +
+          (_chPvs.length + _chReunions.length ? historiqueHTML() :
+            '<div style="font-size:12px;color:var(--text-faint);padding:14px 0;">Aucune visite enregistrée. Les PV de chantier et les comptes-rendus de réunion de ce projet apparaîtront ici.</div>') +
         '</div>' +
         '<div class="ch-card">' +
           '<div style="font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:.05em;margin-bottom:10px;">RÉSERVES / POINTS À LEVER</div>' +
           (open.length + levees.length ?
             open.map(reserveHTML).join('') + levees.map(reserveHTML).join('') :
-            '<div style="font-size:12px;color:var(--text-faint);padding:14px 0;">Aucune réserve. Les observations « Non conforme » ou « À corriger » des rapports de visite créent des réserves automatiquement.</div>') +
+            '<div style="font-size:12px;color:var(--text-faint);padding:14px 0;">Aucune réserve. Les réserves des PV de chantier et celles ajoutées ici apparaissent dans cette liste.</div>') +
         '</div>' +
       '</div>';
   }
 
-  function visiteHTML(v) {
-    const obs = Array.isArray(v.observations) ? v.observations : [];
-    const acts = Array.isArray(v.actions) ? v.actions : [];
-    const pres = Array.isArray(v.presents) ? v.presents : [];
-    return '<div class="ch-item">' +
-      '<div class="ch-visite-head" onclick="s33ChToggleVisite(' + v.id + ')">' +
-        '<span style="font-size:12px;font-weight:800;color:var(--gold);">' + esc(v.ref || 'RV') + '</span>' +
-        '<span style="font-size:12.5px;font-weight:600;color:var(--text);">' + fmtD(v.visit_date) + (v.heure ? ' · ' + esc(v.heure) : '') + '</span>' +
+  // PV et reunions melanges, du plus recent au plus ancien
+  function historiqueHTML() {
+    const items = _chPvs.map(v => ({ d: v.visit_date || '', html: pvHTML(v) }))
+      .concat(_chReunions.map(r => ({ d: r.date || '', html: reunionHTML(r) })));
+    items.sort((x, y) => (y.d || '').localeCompare(x.d || ''));
+    return items.map(x => x.html).join('');
+  }
+
+  function pvHTML(v) {
+    const st = PV_STATUTS[v.statut] || PV_STATUTS.brouillon;
+    return '<div class="ch-item" style="cursor:pointer;" onclick="s33PvOuvrir(' + v.id + ')">' +
+      '<div class="ch-visite-head">' +
+        '<span style="font-size:12px;font-weight:800;color:var(--gold);">' + esc(v.ref || 'PV') + '</span>' +
+        '<span style="font-size:12.5px;font-weight:600;color:var(--text);">' + (v.visit_date ? fmtD(v.visit_date) : '') + (v.heure ? ' · ' + esc(v.heure) : '') + '</span>' +
+        '<span class="ch-chip" style="background:' + st.c + '1f;color:' + st.c + ';">' + st.label + '</span>' +
         (v.avancement_pct != null ? '<span class="ch-chip">' + v.avancement_pct + '%</span>' : '') +
-        (obs.length ? '<span class="ch-chip">' + obs.length + ' obs.</span>' : '') +
-        (v.photos_count ? '<span class="ch-chip">' + v.photos_count + ' photo' + (v.photos_count > 1 ? 's' : '') + '</span>' : '') +
         '<div style="flex:1;"></div>' +
         '<span style="font-size:11px;color:var(--text-faint);">' + esc(v.auteur || '') + '</span>' +
-        '<span class="mi" style="font-size:16px;color:var(--text-faint);">expand_more</span>' +
+        '<span class="mi" style="font-size:16px;color:var(--text-faint);">chevron_right</span>' +
       '</div>' +
-      '<div class="ch-detail" id="ch-vdetail-' + v.id + '" style="display:none;margin-top:10px;font-size:12px;color:var(--text);">' +
-        (v.meteo ? '<div style="color:var(--text-dim);margin-bottom:6px;">Météo : ' + esc(v.meteo) + '</div>' : '') +
-        (pres.length ? '<div style="color:var(--text-dim);margin-bottom:6px;">Présents : ' + pres.map(x => esc(x.nom) + (x.role ? ' (' + esc(x.role) + ')' : '')).join(', ') + '</div>' : '') +
-        (v.avancement ? '<div style="white-space:pre-wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:6px;">' + esc(v.avancement) + '</div>' : '') +
-        (obs.length ? '<table><tr><th>Observation</th><th style="width:110px;">Statut</th></tr>' +
-          obs.map(o => '<tr><td style="white-space:pre-wrap;">' + esc(o.texte) + '</td><td>' + esc(o.statut) + '</td></tr>').join('') + '</table>' : '') +
-        (acts.length ? '<table style="margin-top:8px;"><tr><th>Action</th><th style="width:110px;">Responsable</th><th style="width:95px;">Échéance</th></tr>' +
-          acts.map(a => '<tr><td>' + esc(a.texte) + '</td><td>' + esc(a.resp) + '</td><td>' + (a.echeance ? fmtD(a.echeance) : '—') + '</td></tr>').join('') + '</table>' : '') +
-        (isAdmin() ? '<div style="text-align:right;margin-top:8px;"><button class="ch-btn" style="background:#fff0f0;color:#c0392b;" onclick="s33ChDeleteVisite(' + v.id + ')">Supprimer</button></div>' : '') +
+      (v.notes ? '<div style="font-size:11.5px;color:var(--text-dim);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(String(v.notes).split('\n')[0]) + '</div>' : '') +
+    '</div>';
+  }
+
+  function reunionHTML(r) {
+    return '<div class="ch-item" style="cursor:pointer;" onclick="s33ReuVoir(' + r.id + ')">' +
+      '<div class="ch-visite-head">' +
+        '<span class="ch-chip"><span class="mi" style="font-size:12px;vertical-align:-2px;">groups</span> Réunion</span>' +
+        '<span style="font-size:12.5px;font-weight:600;color:var(--text);">' + (r.date ? fmtD(r.date) : '') + (r.heure ? ' · ' + esc(r.heure) : '') + '</span>' +
+        '<span style="font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;">' + esc(r.objet || '') + '</span>' +
+        '<span style="font-size:11px;color:var(--text-faint);">' + esc(r.redacteur || '') + '</span>' +
+        '<span class="mi" style="font-size:16px;color:var(--text-faint);">chevron_right</span>' +
       '</div>' +
     '</div>';
   }
@@ -33120,7 +32694,7 @@ window.addEventListener('appinstalled', () => {
           '<div style="font-size:12.5px;color:var(--text);white-space:pre-wrap;">' + esc(r.description) + '</div>' +
           '<div style="font-size:10.5px;color:var(--text-faint);margin-top:3px;">' +
             (r.lot ? esc(r.lot) + ' · ' : '') + (r.opened_date ? 'ouverte le ' + fmtD(r.opened_date) : '') +
-            (!open && r.resolved_date ? ' · levée le ' + fmtD(r.resolved_date) + (r.resolved_by ? ' (' + esc(r.resolved_by) + ')' : '') : '') +
+            (!open && (r.levee_date || r.resolved_date) ? ' · levée le ' + fmtD(r.levee_date || r.resolved_date) + (r.resolved_by ? ' (' + esc(r.resolved_by) + ')' : '') : '') +
           '</div>' +
         '</div>' +
         '<button class="ch-btn" style="background:' + (open ? 'rgba(39,174,96,.12)' : 'var(--surface3)') + ';color:' + (open ? '#27ae60' : 'var(--text-dim)') + ';" onclick="s33ChToggleReserve(' + r.id + ')">' + (open ? 'Lever' : 'Rouvrir') + '</button>' +
@@ -33130,18 +32704,14 @@ window.addEventListener('appinstalled', () => {
   }
 
   // ── Actions ──────────────────────────────────────────────────────
-  window.s33ChToggleVisite = function(id) {
-    const d = document.getElementById('ch-vdetail-' + id);
-    if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none';
-  };
-
   window.s33ChToggleReserve = async function(id) {
     const r = _chReserves.find(x => x.id === id);
     if (!r) return;
     const open = r.statut === 'ouverte';
+    // Meme etat que le PV de chantier : « levée » (avec accent) et levee_date
     const patch = open
-      ? { statut: 'levee', resolved_date: s33Aujourdhui(), resolved_by: currentUser?.name || '' }
-      : { statut: 'ouverte', resolved_date: null, resolved_by: null };
+      ? { statut: 'levée', levee_date: s33Aujourdhui(), resolved_by: currentUser?.name || '' }
+      : { statut: 'ouverte', levee_date: null, levee_pv_id: null, resolved_date: null, resolved_by: null };
     const ok = await sbUpdate('chantier_reserves', id, patch);
     if (ok === false) { toast('Erreur — réessayez'); return; }
     Object.assign(r, patch);
@@ -33152,13 +32722,6 @@ window.addEventListener('appinstalled', () => {
     if (!confirm('Supprimer cette réserve ?')) return;
     await sbDelete('chantier_reserves', id);
     _chReserves = _chReserves.filter(x => x.id !== id);
-    renderSection();
-  };
-
-  window.s33ChDeleteVisite = async function(id) {
-    if (!confirm('Supprimer cette visite de l\'historique ?')) return;
-    await sbDelete('chantier_visites', id);
-    _chVisites = _chVisites.filter(x => x.id !== id);
     renderSection();
   };
 
@@ -33203,88 +32766,10 @@ window.addEventListener('appinstalled', () => {
   };
 
   window.s33ChRefresh = async function() {
-    if (_chPid == null) return;
+    if (_chPid == null || !document.getElementById('s33-chantier-box')) return;
     await chLoad(_chPid);
     renderSection();
   };
-
-  // ── Enregistrement automatique depuis le rapport de visite ───────
-  function chCollectVr() {
-    const g = id => (document.getElementById(id) || {}).value || '';
-    if (!document.getElementById('vr-modal')) return null;
-    const rows = (boxId, map) => [...document.querySelectorAll('#' + boxId + ' .vr-row')].map(map)
-      .filter(x => Object.values(x).some(v => (v || '').trim()));
-    const pctRaw = parseInt(g('vr-pct'), 10);
-    return {
-      date: g('vr-date'), heure: g('vr-heure'), meteo: g('vr-meteo'), auteur: g('vr-auteur'),
-      avancement: g('vr-avancement'),
-      pct: isNaN(pctRaw) ? null : Math.max(0, Math.min(100, pctRaw)),
-      presents: rows('vr-presents', r => ({ nom: r.querySelector('[data-vr=pnom]').value, role: r.querySelector('[data-vr=prole]').value })),
-      observations: rows('vr-observations', r => ({ texte: r.querySelector('[data-vr=otexte]').value, statut: r.querySelector('[data-vr=ostatut]').value })),
-      actions: rows('vr-actions', r => ({ texte: r.querySelector('[data-vr=atexte]').value, resp: r.querySelector('[data-vr=aresp]').value, echeance: r.querySelector('[data-vr=aech]').value })),
-      mediaIds: [...document.querySelectorAll('#vr-modal .vr-photo-cell.sel')].map(c => c.getAttribute('data-vrmid')),
-      uploadedCount: document.querySelectorAll('#vr-captions .vr-cap-row').length
-    };
-  }
-
-  async function chSaveVisite(pid, d) {
-    const num = parseInt(localStorage.getItem('s33_vr_counter_' + pid) || '0', 10);
-    const ins = await sbInsertOrThrow('chantier_visites', {
-      project_id: pid,
-      ref: 'RV-' + String(num || 1).padStart(2, '0'),
-      visit_date: d.date || s33Aujourdhui(),
-      heure: d.heure, meteo: d.meteo, auteur: d.auteur,
-      presents: d.presents, avancement: d.avancement, avancement_pct: d.pct,
-      observations: d.observations, actions: d.actions,
-      photos_count: d.mediaIds.length + Math.max(0, d.uploadedCount - d.mediaIds.length),
-      media_ids: d.mediaIds,
-      created_by: currentUser?.name || ''
-    });
-    const vid = ins && ins[0] ? ins[0].id : null;
-    const bad = (d.observations || []).filter(o => o.statut === 'Non conforme' || o.statut === 'À corriger');
-    for (const o of bad) {
-      await sbInsert('chantier_reserves', {
-        project_id: pid, visite_id: vid, description: o.texte,
-        statut: 'ouverte', opened_date: d.date || null, author: d.auteur || ''
-      });
-    }
-    toast('Visite enregistrée dans le suivi de chantier' + (bad.length ? ' + ' + bad.length + ' réserve(s)' : ''));
-    if (window._currentProjectDetailId === pid) { try { await s33ChRefresh(); } catch(_) {} }
-  }
-
-  const _origOVR = window.openVisitReport;
-  if (typeof _origOVR === 'function') {
-    window.openVisitReport = function(pid) {
-      _chVrPid = pid;
-      const res = _origOVR.apply(this, arguments);
-      // Champ « % d'avancement global » ajouté au rapport
-      try {
-        const ta = document.getElementById('vr-avancement');
-        if (ta && !document.getElementById('vr-pct')) {
-          const last = (_chPid === pid) ? lastPct() : null;
-          ta.insertAdjacentHTML('afterend',
-            '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">' +
-              '<label style="font-size:12px;color:var(--text-dim);margin:0;">Avancement global :</label>' +
-              '<input type="number" id="vr-pct" min="0" max="100" step="5" value="' + (last != null ? last : '') + '" style="width:100px;">' +
-              '<span style="font-size:12px;color:var(--text-faint);">% (pour le suivi de chantier)</span>' +
-            '</div>');
-        }
-      } catch(_) {}
-      return res;
-    };
-  }
-
-  const _origGen = window.vrGenerate;
-  if (typeof _origGen === 'function') {
-    window.vrGenerate = async function() {
-      const snap = chCollectVr();
-      const res = await _origGen.apply(this, arguments);
-      if (snap && _chVrPid != null) {
-        chSaveVisite(_chVrPid, snap).catch(e => { console.error('chantier save', e); toast('Visite non enregistrée dans le suivi'); });
-      }
-      return res;
-    };
-  }
 
   // ── Intégration à la fiche projet ────────────────────────────────
   const _origRPD = window.renderProjectDetailPage;
@@ -34326,6 +33811,80 @@ window.addEventListener('appinstalled', () => {
     renderEditor();
   };
 
+  // Depuis la fiche projet : un PV deja rattache au projet
+  window.s33PvNouveauPour = async function(pid) {
+    await loadAll();
+    window.s33PvNew();
+    _cur.project_id = parseInt(pid);
+    _cur.num = nextRefFor(_cur.project_id);
+    _cur.ref = 'PV-' + String(_cur.num).padStart(2, '0');
+    reprendreRapportDeVisite(_cur.project_id);
+    renderEditor();
+  };
+
+  // Ouvrir un PV depuis l'historique du projet, selon son etat et ses droits
+  window.s33PvOuvrir = async function(id) {
+    await loadAll();
+    let pv = _pvs.find(p => p.id === id);
+    if (!pv) { await loadAll(true); pv = _pvs.find(p => p.id === id); }
+    if (!pv) { toast('PV introuvable — vérifiez la connexion'); return; }
+    const modifiable = (pv.statut === 'brouillon' || pv.statut === 'a_corriger') && (isAdmin() || pv.created_by === myName());
+    if (modifiable) return window.s33PvEdit(id);
+    if (isAdmin() && (pv.statut === 'attente' || pv.statut === 'valide')) return window.s33PvReview(id);
+    if (pv.pdf_media_id) return window.s33PvOpenPdf(id);
+    toast(pv.statut === 'attente' ? 'Ce PV attend la validation du directeur' : 'Ce PV est en cours de rédaction par ' + (pv.created_by || 'une collègue'));
+  };
+
+  // Ce que Samia a redige devient un brouillon de PV du projet (texte dans
+  // « Avancement et observations ») : on le complete et on le valide comme
+  // les autres, au lieu d'un fichier a part que personne ne retrouvait.
+  window.s33PvBrouillonTexte = async function(pid, texte) {
+    await loadAll();
+    const num = nextRefFor(pid);
+    const now = new Date();
+    const ins = await sbInsertOrThrow('pv_chantier', {
+      project_id: parseInt(pid), num, ref: 'PV-' + String(num).padStart(2, '0'),
+      visit_date: today(), heure: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
+      auteur: myName(), presents: [], decisions: [], actions: [], photos: [], rappel: [],
+      notes: String(texte || '').trim() || null, statut: 'brouillon',
+      validation_history: [], director_comments: [], created_by: myName(), updated_at: now.toISOString()
+    });
+    const pv = Array.isArray(ins) ? ins[0] : null;
+    if (!pv) throw new Error('PV non enregistré');
+    _pvs.unshift(Object.assign({}, pv));
+    updateNavBadge();
+    return pv;
+  };
+
+  // Un brouillon de l'ancien « rapport de visite » est reste sur ce telephone :
+  // son contenu passe dans le PV, puis il est efface une fois le PV enregistre.
+  function reprendreRapportDeVisite(pid) {
+    const cle = 's33_vr_draft_' + pid;
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem(cle) || 'null'); } catch(_) {}
+    if (!d) return;
+    const txt = v => String(v || '').trim();
+    const obs = (d.observations || []).filter(o => txt(o.texte));
+    const acts = (d.actions || []).filter(a => txt(a.texte));
+    if (!txt(d.avancement) && !obs.length && !acts.length) {
+      try { localStorage.removeItem(cle); } catch(_) {}
+      return;
+    }
+    if (d.date) _cur.visit_date = d.date;
+    if (d.heure) _cur.heure = d.heure;
+    if (txt(d.meteo)) _cur.meteo = d.meteo;
+    if (txt(d.auteur)) _cur.auteur = d.auteur;
+    _cur.presents = (d.presents || []).filter(x => txt(x.nom)).map(x => ({ nom: x.nom, role: x.role || '', entreprise: '' }));
+    _cur.notes = [
+      txt(d.avancement),
+      obs.length ? 'Observations :\n' + obs.map(o => '- ' + txt(o.texte) + (o.statut ? ' (' + o.statut + ')' : '')).join('\n') : '',
+      d.next ? 'Prochaine visite : ' + fmtD(d.next) : ''
+    ].filter(Boolean).join('\n\n');
+    _cur.actions = acts.map(a => ({ qui: a.resp || '', quoi: a.texte, quand: a.echeance || '' }));
+    _cur._cleRapport = cle;
+    toast('Rapport de visite en cours repris dans ce PV');
+  }
+
   function nextRefFor(pid) {
     const nums = _pvs.filter(p => String(p.project_id) === String(pid)).map(p => p.num || 0);
     return (nums.length ? Math.max.apply(null, nums) : 0) + 1;
@@ -34445,6 +34004,11 @@ window.addEventListener('appinstalled', () => {
           '</div></div>' +
         '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">groups</span> Présents</h3>' + presHTML +
           '<button class="pvch-btn" style="background:var(--surface2);color:var(--text-dim);border:1px dashed var(--border);" onclick="s33PvArrAdd(\'presents\')"><span class="mi" style="font-size:14px;">add</span> Ajouter un présent</button></div>' +
+        '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">trending_up</span> Avancement et observations</h3>' +
+          '<div class="pvch-field" style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><label style="margin:0;white-space:nowrap;">Avancement global</label>' +
+            '<input type="number" min="0" max="100" step="5" value="' + (_cur.avancement_pct != null ? esc(_cur.avancement_pct) : '') + '" onchange="s33PvPct(this)" style="width:100px;"><span style="font-size:12px;color:var(--text-faint);">%</span></div>' +
+          '<div class="pvch-field"><textarea rows="4" placeholder="État d\'avancement, travaux en cours, observations générales…" oninput="_cur_set(\'notes\',this.value)">' + esc(_cur.notes || '') + '</textarea></div>' +
+        '</div>' +
         '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">history</span> Rappel du PV précédent — réserves ouvertes</h3>' + rappelHTML + '</div>' +
         '<div class="pvch-sec"><h3><span class="mi" style="font-size:16px;">photo_camera</span> Photos du chantier</h3>' +
           '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:12px;">' + photosHTML + '</div>' +
@@ -34466,6 +34030,12 @@ window.addEventListener('appinstalled', () => {
   }
 
   window._cur_set = function(k, v) { if (_cur) _cur[k] = v; };
+  window.s33PvPct = function(el) {
+    if (!_cur) return;
+    const n = parseInt(el.value, 10);
+    _cur.avancement_pct = isNaN(n) ? null : Math.max(0, Math.min(100, n));
+    el.value = _cur.avancement_pct == null ? '' : _cur.avancement_pct;
+  };
   window.s33PvSetProj = function(v) {
     if (!_cur) return;
     _cur.project_id = v ? parseInt(v) : null;
@@ -34536,6 +34106,7 @@ window.addEventListener('appinstalled', () => {
     document.body.style.overflow = '';
     _cur = null;
     renderContent();
+    if (typeof window.s33ChRefresh === 'function') window.s33ChRefresh();
   };
 
   // Les photos sont deja deposees dans le stockage au moment de l'ajout.
@@ -34574,6 +34145,7 @@ window.addEventListener('appinstalled', () => {
       presents: _cur.presents, decisions: _cur.decisions.filter(d => (d || '').trim()),
       actions: _cur.actions, photos: photosPourBase(_cur.photos), rappel: _cur.rappel,
       notes: _cur.notes || null, statut: _cur.statut,
+      avancement_pct: (_cur.avancement_pct == null || _cur.avancement_pct === '') ? null : _cur.avancement_pct,
       validation_history: _cur.validation_history, director_comments: _cur.director_comments,
       updated_at: new Date().toISOString()
     };
@@ -34586,6 +34158,7 @@ window.addEventListener('appinstalled', () => {
     obj.created_by = myName();
     const ins = await sbInsertOrThrow('pv_chantier', obj);
     if (ins && ins[0]) { _cur.id = ins[0].id; _pvs.unshift(Object.assign({}, ins[0])); }
+    if (_cur._cleRapport) { try { localStorage.removeItem(_cur._cleRapport); } catch(_) {} delete _cur._cleRapport; }
     return _cur.id;
   }
 
@@ -35003,21 +34576,16 @@ window.addEventListener('appinstalled', () => {
       // 4. Archivage dans la médiathèque du projet
       step = 'envoi du PDF';
       const path = 'proj/' + _cur.project_id + '/PV_de_chantier/' + _cur.ref + '_' + Date.now() + '.pdf';
-      let storedPath = path, pdfDataUrl = null;
+      // Le PDF va dans le stockage, jamais en base64 dans la table (qui
+      // alourdissait chaque lecture) : en cas d'echec, le brouillon reste et
+      // on reessaie.
+      const storedPath = path, pdfDataUrl = null;
       const up = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + path, {
         method: 'POST',
         headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY), 'Content-Type': 'application/pdf', 'x-upsert': 'true' },
         body: pdfBlob
       }).catch(() => null);
-      if (!up || !up.ok) {
-        // Repli : le PDF part en base64 dans la base plutôt que d'échouer
-        if (pdfBlob.size <= 4500000) {
-          pdfDataUrl = await new Promise((res, rej) => { const rd = new FileReader(); rd.onload = () => res(rd.result); rd.onerror = rej; rd.readAsDataURL(pdfBlob); });
-          storedPath = null;
-        } else {
-          throw new Error('envoi refusé (HTTP ' + (up ? up.status : 'réseau') + ') et PDF trop lourd pour le repli');
-        }
-      }
+      if (!up || !up.ok) throw new Error('PDF non envoyé (' + (up ? 'erreur ' + up.status : 'pas de connexion') + ')');
       step = 'enregistrement du document';
       let mediaId = _cur.pdf_media_id || null;
       const mediaBody = {
@@ -35072,6 +34640,7 @@ window.addEventListener('appinstalled', () => {
       _cur = null;
       updateNavBadge();
       renderContent();
+      if (typeof window.s33ChRefresh === 'function') window.s33ChRefresh();
       toast('PV terminé — en attente de validation du directeur');
     } catch(e) {
       console.error('finish PV', e);
@@ -35147,6 +34716,16 @@ window.addEventListener('appinstalled', () => {
         body: _cur.presents.filter(x => (x.nom || '').trim()).map(x => [x.nom, x.role || '', x.entreprise || '']),
         theme: 'grid', headStyles: { fillColor: ORANGE, fontSize: 8.5 }, styles: { fontSize: 9, cellPadding: 1.6 } });
       y = doc.lastAutoTable.finalY + 6;
+    }
+
+    // Avancement et observations
+    if (_cur.avancement_pct != null || (_cur.notes || '').trim()) {
+      secTitle('Avancement et observations' + (_cur.avancement_pct != null ? ' — ' + _cur.avancement_pct + ' %' : ''));
+      if ((_cur.notes || '').trim()) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2); doc.setTextColor.apply(doc, DARK);
+        doc.splitTextToSize(_cur.notes.trim(), W - 2 * M).forEach(l => { need(5); doc.text(l, M, y); y += 4.4; });
+      }
+      y += 4;
     }
 
     // Rappel réserves précédentes
@@ -39296,18 +38875,19 @@ window.addEventListener('appinstalled', () => {
     ] },
 
     { id: 'pv', icon: 'engineering', part: 1, title: 'PV de chantier', blocks: [
-      { t: 'warn', x: 'Trois outils portent des noms proches. Ne les confonds pas.' },
+      { t: 'warn', x: 'Deux outils portent des noms proches. Ne les confonds pas.' },
       { t: 'list', x: [
         '« PV de chantier » — le vrai PV, avec photos annotées, réserves numérotées et validation par Chaima. C’est celui-là qu’on utilise après une visite de chantier.',
-        '« Réunions clients » — le compte-rendu d’une réunion avec un client ou un maître d’ouvrage : on choisit le client, on note ce qui s’est dit, les décisions et les suites. Rien à voir avec le chantier.',
-        '« Rapport visite » — le bouton dans la fiche d’un projet, pour un compte-rendu rapide en PDF.'
+        '« Réunions clients » — le compte-rendu d’une réunion avec un client ou un maître d’ouvrage : on choisit le client, on note ce qui s’est dit, les décisions et les suites. Rien à voir avec le chantier.'
       ] },
+      { t: 'tip', x: 'Depuis la fiche d’un projet, le bouton « PV de chantier » ouvre directement un nouveau PV pour ce projet. En bas de la fiche, l’historique montre tous les PV et les comptes-rendus de réunion du projet.' },
       { t: 'h', x: 'Faire un PV de chantier, étape par étape' },
       { t: 'steps', x: [
         'Plus → « PV de chantier », puis « Nouveau PV ».',
         'Choisis le projet EN PREMIER. Tant qu’aucun projet n’est choisi, rien ne s’enregistre.',
         'Vérifie la date de visite et l’heure, ajoute la météo si tu veux.',
         '« Présents » — ajoute les personnes présentes sur le chantier.',
+        '« Avancement et observations » — le pourcentage d’avancement du chantier et ce que tu as constaté. Le pourcentage s’affiche dans la fiche du projet.',
         '« Rappel du PV précédent » — pour chaque réserve encore ouverte, appuie sur « Réalisé / levée », « En cours » ou « En retard ».',
         '« Ajouter des photos » — le téléphone te propose « Prendre une photo » ou ta galerie. Tu peux en ajouter plusieurs d’un coup.',
         'Touche une photo pour l’annoter : Cercle, Flèche ou Texte, en rouge, orange ou vert.',

@@ -44,6 +44,15 @@ ligne), sans framework ni étape de compilation.
   1 h au Maroc.
 - Un enregistrement raté ne s'annonce jamais « ajouté » ou « sauvegardé
   localement » : on le dit, et on garde la saisie pour réessayer.
+- **Numéros de facture et de devis** : toujours `await s33NumeroSuivant('facture' | 'devis')`
+  (fonction SQL `s33_prochain_numero`, sous verrou, jamais sous le plus haut
+  numéro existant). Ne jamais calculer un numéro depuis un compteur local ni
+  réécrire `app_config` : c'est ce qui a remis le compteur à 1 en juillet 2026.
+- **Montant d'une facture** (`invoices.amount`) : **TTC**. Le HT se déduit avec
+  `s33InvTvaRate(inv)`.
+- **Heures travaillées** : `s33HeuresFusionnees()` — le chrono et le rapport du
+  même jour décrivent le même travail ; on garde le plus grand des deux, on
+  n'additionne jamais.
 
 ## Fonctions serveur
 Chaque fonction vérifie qui l'appelle :

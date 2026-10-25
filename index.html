@@ -3253,7 +3253,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-25.1 — plus de perte de taches, de rapports ni de fichiers';
+const S33_BUILD = '2026-10-25.2 — chiffres justes : dates, numeros de facture, heures, TVA';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6443,6 +6443,45 @@ function s33DateLocale(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 function s33Aujourdhui() { return s33DateLocale(new Date()); }
+
+// Heures travaillees. Le chrono (temps saisis sur les taches) et le rapport du
+// soir decrivent le MEME travail : ils etaient additionnes, donc comptes deux
+// fois dans la rentabilite et la charge d'equipe. Pour chaque personne, jour
+// et projet, on garde le plus grand des deux.
+// Renvoie [{ auteur, date, projectId, chrono, rapport, minutes, phases }] ;
+// `phases` = minutes du chrono par phase (ce que le rapport ajoute en plus
+// revient a la phase en cours du projet).
+function s33HeuresFusionnees(projetId) {
+  const lignes = {};
+  const ligne = (auteur, date, pid) => {
+    const nom = String(auteur || 'Inconnu').trim();
+    const k = nom.toLowerCase() + '|' + (date || '') + '|' + (pid == null ? '' : pid);
+    return lignes[k] || (lignes[k] = { auteur: nom, date: date || '', projectId: pid, chrono: 0, rapport: 0, phases: {} });
+  };
+  (db.projects || []).forEach(p => {
+    if (projetId != null && String(p.id) !== String(projetId)) return;
+    (p.tasks || []).forEach(t => (t.timeLog || []).forEach(l => {
+      const m = Number(l.minutes) || 0;
+      if (m <= 0) return;
+      const x = ligne(l.author, l.date, p.id);
+      x.chrono += m;
+      const ph = l.phase || p.phase || 'Autre';
+      x.phases[ph] = (x.phases[ph] || 0) + m;
+    }));
+  });
+  (db.dailyReports || []).forEach(r => {
+    const m = (Number(r.hours) || 0) * 60;
+    if (m <= 0) return;
+    const pid = (r.project_id == null || r.project_id === '') ? null : parseInt(r.project_id, 10);
+    if (projetId != null && String(pid) !== String(projetId)) return;
+    ligne(r.user_name, r.date, pid).rapport += m;
+  });
+  return Object.keys(lignes).map(k => {
+    const x = lignes[k];
+    x.minutes = Math.max(x.chrono, x.rapport);
+    return x;
+  });
+}
 async function sbUpsert(table, body) { return sbFetch(table, 'POST', body, ''); }
 
 // ===== DATA STORE =====
@@ -6663,10 +6702,22 @@ async function loadDB() {
   }
 }
 
-async function saveDB() {
-  // Counters sync
-  await sbFetch('app_config', 'PATCH', {value: String(db.invoiceCounter)}, '?key=eq.invoice_counter');
-  await sbFetch('app_config', 'PATCH', {value: String(db.devisCounter)}, '?key=eq.devis_counter');
+// Les compteurs de factures et de devis ne sont plus renvoyes d'ici : un
+// demarrage sans reseau les lisait a 1, et cette fonction reecrivait ce 1 en
+// base (doublons FAC-004 a FAC-022 en juillet 2026). Les numeros viennent
+// maintenant de la base : s33NumeroSuivant().
+async function saveDB() {}
+
+// Numero de facture ou de devis, donne par la base (s33_prochain_numero) :
+// deux appareils ne peuvent plus donner le meme, et il suit toujours le plus
+// haut deja utilise. Sans reponse de la base, on leve une erreur : mieux vaut
+// ne rien creer qu'un numero en double.
+async function s33NumeroSuivant(type) {
+  const n = await sbFetch('rpc/s33_prochain_numero', 'POST', { p_type: type }, '', true);
+  if (typeof n !== 'string' || !n) throw new Error('numéro non attribué');
+  if (type === 'facture') db.invoiceCounter = parseInt(n.replace(/\D/g, ''), 10) + 1;
+  if (type === 'devis') db.devisCounter = parseInt(n.replace(/\D/g, ''), 10) + 1;
+  return n;
 }
 
 function showLoadingOverlay(show) {
@@ -8686,7 +8737,7 @@ function openModal(id) {
     populateProjectSelect('i-project');
     document.getElementById('i-object').value = '';
     document.getElementById('i-amount').value = '';
-    document.getElementById('i-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('i-date').value = s33Aujourdhui();
     const idue = document.getElementById('i-due');
     if (idue) { idue.value = ''; s33SyncDueDate(); }
     document.getElementById('i-tva').value = '';
@@ -10252,7 +10303,7 @@ function openClientProfile(id) {
           </div>
           <textarea id="comm-text-${c.id}" rows="2" placeholder="Résumé de l'échange…"></textarea>
           <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-            <input type="date" id="comm-date-${c.id}" value="${new Date().toISOString().split('T')[0]}"
+            <input type="date" id="comm-date-${c.id}" value="${s33Aujourdhui()}"
               style="padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:12px;color:var(--text);">
             <button onclick="addClientComm(${c.id})"
               style="margin-left:auto;padding:7px 16px;background:var(--gold);color:#fff;border:none;border-radius:var(--radius-pill);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">
@@ -10320,7 +10371,7 @@ async function addClientComm(clientId) {
   if (!c) return;
   const type = _activeCommType[clientId] || 'call';
   const summary = (document.getElementById(`comm-text-${clientId}`)?.value || '').trim();
-  const date = document.getElementById(`comm-date-${clientId}`)?.value || new Date().toISOString().split('T')[0];
+  const date = document.getElementById(`comm-date-${clientId}`)?.value || s33Aujourdhui();
   if (!summary) { toast('Écrivez un résumé avant d\'ajouter'); return; }
 
   const entry = { id: 'c' + Date.now(), type, summary, date, author: currentUser?.name || '' };
@@ -10553,7 +10604,7 @@ function reuBlank() {
   const now = new Date();
   return {
     id: null, client_id: '', project_id: '', objet: '',
-    date: now.toISOString().slice(0, 10),
+    date: s33DateLocale(now),
     heure: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
     lieu: 'Au bureau',
     participants: [{ nom: (currentUser && currentUser.name) || '', role: 'Studio 33 Architects' }, { nom: '', role: 'Maître d’ouvrage' }],
@@ -10930,7 +10981,8 @@ function s33SyncDueDate(force) {
   if (dueEl.value && !force) return;
   const d = new Date(dateEl.value + 'T00:00');
   d.setDate(d.getDate() + 15);
-  dueEl.value = d.toISOString().slice(0, 10);
+  // Date locale : avec toISOString(), l'echeance tombait 1 jour trop tot (14 j)
+  dueEl.value = s33DateLocale(d);
 }
 
 function s33InvRest(inv) {
@@ -10975,7 +11027,7 @@ function renderInvoices() {
 
   // ── Filtres : Toutes / En attente / En retard / Payées ──
   const _if = window._invFilter || '';
-  const _todayF = new Date().toISOString().slice(0, 10);
+  const _todayF = s33Aujourdhui();
   const _isLateF = i => {
     if (i.status !== 'En attente') return false;
     const d = (typeof s33InvDueEff === 'function') ? s33InvDueEff(i) : i.due_date;
@@ -11040,7 +11092,7 @@ function renderInvoices() {
       const _rate = s33InvTvaRate(inv);
       const ht = ttc / (1 + _rate / 100);
       const tva = ttc - ht;
-      const todayISO = new Date().toISOString().slice(0, 10);
+      const todayISO = s33Aujourdhui();
       // Sans échéance saisie : retard 30 j après la date d'émission
       const effDue = (typeof s33InvDueEff === 'function') ? s33InvDueEff(inv) : inv.due_date;
       const isLate = inv.status === 'En attente' && effDue && effDue < todayISO;
@@ -11214,9 +11266,10 @@ async function saveInvoice() {
   } else {
     // MODE CRÉATION
     obj.status = 'En attente';
-    const num = 'FAC-' + String(db.invoiceCounter).padStart(3,'0');
+    let num;
+    try { num = await s33NumeroSuivant('facture'); }
+    catch (e) { toast('Pas de connexion — facture non créée, réessayez'); return; }
     obj.num = num;
-    db.invoiceCounter++;
     if (obj.payment_method) localStorage.setItem('s33_paymethod_pending_' + num, obj.payment_method);
     let insertedInv;
     try {
@@ -11228,7 +11281,6 @@ async function saveInvoice() {
     if (insertedInv && insertedInv[0] && obj.payment_method) {
       localStorage.setItem('s33_paymethod_' + insertedInv[0].id, obj.payment_method);
     }
-    await saveDB();
     closeModal('invoice-modal');
     await loadDB();
     renderInvoices();
@@ -11257,7 +11309,7 @@ function toggleInvoiceStatus(id) {
 }
 
 function showPaymentDateModal(invoiceId) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = s33Aujourdhui();
   // Petit modal inline
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -12264,7 +12316,7 @@ function initDevis() {
     });
   }
   if (!document.getElementById('dv-date').value) {
-    document.getElementById('dv-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('dv-date').value = s33Aujourdhui();
   }
   renderPhasesEditor();
   updateDevis();
@@ -12490,13 +12542,21 @@ async function saveDevis() {
   };
 
   if (currentDevisId) {
-    await sbUpdate('devis', currentDevisId, sbObj);
+    // Modifier un devis ne change pas son statut : un devis Signé, Accepté ou
+    // Refusé repassait « Envoyé » a chaque enregistrement.
+    delete sbObj.status;
+    const actuel = (db.devis || []).find(x => x.id === currentDevisId);
+    const signe = actuel && (actuel.status === 'Signé' || actuel.status === 'Accepté' ||
+      (actuel.signatures && actuel.signatures.client && actuel.signatures.client.image));
+    if (signe && !confirm('Ce devis est déjà signé par le client.\n\nLe modifier change un document qu\'il a signé. Enregistrer quand même ?')) return;
+    const ok = await sbUpdate('devis', currentDevisId, sbObj);
+    if (!ok) return;   // le message d'echec est deja affiche
     toast('Devis mis à jour — ' + ref);
   } else {
-    const num = 'DEV-' + String(db.devisCounter).padStart(3, '0');
+    let num;
+    try { num = await s33NumeroSuivant('devis'); }
+    catch (e) { toast('Pas de connexion — devis non enregistré, réessayez'); return; }
     sbObj.num = num;
-    db.devisCounter++;
-    await saveDB();
     const res = await sbInsert('devis', sbObj);
     if (res && res[0]) currentDevisId = res[0].id;
     toast('Devis sauvegardé — ' + num);
@@ -12728,7 +12788,7 @@ function s33RelancerFacture(invoiceId) {
 function s33DueDateFrom(dateStr, days) {
   const d = dateStr ? new Date(dateStr + 'T00:00') : new Date();
   d.setDate(d.getDate() + (days || S33_DELAI_PAIEMENT_J));
-  return d.toISOString().slice(0, 10);
+  return s33DateLocale(d);   // toISOString() donnait 1 jour de moins
 }
 
 // Répartition TTC selon le barème — la dernière ligne absorbe l'arrondi
@@ -12822,7 +12882,7 @@ async function s33ConfirmerValidationDevis(devisId) {
   try {
     const ttc = parseFloat(document.getElementById('vd-ttc').value) || 0;
     if (!(ttc > 0)) { toast('Montant TTC invalide'); if (btn) { btn.disabled = false; } return; }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
 
     // 1. Client (créé si nouveau — repris du prospect si trouvé)
     let clientId = document.getElementById('vd-client').value;
@@ -12879,7 +12939,7 @@ async function s33ConfirmerValidationDevis(devisId) {
     }
 
     // 4. Première facture : acompte de signature, échéance +15 j
-    const num = 'FAC-' + String(db.invoiceCounter).padStart(3, '0');
+    const num = await s33NumeroSuivant('facture');
     const insI = await sbInsertOrThrow('invoices', {
       num, client_id: clientId, project_id: projectId,
       object: 'Honoraires — ' + rows[0].label + ' (' + rows[0].pct + '%)',
@@ -12887,8 +12947,6 @@ async function s33ConfirmerValidationDevis(devisId) {
       due_date: s33DueDateFrom(today), status: 'En attente',
       tva_rate: (function() { const r = parseFloat(d.tvaRate ?? d.tva_rate); return isNaN(r) ? 20 : r; })()
     });
-    db.invoiceCounter++;
-    await saveDB();
     await sbUpdate('honoraires_echeances', echIds[0], { invoice_id: insI[0].id, due_date: s33DueDateFrom(today) });
 
     // 5. Devis accepté
@@ -12921,7 +12979,7 @@ function resetDevis() {
   document.getElementById('dv-ht').value = '500000';
   document.getElementById('dv-tva').value = '20';
   document.getElementById('dv-projet').value = 'Études et conception architecturale';
-  document.getElementById('dv-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('dv-date').value = s33Aujourdhui();
   document.getElementById('devis-editor-label').textContent = 'Éditeur — Nouveau devis';
   renderPhasesEditor();
   updateDevis();
@@ -13310,7 +13368,7 @@ function handleMediaUpload(input) {
         project_id: projectId === 'all' || projectId === 'general' ? null : parseInt(projectId),
         is_general: projectId === 'general',
         size: isPDF ? formatFileSize(file.size) : formatFileSize(Math.round(data.length * 0.75)),
-        added_at: new Date().toISOString().split('T')[0]
+        added_at: s33Aujourdhui()
       };
       const res = await sbInsert('media', mediaObj);
       // Ajout local sans recharger toute la base (loadDB complet = très lourd)
@@ -14254,13 +14312,18 @@ function exportFinancesCSV() {
       montant: -(c.amount || 0), statut: '' });
   });
 
-  // ── Factures ──
+  // ── Factures ── le montant enregistre est TTC : on donne aussi HT et TVA
+  // (le total etait etiquete « HT » alors qu'il additionnait du TTC)
+  const arr2 = n => Math.round(n * 100) / 100;
   (db.invoices || []).forEach(i => {
     if (!i.date || !String(i.date).startsWith(String(year))) return;
+    const ttc = parseFloat(i.amount) || 0;
+    const taux = s33InvTvaRate(i);
+    const ht = arr2(ttc / (1 + taux / 100));
     rows.push({ type: 'Facture', mois: (i.date || '').slice(0, 7), date: i.date || '',
       libelle: [i.num, i.object].filter(Boolean).join(' — '), cat: '',
       client: clientName(i.clientId ?? i.client_id), recur: '',
-      montant: i.amount || 0, statut: i.status || '' });
+      montant: ttc, ht: ht, tva: arr2(ttc - ht), taux: taux + ' %', statut: i.status || '' });
   });
 
   if (!rows.length) { toast('Aucun mouvement financier pour ' + year); return; }
@@ -14276,16 +14339,20 @@ function exportFinancesCSV() {
     const s = (v == null ? '' : String(v));
     return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
-  const headers = ['Type', 'Mois', 'Date', 'Libellé', 'Catégorie', 'Client', 'Récurrence', 'Montant (MAD)', 'Statut'];
+  const totalFacturesHT = rows.filter(r => r.type === 'Facture').reduce((s, r) => s + r.ht, 0);
+  const totalFacturesTVA = rows.filter(r => r.type === 'Facture').reduce((s, r) => s + r.tva, 0);
+  const headers = ['Type', 'Mois', 'Date', 'Libellé', 'Catégorie', 'Client', 'Récurrence', 'Montant (MAD)', 'Dont HT', 'Dont TVA', 'Taux TVA', 'Statut'];
   const lines = [headers.join(';')];
   rows.forEach(r => {
-    lines.push([r.type, r.mois, r.date, r.libelle, r.cat, r.client, r.recur, r.montant, r.statut].map(esc).join(';'));
+    lines.push([r.type, r.mois, r.date, r.libelle, r.cat, r.client, r.recur, r.montant,
+      r.ht != null ? r.ht : '', r.tva != null ? r.tva : '', r.taux || '', r.statut].map(esc).join(';'));
   });
   // Ligne(s) de synthèse
   lines.push('');
-  lines.push(['', '', '', 'TOTAL Entrées', '', '', '', totalEntrees, ''].map(esc).join(';'));
-  lines.push(['', '', '', 'TOTAL Charges', '', '', '', totalCharges, ''].map(esc).join(';'));
-  lines.push(['', '', '', 'TOTAL Factures (HT)', '', '', '', totalFactures, ''].map(esc).join(';'));
+  lines.push(['', '', '', 'TOTAL Entrées', '', '', '', totalEntrees, '', '', '', ''].map(esc).join(';'));
+  lines.push(['', '', '', 'TOTAL Charges', '', '', '', totalCharges, '', '', '', ''].map(esc).join(';'));
+  lines.push(['', '', '', 'TOTAL Factures TTC', '', '', '', totalFactures, arr2(totalFacturesHT), arr2(totalFacturesTVA), '', ''].map(esc).join(';'));
+  lines.push(['', '', '', 'TOTAL Factures HT', '', '', '', arr2(totalFacturesHT), '', '', '', ''].map(esc).join(';'));
 
   const csv = '﻿' + lines.join('\r\n'); // BOM UTF-8 pour Excel
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -14860,11 +14927,22 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// Un enregistrement vient d'echouer (s33WriteFailToast) : le « c'est fait »
+// qui suit dans la foulee est faux, et il remplacait le message d'echec dans
+// la meme seconde. On le tait ; le message d'echec reste affiche plus longtemps.
+const _S33_SUCCES = /ajout|enregistr|mis à jour|mise à jour|modifi|créé|créée|supprim|sauvegard|validé|envoyé|✓/i;
+const _S33_ECHEC = /non |échec|erreur|impossible|pas de |réessayez|introuvable/i;
+let _toastMinuteur = null;
 function toast(msg) {
+  const texte = String(msg == null ? '' : msg);
+  const apresEchec = typeof _lastWriteFailToast === 'number' && Date.now() - _lastWriteFailToast < 4000;
+  if (apresEchec && _S33_SUCCES.test(texte) && !_S33_ECHEC.test(texte)) return;
   const t = document.getElementById('toast');
-  t.textContent = msg;
+  t.textContent = texte;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2800);
+  // un seul minuteur : l'ancien effacait trop tot le message suivant
+  clearTimeout(_toastMinuteur);
+  _toastMinuteur = setTimeout(() => t.classList.remove('show'), _S33_ECHEC.test(texte) ? 5000 : 2800);
 }
 
 function emptyStateHTML(title, { icon = 'inbox', sub = '', btnLabel = '', btnAction = '' } = {}) {
@@ -14877,7 +14955,7 @@ function emptyStateHTML(title, { icon = 'inbox', sub = '', btnLabel = '', btnAct
 }
 
 // Pre-fill date
-document.getElementById('i-date') && (document.getElementById('i-date').value = new Date().toISOString().split('T')[0]);
+document.getElementById('i-date') && (document.getElementById('i-date').value = s33Aujourdhui());
 </script>
 
 <!-- MOBILE BOTTOM NAV -->
@@ -15664,9 +15742,30 @@ const AI_SUGGESTIONS = [
 ];
 
 // ── CONTEXTE DB POUR IA ──
+// Mois au format de la base (AAAA-MM). Samia ecrivait « octobre 2026 » :
+// ses charges et entrees n'apparaissaient alors dans aucun mois des Finances.
+function s33MoisNormalise(v) {
+  const t = String(v || '').trim().toLowerCase();
+  if (/^\d{4}-\d{2}$/.test(t)) return t;
+  const sansAccent = x => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const noms = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
+  const m = sansAccent(t).match(/([a-z]+)\.?\s+(\d{4})/);
+  if (m) {
+    // le mot entier d'abord (« juillet » ne doit pas devenir « juin »),
+    // puis une abreviation (« sept », « fev », « juil »)
+    let i = noms.indexOf(m[1]);
+    if (i < 0 && m[1].length >= 3) i = noms.findIndex(n => n.startsWith(m[1]));
+    if (i >= 0) return m[2] + '-' + String(i + 1).padStart(2, '0');
+  }
+  const m2 = t.match(/^(\d{1,2})[\/.-](\d{4})$/);
+  if (m2) return m2[2] + '-' + m2[1].padStart(2, '0');
+  return s33Aujourdhui().slice(0, 7);
+}
+
 function getDbContext() {
   const now = new Date();
   const month = now.toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
+  const moisCode = s33Aujourdhui().slice(0, 7);
   const isAdmin = currentUser?.role === 'admin';
 
   // ─────────────────────────────────────────────
@@ -15786,10 +15885,16 @@ Sois concise, utile et directe. Utilise du **gras** pour les infos importantes.`
     `- ${d.num || d.ref} | ${d.clientName || d.client_name} | ${d.ttc} MAD TTC | ${d.status}`
   ).join('\n');
 
-  const charges = (db.charges || []);
-  const entrees = (db.entrees || []);
-  const totalCharges = charges.reduce((s, c) => s + (c.amount || 0), 0);
-  const totalEntrees = entrees.reduce((s, e) => s + (e.amount || 0), 0);
+  // Le mois en cours seulement, comme la page Finances : charges du mois +
+  // charges mensuelles, entrees du mois + factures payees ce mois-ci.
+  // (Avant : tout depuis toujours, presente comme « FINANCES DU MOIS ».)
+  const totalCharges = (db.charges || [])
+    .filter(c => c.recur === 'mensuel' || c.month === moisCode)
+    .reduce((s, c) => s + (Number(c.amount) || 0), 0);
+  const totalEntrees = (db.entrees || []).filter(e => e.month === moisCode)
+      .reduce((s, e) => s + (Number(e.amount) || 0), 0) +
+    (db.invoices || []).filter(i => i.status === 'Payée' && String(i.paid_date || i.date || '').startsWith(moisCode))
+      .reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const solde = totalEntrees - totalCharges;
 
   return `Tu es Samia, l'assistante IA de Studio 33 Architects, cabinet fondé par l'architecte Chaima Zerkdi à Agadir, Maroc.
@@ -15851,12 +15956,12 @@ ACTIONS POSSIBLES :
 
 3. AJOUTER UNE CHARGE :
 \`\`\`action
-{"action":"add_charge","label":"Loyer bureau","amount":5000,"cat":"Salaire ou Loyer ou Outil ou Autre","recur":"mensuel ou ponctuel","month":"${month}"}
+{"action":"add_charge","label":"Loyer bureau","amount":5000,"cat":"Salaire ou Loyer ou Outil ou Autre","recur":"ponctuel ou mensuel (mensuel seulement si la charge revient chaque mois)","month":"${moisCode}"}
 \`\`\`
 
 4. AJOUTER UNE ENTRÉE :
 \`\`\`action
-{"action":"add_entree","label":"Paiement client X","amount":30000,"client_name":"Nom client","month":"${month}"}
+{"action":"add_entree","label":"Paiement client X","amount":30000,"client_name":"Nom client","month":"${moisCode}"}
 \`\`\`
 
 5. CRÉER UNE FACTURE :
@@ -16027,7 +16132,7 @@ async function executeSamiaActions(text, mode) {
         if (!hours || hours <= 0) { resultMsg = `Nombre d'heures invalide.`; break; }
         const tasks = (actionData.tasks||'').trim();
         if (!tasks) { resultMsg = `Description des tâches manquante.`; break; }
-        const date = actionData.date || new Date().toISOString().slice(0,10);
+        const date = actionData.date || s33Aujourdhui();
         const newReport = {
           user_id: String(currentUser.id),
           user_name: currentUser.name,
@@ -16069,7 +16174,8 @@ async function executeSamiaActions(text, mode) {
         break;
       }
       case 'add_charge': {
-        const nc = { label: actionData.label||'Charge', amount: actionData.amount||0, cat: actionData.cat||'', recur: actionData.recur||'mensuel', month: actionData.month||new Date().toISOString().slice(0,7) };
+        // Ponctuelle par defaut : une depense dictee ne doit pas revenir chaque mois
+        const nc = { label: actionData.label||'Charge', amount: actionData.amount||0, cat: actionData.cat||'', recur: actionData.recur === 'mensuel' ? 'mensuel' : 'ponctuel', month: s33MoisNormalise(actionData.month) };
         const r = await sbInsert('charges', nc);
         if (r && r.length > 0) { db.charges.push(r[0]); resultMsg = `Charge <strong>${nc.label}</strong> de <strong>${nc.amount.toLocaleString('fr-MA')} MAD</strong> ajoutée !`; if (typeof renderFinance==='function') renderFinance(); }
         break;
@@ -16077,7 +16183,7 @@ async function executeSamiaActions(text, mode) {
       case 'add_entree': {
         let clientId = null;
         if (actionData.client_name) { const cl = db.clients.find(c => c.name.toLowerCase()===actionData.client_name.toLowerCase()); if (cl) clientId = cl.id; }
-        const ne = { label: actionData.label||'Entrée', amount: actionData.amount||0, client_id: clientId, month: actionData.month||new Date().toISOString().slice(0,7) };
+        const ne = { label: actionData.label||'Entrée', amount: actionData.amount||0, client_id: clientId, month: s33MoisNormalise(actionData.month) };
         const r = await sbInsert('entrees', ne);
         if (r && r.length > 0) { db.entrees.push({...r[0], clientId: r[0].client_id}); resultMsg = `Entrée <strong>${ne.label}</strong> de <strong>${ne.amount.toLocaleString('fr-MA')} MAD</strong> ajoutée !`; if (typeof renderFinance==='function') renderFinance(); }
         break;
@@ -16086,10 +16192,10 @@ async function executeSamiaActions(text, mode) {
         let clientId = null, projectId = null;
         if (actionData.clientName) { const cl = db.clients.find(c => c.name.toLowerCase()===actionData.clientName.toLowerCase()); if (cl) clientId = cl.id; }
         if (actionData.projectName) { const pr = db.projects.find(p => p.name.toLowerCase()===actionData.projectName.toLowerCase()); if (pr) projectId = pr.id; }
-        const num = 'FA-' + String(db.invoiceCounter).padStart(4,'0');
-        const ni = { num, client_id: clientId, project_id: projectId, amount: actionData.amount||0, status: actionData.status||'En attente', object: actionData.description||'', date: new Date().toISOString().split('T')[0] };
+        const num = await s33NumeroSuivant('facture');
+        const ni = { num, client_id: clientId, project_id: projectId, amount: actionData.amount||0, status: actionData.status||'En attente', object: actionData.description||'', date: s33Aujourdhui() };
         const r = await sbInsert('invoices', ni);
-        if (r && r.length > 0) { db.invoices.push({...r[0], id: r[0].id, clientId: r[0].client_id, projectId: r[0].project_id}); db.invoiceCounter++; await saveDB(); resultMsg = `Facture <strong>${num}</strong> de <strong>${ni.amount.toLocaleString('fr-MA')} MAD</strong> créée !`; if (typeof renderInvoices==='function') renderInvoices(); }
+        if (r && r.length > 0) { db.invoices.push({...r[0], id: r[0].id, clientId: r[0].client_id, projectId: r[0].project_id}); resultMsg = `Facture <strong>${num}</strong> de <strong>${ni.amount.toLocaleString('fr-MA')} MAD</strong> créée !`; if (typeof renderInvoices==='function') renderInvoices(); }
         break;
       }
       case 'assign_task': {
@@ -16602,7 +16708,7 @@ async function aiFloatSend() {
 
 function renderRapport() {
   if (!currentUser) return;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = s33Aujourdhui();
   const todayLabel = new Date().toLocaleDateString('fr-MA', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
   document.getElementById('rapport-subtitle').textContent = todayLabel;
   // Titre dynamique selon le rôle
@@ -16761,20 +16867,12 @@ function renderRapport() {
   const weekDays = Array.from({length:7}, (_,i) => {
     const d = new Date(now);
     d.setDate(now.getDate() - 6 + i);
-    return d.toISOString().slice(0,10);
+    return s33DateLocale(d);
   });
-  // Gather all timeLogs by currentUser in last 7 days
-  const myWeekMinutes = weekDays.map(day => {
-    let mins = 0;
-    (db.projects || []).forEach(p => {
-      (p.tasks || []).forEach(t => {
-        (t.timeLog || []).forEach(l => {
-          if (l.author === currentUser.name && l.date === day) mins += (l.minutes || 0);
-        });
-      });
-    });
-    return mins;
-  });
+  // Mes heures des 7 derniers jours : chrono et rapports, fusionnes
+  // (avant : le chrono seul — une semaine declaree par rapport restait a zero)
+  const _mesHeures = s33HeuresFusionnees().filter(x => x.auteur.toLowerCase() === String(currentUser.name || '').toLowerCase());
+  const myWeekMinutes = weekDays.map(day => _mesHeures.filter(x => x.date === day).reduce((s, x) => s + x.minutes, 0));
   const totalWeekMins = myWeekMinutes.reduce((a,b) => a+b, 0);
   const maxWeekMins = Math.max(...myWeekMinutes, 1);
   const dayLabels = ['L','M','M','J','V','S','D'];
@@ -16803,10 +16901,10 @@ function renderRapport() {
       .filter(m => m.role !== 'admin' && m.active !== false)
       .map(m => m.display_name || m.username || '')
       .filter(Boolean);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+    const monthStart = s33DateLocale(new Date(now.getFullYear(), now.getMonth(), 1));
     const rows = members.map(name => {
-      let done = 0, inprogress = 0, mins = 0;
-      // Heures via timelogs sur tâches
+      let done = 0, inprogress = 0;
+      // Taches terminees / en cours
       (db.projects || []).forEach(p => {
         (p.tasks || []).forEach(t => {
           const assigned = taskIsFor(t, name)
@@ -16815,20 +16913,13 @@ function renderRapport() {
             if (isTaskDone(t)) done++;
             else if (t.status === 'inprogress') inprogress++;
           }
-          (t.timeLog || []).forEach(l => {
-            if ((l.author||'').split(' ')[0].toLowerCase() === name.toLowerCase() && l.date >= monthStart)
-              mins += (l.minutes || 0);
-          });
         });
       });
-      // Heures via rapports quotidiens
-      const reportMins = (db.dailyReports || [])
-        .filter(r => r.date >= monthStart && (
-          (r.user_name||'').split(' ')[0].toLowerCase() === name.toLowerCase() ||
-          (r.user_name||'').toLowerCase() === name.toLowerCase()
-        ))
-        .reduce((s, r) => s + (parseFloat(r.hours) || 0) * 60, 0);
-      const totalMins = mins + reportMins;
+      // Heures du mois : chrono et rapports fusionnes, jamais additionnes
+      const nomLc = name.toLowerCase();
+      const totalMins = s33HeuresFusionnees()
+        .filter(x => x.date >= monthStart && (x.auteur.toLowerCase() === nomLc || x.auteur.split(' ')[0].toLowerCase() === nomLc))
+        .reduce((s, x) => s + x.minutes, 0);
       const rapportCount = (db.dailyReports || []).filter(r => r.date >= monthStart && (
         (r.user_name||'').split(' ')[0].toLowerCase() === name.toLowerCase() ||
         (r.user_name||'').toLowerCase() === name.toLowerCase()
@@ -16934,7 +17025,7 @@ async function submitRapport() {
 }
 
 async function editTodayReport() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = s33Aujourdhui();
   const uid = String(currentUser.id);
   const myToday = (db.dailyReports || []).filter(r => String(r.user_id) === uid && r.date === today);
   if (myToday.length && !confirm('Réécrire le rapport d\'aujourd\'hui ? Les ' + myToday.length + ' entrée(s) seront supprimées et vous repartirez d\'un formulaire vide.')) return;
@@ -17483,7 +17574,9 @@ function s33NextDate(when) {
     const dow = d.getDay();
     d.setDate(d.getDate() + ((8 - dow) % 7 || 7));
   }
-  return d.toISOString().slice(0, 10);
+  // Date locale : toISOString() d'un minuit marocain donnait la VEILLE
+  // (« demain » enregistrait aujourd'hui, « lundi » le dimanche)
+  return s33DateLocale(d);
 }
 
 async function s33PostponeTask(projId, taskId, when, isAdminTask) {
@@ -18946,7 +19039,7 @@ function _genBuildPreloadFromProject(projectId) {
   const p = (db.projects || []).find(function(x) { return String(x.id) === String(projectId); });
   if (!p) return null;
   const client = (db.clients || []).find(function(c) { return String(c.id) === String(p.clientId); });
-  const today = new Date().toISOString().slice(0, 10);
+  const today = s33Aujourdhui();
   const year = new Date().getFullYear();
   const ref = 'S33-' + year + '-' + String(p.id).padStart(3, '0');
   const phaseMap = { ESQ:'ESQ', APS:'APS', APD:'APD', PRO:'PRO', DCE:'DCE', EXE:'EXE', Chantier:'EXE' };
@@ -18977,7 +19070,7 @@ function _genBuildPreloadForBrief(projectId) {
     client_nom: client ? (client.name || '') : '',
     client_tel: client ? (client.phone || client.tel || '') : '',
     client_email: client ? (client.email || '') : '',
-    brief_date: new Date().toISOString().slice(0, 10),
+    brief_date: s33Aujourdhui(),
     proj_adresse: p.address || p.location || '',
     prog_surface: p.surface || ''
   };
@@ -19711,7 +19804,7 @@ function _old_renderCalendar() {
   const year = calendarMonth.getFullYear();
   const month = calendarMonth.getMonth();
   const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = s33DateLocale(today);
 
   const monthName = calendarMonth.toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
 
@@ -20335,7 +20428,7 @@ function startReminderCheck() {
     if (!currentUser || currentUser.role === 'admin') return;
     const h = new Date().getHours();
     if (h < 9 || h >= 19) return; // Only between 9h-19h
-    const today = new Date().toISOString().slice(0,10);
+    const today = s33Aujourdhui();
     const reports = (db.dailyReports || []);
     const uid = String(currentUser.id);
     const done = reports.find(r => String(r.user_id) === uid && r.date === today);
@@ -20474,7 +20567,7 @@ function updateUIForUser() {
               db.dailyReports = db.dailyReports || [];
               db.dailyReports.unshift(r);
               // Toast uniquement pour les rapports du jour soumis par l'équipe
-              const today = new Date().toISOString().slice(0, 10);
+              const today = s33Aujourdhui();
               if (r.date === today && String(r.user_id) !== String(currentUser.id)) {
                 toast(r.user_name + ' a soumis son rapport — ' + r.project_name);
               }
@@ -20490,7 +20583,7 @@ function updateUIForUser() {
 
 function checkDailyReport() {
   if (!currentUser) return;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = s33Aujourdhui();
   const uid   = String(currentUser.id);
   // Seuls les vrais rapports DB (ID entier) comptent comme "soumis"
   const done  = (db.dailyReports || []).find(r =>
@@ -20998,7 +21091,7 @@ function closeMemberProfile() {
   if (reportsControls) reportsControls.style.display = 'flex';
   // Reset to today
   const dateEl = document.getElementById('equipe-filter-date');
-  if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+  if (dateEl && !dateEl.value) dateEl.value = s33Aujourdhui();
   renderEquipe();
 }
 
@@ -21178,7 +21271,7 @@ function renderEquipe() {
   const filterUser = document.getElementById('equipe-filter-user').value;
   // Set default date to today if empty
   if (!filterDate) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     document.getElementById('equipe-filter-date').value = today;
   }
   const activeDate = document.getElementById('equipe-filter-date').value;
@@ -21218,7 +21311,7 @@ function renderEquipe() {
 
   // Qui n'a pas encore déposé, pour la date affichée. Pas de relance sur une
   // date à venir : le rapport n'est pas encore attendu.
-  const _aujourdhui = new Date().toISOString().slice(0, 10);
+  const _aujourdhui = s33Aujourdhui();
   const _dateFuture = activeDate > _aujourdhui;
   const _enAttente = _dateFuture ? [] : members.filter(m => !_memberSubmitted(m));
   window._equipeEnAttente = _enAttente.map(m => m.id);
@@ -22206,21 +22299,14 @@ function escHTML(str) {
 
   function getMinutesByPhase(p) {
     const result = {};
-    // Source 1 : timelogs sur les tâches
-    (p.tasks || []).forEach(t => {
-      (t.timeLog || []).forEach(l => {
-        const ph = l.phase || p.phase || 'Autre';
-        if (!result[ph]) result[ph] = 0;
-        result[ph] += l.minutes || 0;
-      });
-    });
-    // Source 2 : rapports quotidiens — rattachés à la phase courante du projet
-    (db.dailyReports || []).filter(r =>
-      parseInt(r.project_id) === parseInt(p.id) && (Number(r.hours) || 0) > 0
-    ).forEach(r => {
-      const ph = p.phase || 'Autre';
-      if (!result[ph]) result[ph] = 0;
-      result[ph] += (Number(r.hours) || 0) * 60;
+    // Chrono et rapport fusionnes (jamais additionnes) : s33HeuresFusionnees
+    s33HeuresFusionnees(p.id).forEach(x => {
+      Object.keys(x.phases).forEach(ph => { result[ph] = (result[ph] || 0) + x.phases[ph]; });
+      const enPlus = x.minutes - x.chrono;   // ce que le rapport ajoute au chrono
+      if (enPlus > 0) {
+        const ph = p.phase || 'Autre';
+        result[ph] = (result[ph] || 0) + enPlus;
+      }
     });
     return result;
   }
@@ -22236,35 +22322,20 @@ function escHTML(str) {
     const byAuthor = {}; // { name: { minutes, rate, cost, reportMins, taskMins } }
     let totalMins = 0;
 
-    // Source 1 : timelogs sur les tâches
-    (p.tasks || []).forEach(t => {
-      (t.timeLog || []).forEach(l => {
-        const mins = Number(l.minutes) || 0;
-        if (mins <= 0) return;
-        const author = l.author || 'Inconnu';
-        if (!byAuthor[author]) {
-          byAuthor[author] = { minutes: 0, taskMins: 0, reportMins: 0, rate: getRateForAuthor(author, rates, mode), cost: 0 };
-        }
-        byAuthor[author].minutes   += mins;
-        byAuthor[author].taskMins  += mins;
-        totalMins += mins;
-      });
-    });
-
-    // Source 2 : rapports quotidiens (daily_reports) — heures saisies par les collaboratrices
+    // Chrono et rapport du meme jour fusionnes, jamais additionnes
+    // (s33HeuresFusionnees) ; reportMins = ce que le rapport ajoute au chrono.
     let totalReportMins = 0;
-    (db.dailyReports || []).filter(r =>
-      parseInt(r.project_id) === parseInt(p.id) && (Number(r.hours) || 0) > 0
-    ).forEach(r => {
-      const mins = (Number(r.hours) || 0) * 60;
-      const author = r.user_name || 'Inconnu';
+    s33HeuresFusionnees(p.id).forEach(x => {
+      const author = x.auteur || 'Inconnu';
       if (!byAuthor[author]) {
         byAuthor[author] = { minutes: 0, taskMins: 0, reportMins: 0, rate: getRateForAuthor(author, rates, mode), cost: 0 };
       }
-      byAuthor[author].minutes    += mins;
-      byAuthor[author].reportMins += mins;
-      totalMins      += mins;
-      totalReportMins += mins;
+      const enPlus = x.minutes - x.chrono;
+      byAuthor[author].minutes    += x.minutes;
+      byAuthor[author].taskMins   += x.chrono;
+      byAuthor[author].reportMins += enPlus;
+      totalMins       += x.minutes;
+      totalReportMins += enPlus;
     });
 
     let costMO = 0;
@@ -22453,7 +22524,7 @@ function escHTML(str) {
     const isAdmin = currentUser.role === 'admin';
     const userName = currentUser.name;
     const userId = String(currentUser.id);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     const reminders = [];
 
     // Overdue tasks — uniquement les tâches assignées à quelqu'un
@@ -24834,7 +24905,7 @@ setInterval(() => {
   const PROJECT_TYPES = ['Villa neuve','Appartement','Riad/Rénovation','Commercial','Aménagement intérieur','Paysagisme','Autre'];
 
   // ── HELPERS ─────────────────────────────────────────────────
-  const todayISO = () => new Date().toISOString().slice(0, 10);
+  const todayISO = () => s33Aujourdhui();
   const formatMoney = v => v ? new Intl.NumberFormat('fr-MA').format(v) + ' MAD' : '—';
   const getSearchQ = () => { const el = document.getElementById('prospects-search'); return ((el && el.value) || '').trim().toLowerCase(); };
   const persistLocal = () => { try { localStorage.setItem('s33_prospects_cache', JSON.stringify(db.prospects || [])); } catch(e) {} };
@@ -25930,7 +26001,7 @@ setInterval(() => {
       const now = new Date();
       const newTasks = (tpl.tasks || []).map(function(tk, idx) {
         const due = new Date(now.getTime() + (tk.offset_days || 0) * 86400000);
-        return { id: Date.now() + idx, name: tk.name, phase: tk.phase || null, priority: tk.priority || 'normal', deadline: due.toISOString().slice(0,10), done: false, status: 'todo' };
+        return { id: Date.now() + idx, name: tk.name, phase: tk.phase || null, priority: tk.priority || 'normal', deadline: s33DateLocale(due), done: false, status: 'todo' };
       });
       if (!await s33MajTaches(projId, function(taches){ return taches.concat(newTasks); })) return;
       msg.push(newTasks.length + ' tâches ajoutées');
@@ -26027,7 +26098,7 @@ setInterval(() => {
       const now = new Date();
       const newTasks = (tpl.tasks || []).map(function(tk, idx) {
         const due = new Date(now.getTime() + (tk.offset_days || 0) * 86400000);
-        return { id: Date.now() + idx, name: tk.name, phase: tk.phase || null, priority: tk.priority || 'normal', deadline: due.toISOString().slice(0,10), done: false, status: 'todo' };
+        return { id: Date.now() + idx, name: tk.name, phase: tk.phase || null, priority: tk.priority || 'normal', deadline: s33DateLocale(due), done: false, status: 'todo' };
       });
       if (!await s33MajTaches(projId, function(taches){ return taches.concat(newTasks); })) return;
       msg.push(newTasks.length + ' tâche' + (newTasks.length > 1 ? 's' : '') + ' ajoutée' + (newTasks.length > 1 ? 's' : ''));
@@ -26147,7 +26218,7 @@ setInterval(() => {
                 name: tk.name,
                 phase: tk.phase || null,
                 priority: tk.priority || 'normal',
-                deadline: due.toISOString().slice(0, 10),
+                deadline: s33DateLocale(due),
                 done: false,
                 status: 'todo'
               };
@@ -26643,7 +26714,7 @@ setInterval(() => {
   document.head.appendChild(styleEl);
 
   // ── HELPERS ─────────────────────────────────────────────────
-  const todayISO = function() { return new Date().toISOString().slice(0, 10); };
+  const todayISO = function() { return s33Aujourdhui(); };
   const daysBetween = function(a, b) { return Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000); };
 
   // Dedupe notifications per day via localStorage
@@ -26664,7 +26735,7 @@ setInterval(() => {
     const userId = String(window.currentUser.id);
     const today = todayISO();
     const in2days = new Date(); in2days.setDate(in2days.getDate() + 2);
-    const in2daysISO = in2days.toISOString().slice(0, 10);
+    const in2daysISO = s33DateLocale(in2days);
     const items = [];
 
     // 1. Overdue tasks — grouped by project for admin, individual for members
@@ -26881,7 +26952,7 @@ setInterval(() => {
       body += '\n';
     });
     body += '---\nGénéré par Studio 33 Manager\n' + me;
-    const subject = '[Studio 33] Récap alertes ' + (new Date().toISOString().slice(0, 10));
+    const subject = '[Studio 33] Récap alertes ' + (s33Aujourdhui());
     const href = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     window.location.href = href;
   };
@@ -30899,7 +30970,7 @@ window.addEventListener('appinstalled', () => {
     try { draft = JSON.parse(localStorage.getItem(vrDraftKey(projectId)) || 'null'); } catch(_) {}
 
     const client = db.clients.find(c => c.id === p.clientId);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     const photos = (db.media || []).filter(m =>
       String(m.project_id || m.projectId) === String(projectId) && vrIsImage(m));
 
@@ -31524,7 +31595,7 @@ window.addEventListener('appinstalled', () => {
           '<div style="font-size:10.5px;color:#999;margin-top:5px;">' + pctPaid + '% ' + t.feesPct + (f.budget > f.paid ? ' · ' + t.remaining + ' ' + money(f.budget - f.paid) + ' ' + t.mad : ' · ' + t.settled) + '</div>' +
           // Échéancier complet : étapes réglées / à régler / à venir
           (Array.isArray(f.echeancier) && f.echeancier.length ? (function() {
-            const todayISO = new Date().toISOString().slice(0, 10);
+            const todayISO = s33Aujourdhui();
             const fd = function(s) { try { return new Date(s + 'T00:00').toLocaleDateString(t.locale, { day: 'numeric', month: 'short', year: 'numeric' }); } catch(_) { return s || ''; } };
             const totalPaidE = f.echeancier.filter(function(e) { return e.status === 'payee'; }).reduce(function(s, e) { return s + e.montant; }, 0);
             const totalLeftE = f.echeancier.filter(function(e) { return e.status !== 'payee'; }).reduce(function(s, e) { return s + e.montant; }, 0);
@@ -31561,7 +31632,7 @@ window.addEventListener('appinstalled', () => {
             '<button onclick="s33pToggleFactures(this)" style="margin-top:12px;background:#fff;border:1px solid #eee;border-radius:99px;padding:7px 16px;font-size:12px;font-weight:700;color:#F97316;cursor:pointer;font-family:inherit;">' + t.feesDetail + '</button>' +
             '<div id="s33p-factures" style="display:none;margin-top:10px;">' +
               f.invoices.map(function(inv) {
-                const todayISO = new Date().toISOString().slice(0, 10);
+                const todayISO = s33Aujourdhui();
                 const paidInv = inv.status === 'Payée';
                 const late = !paidInv && inv.due_date && inv.due_date < todayISO;
                 const fd = function(s) { try { return new Date(s + 'T00:00').toLocaleDateString(t.locale, { day: 'numeric', month: 'short', year: 'numeric' }); } catch(_) { return s || ''; } };
@@ -32869,7 +32940,7 @@ window.addEventListener('appinstalled', () => {
     if (!r) return;
     const open = r.statut === 'ouverte';
     const patch = open
-      ? { statut: 'levee', resolved_date: new Date().toISOString().slice(0, 10), resolved_by: currentUser?.name || '' }
+      ? { statut: 'levee', resolved_date: s33Aujourdhui(), resolved_by: currentUser?.name || '' }
       : { statut: 'ouverte', resolved_date: null, resolved_by: null };
     const ok = await sbUpdate('chantier_reserves', id, patch);
     if (ok === false) { toast('Erreur — réessayez'); return; }
@@ -32905,7 +32976,7 @@ window.addEventListener('appinstalled', () => {
         '<div class="form-row">' +
           '<div class="form-group"><label>Lot</label><select id="ch-res-lot"><option value=""></option>' +
             LOTS.map(l => '<option>' + l + '</option>').join('') + '</select></div>' +
-          '<div class="form-group"><label>Constatée le</label><input type="date" id="ch-res-date" value="' + new Date().toISOString().slice(0, 10) + '"></div>' +
+          '<div class="form-group"><label>Constatée le</label><input type="date" id="ch-res-date" value="' + s33Aujourdhui() + '"></div>' +
         '</div>' +
         '<div class="form-actions">' +
           '<button class="btn btn-outline" onclick="document.getElementById(\'ch-res-modal\').remove()">Annuler</button>' +
@@ -32961,7 +33032,7 @@ window.addEventListener('appinstalled', () => {
     const ins = await sbInsertOrThrow('chantier_visites', {
       project_id: pid,
       ref: 'RV-' + String(num || 1).padStart(2, '0'),
-      visit_date: d.date || new Date().toISOString().slice(0, 10),
+      visit_date: d.date || s33Aujourdhui(),
       heure: d.heure, meteo: d.meteo, auteur: d.auteur,
       presents: d.presents, avancement: d.avancement, avancement_pct: d.pct,
       observations: d.observations, actions: d.actions,
@@ -33203,10 +33274,10 @@ window.addEventListener('appinstalled', () => {
     if (!p) return;
     const montant = parseFloat(r.montant) || 0;
     if (!confirm('Créer la facture « Honoraires — ' + (r.label || r.phase) + ' » de ' + money(montant) + ' MAD TTC ?\n\nÉchéance de paiement : ' + (typeof S33_DELAI_PAIEMENT_J !== 'undefined' ? S33_DELAI_PAIEMENT_J : 15) + ' jours.')) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     const due = (typeof s33DueDateFrom === 'function') ? s33DueDateFrom(today) : today;
     try {
-      const num = 'FAC-' + String(db.invoiceCounter).padStart(3, '0');
+      const num = await s33NumeroSuivant('facture');
       const ins = await sbInsertOrThrow('invoices', {
         num, client_id: p.clientId ?? p.client_id, project_id: p.id,
         object: 'Honoraires — ' + (r.label || r.phase),
@@ -33217,7 +33288,6 @@ window.addEventListener('appinstalled', () => {
           return prev ? s33InvTvaRate(prev) : 20;
         })()
       });
-      db.invoiceCounter++; await saveDB();
       db.invoices.push({ ...ins[0], clientId: ins[0].client_id, projectId: ins[0].project_id });
       await sbUpdate('honoraires_echeances', id, { invoice_id: ins[0].id, due_date: due });
       r.invoice_id = ins[0].id; r.due_date = due;
@@ -33309,7 +33379,7 @@ window.addEventListener('appinstalled', () => {
       add('Congés', db.conges);
       add('Événements calendrier', db.calEvents);
       add('Bibliothèque', db.library);
-      XLSX.writeFile(wb, 'Sauvegarde-Studio33-' + new Date().toISOString().slice(0, 10) + '.xlsx');
+      XLSX.writeFile(wb, 'Sauvegarde-Studio33-' + s33Aujourdhui() + '.xlsx');
       toast('Sauvegarde Excel téléchargée — gardez-la en lieu sûr');
     } catch(e) {
       console.error('export backup', e);
@@ -33505,7 +33575,7 @@ window.addEventListener('appinstalled', () => {
   // ── Encart « Équipe aujourd'hui » sur la page Rapport (membres) ──
   async function teamTodayStrip() {
     if (!window.currentUser || canSeeAll()) return; // l'admin a déjà la vue complète
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     const roster = (db.teamMembers || []).filter(m => m.active !== false && m.role !== 'admin');
     if (!roster.length) return;
     let submitted = {};
@@ -33776,7 +33846,7 @@ window.addEventListener('appinstalled', () => {
   let _fil = { pvProj: '', pvStatut: '', rProj: '', rEnt: '', rStatut: 'ouverte', rLate: false };
 
   const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = () => s33Aujourdhui();
   const isAdmin = () => currentUser && (currentUser.role === 'admin' || (currentUser.permissions || {}).is_co_admin === true);
   const myName = () => (currentUser && currentUser.name) || '';
   const projName = pid => { const p = (db.projects || []).find(x => x.id === parseInt(pid)); return p ? p.name : 'Projet ' + pid; };
@@ -35303,11 +35373,11 @@ window.addEventListener('appinstalled', () => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
     const dt = new Date(d + 'T00:00');
     dt.setDate(dt.getDate() + 30);
-    return dt.toISOString().slice(0, 10);
+    return s33DateLocale(dt);   // toISOString() donnait 29 jours
   };
 
   function lateInvoices() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     return (db.invoices || [])
       .filter(i => i.status === 'En attente')
       .map(i => {
@@ -35423,10 +35493,10 @@ window.addEventListener('appinstalled', () => {
     if (!p) return;
     const montant = parseFloat(r.montant) || 0;
     if (!confirm('Créer la facture « Honoraires — ' + (r.label || '') + ' » de ' + formatNum(Math.round(montant)) + ' MAD TTC ?\n\nÉchéance de paiement : ' + (typeof S33_DELAI_PAIEMENT_J !== 'undefined' ? S33_DELAI_PAIEMENT_J : 15) + ' jours.')) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     const due = (typeof s33DueDateFrom === 'function') ? s33DueDateFrom(today) : today;
     try {
-      const num = 'FAC-' + String(db.invoiceCounter).padStart(3, '0');
+      const num = await s33NumeroSuivant('facture');
       const ins = await sbInsertOrThrow('invoices', {
         num, client_id: p.clientId != null ? p.clientId : p.client_id, project_id: p.id,
         object: 'Honoraires — ' + (r.label || ''),
@@ -35437,7 +35507,6 @@ window.addEventListener('appinstalled', () => {
           return prev ? s33InvTvaRate(prev) : 20;
         })()
       });
-      db.invoiceCounter++; await saveDB();
       db.invoices.push({ ...ins[0], clientId: ins[0].client_id, projectId: ins[0].project_id });
       await sbUpdate('honoraires_echeances', echId, { invoice_id: ins[0].id, due_date: due });
       r.invoice_id = ins[0].id;
@@ -35708,7 +35777,7 @@ window.addEventListener('appinstalled', () => {
       anchor.parentNode.insertBefore(box, anchor);
     }
     const isAdmin = currentUser.role === 'admin';
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
     const rows = [];
     const row = (icon, color, text, btnLabel, action) =>
@@ -35740,7 +35809,7 @@ window.addEventListener('appinstalled', () => {
         row('schedule_send', '#d97706', '<b>' + staleDevis.length + ' devis</b> sans réponse depuis plus de 7 jours', 'Voir', "navigate('devis')");
       }
       // Rapports d'hier manquants
-      const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const yest = s33DateLocale(new Date(Date.now() - 86400000));
       const yestDow = new Date(yest + 'T12:00').getDay();
       if (yestDow !== 0) {
         const team = (db.teamMembers || []).filter(m => m.active !== false && m.role !== 'admin');
@@ -36738,7 +36807,7 @@ window.addEventListener('appinstalled', () => {
         inp('gp-entreprise', 'Entreprise destinataire', mem.entreprise, 'ex : STE ATLAS BÂTIMENT SARL') +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
           inp('gp-lot', 'Lot', mem.lot, 'ex : Gros œuvre') +
-          inp('gp-dateeffet', 'Date d\'effet', mem.dateeffet || new Date().toISOString().slice(0, 10), 'AAAA-MM-JJ') +
+          inp('gp-dateeffet', 'Date d\'effet', mem.dateeffet || s33Aujourdhui(), 'AAAA-MM-JJ') +
         '</div>' +
         inp('gp-delai', 'Délai contractuel (si commencement)', mem.delai, 'ex : 8 mois') +
         ta('gp-texte', 'Motif / prescriptions / observations', mem.texte, 4);
@@ -36936,7 +37005,7 @@ window.addEventListener('appinstalled', () => {
         doc.text('Architecte — Studio 33 Architects', W - M - 28, Math.min(y + 11, 255), { align: 'center' });
         footerLegal(doc);
         title = (v.objet || 'Courrier').slice(0, 60);
-        fname = 'Courrier-' + (v.dest || 'admin') + '-' + new Date().toISOString().slice(0, 10) + '.pdf';
+        fname = 'Courrier-' + (v.dest || 'admin') + '-' + s33Aujourdhui() + '.pdf';
       }
 
       // Enregistrer la version dans l'onglet Générateurs (rouvrable et duplicable)
@@ -39799,7 +39868,7 @@ window.addEventListener('appinstalled', () => {
     if (!g) return;
     var p = ligne(salaireId, mois);
     var rst = p ? reste(p) : Number(g.montant || 0);
-    var aujourd = new Date().toISOString().slice(0, 10);
+    var aujourd = s33Aujourdhui();
 
     var ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -39884,7 +39953,7 @@ window.addEventListener('appinstalled', () => {
   window.s33SalValider = async function(salaireId, mois, btn) {
     var montant = parseFloat((document.getElementById('s33sal-montant') || {}).value) || 0;
     var du = parseFloat((document.getElementById('s33sal-du') || {}).value);
-    var date = (document.getElementById('s33sal-date') || {}).value || new Date().toISOString().slice(0, 10);
+    var date = (document.getElementById('s33sal-date') || {}).value || s33Aujourdhui();
     var moyen = (document.getElementById('s33sal-moyen-val') || {}).value || '';
     if (montant <= 0) { toast('Montant à saisir'); return; }
     btn.disabled = true; btn.textContent = 'Enregistrement…';
@@ -39926,7 +39995,7 @@ window.addEventListener('appinstalled', () => {
     }).filter(function(x) { return x.reste > 0; });
     if (!restes.length) { toast('Tout est déjà payé pour ce mois'); return; }
     var total = restes.reduce(function(s2, x) { return s2 + x.reste; }, 0);
-    var aujourd = new Date().toISOString().slice(0, 10);
+    var aujourd = s33Aujourdhui();
 
     var ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -39958,7 +40027,7 @@ window.addEventListener('appinstalled', () => {
   };
 
   window.s33SalToutPayerOk = async function(mois, btn) {
-    var date = (document.getElementById('s33sal-date') || {}).value || new Date().toISOString().slice(0, 10);
+    var date = (document.getElementById('s33sal-date') || {}).value || s33Aujourdhui();
     var moyen = (document.getElementById('s33sal-moyen-val') || {}).value || '';
     btn.disabled = true; btn.textContent = 'Enregistrement…';
     var faits = 0;

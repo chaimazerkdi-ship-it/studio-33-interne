@@ -33,6 +33,17 @@ ligne), sans framework ni étape de compilation.
   personne connectée (`'Bearer ' + (supabaseToken || SUPABASE_KEY)`).
 - Les portails publics (espace client, signature de devis, PV, entreprise)
   passent par leurs fonctions serveur, jamais par la clé publique.
+- **Tâches** (`projects.tasks`, une liste JSON) : toujours modifier par
+  `s33MajTaches(projId, modifier)`. Elle relit la liste (sans relecture
+  réussie, rien n'est écrit) et n'enregistre que si personne ne l'a changée
+  entre-temps (fonction SQL `s33_maj_taches`). Ne jamais écrire
+  `sbUpdate('projects', id, { tasks })` directement : une relecture ratée
+  effaçait toutes les tâches du projet.
+- **Dates du jour** : `s33Aujourdhui()` / `s33DateLocale(d)` (heure du
+  téléphone). `toISOString().slice(0, 10)` donne la veille entre minuit et
+  1 h au Maroc.
+- Un enregistrement raté ne s'annonce jamais « ajouté » ou « sauvegardé
+  localement » : on le dit, et on garde la saisie pour réessayer.
 
 ## Fonctions serveur
 Chaque fonction vérifie qui l'appelle :

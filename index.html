@@ -3253,7 +3253,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-24.1 — securite : comptes, IA, notifications et signatures verrouilles';
+const S33_BUILD = '2026-10-25.1 — plus de perte de taches, de rapports ni de fichiers';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6389,6 +6389,60 @@ function applyLazyMediaImages() {
 async function sbUpdate(table, id, body) { const r = await sbFetch(table, 'PATCH', body, `?id=eq.${id}`, false); s33ToucherProjet(_projetConcerne(table, body, `?id=eq.${id}`)); return r; }
 async function sbUpdateOrThrow(table, id, body) { const r = await sbFetch(table, 'PATCH', body, `?id=eq.${id}`, true); s33ToucherProjet(_projetConcerne(table, body, `?id=eq.${id}`)); return r; }
 async function sbDelete(table, id) { return sbFetch(table, 'DELETE', null, `?id=eq.${id}`); }
+
+// ── Taches d'un projet : un seul chemin d'ecriture ───────────────────
+// Les taches sont une liste dans `projects.tasks`, renvoyee entiere a chaque
+// modification. Avant, une relecture ratee (reseau faible) donnait une liste
+// vide... qui etait enregistree : toutes les taches du projet effacees. Et ce
+// qu'une autre personne modifiait entre la relecture et l'envoi etait ecrase.
+// Ici : sans relecture reussie, on n'ecrit rien ; et la base n'enregistre que
+// si la liste n'a pas change entre-temps (s33_maj_taches), sinon on relit et
+// on recommence. `modifier(taches)` change la copie recue ou renvoie une
+// nouvelle liste ; renvoyer false annule sans rien ecrire.
+// Resultat : la liste enregistree, ou null (un message a deja ete affiche,
+// sauf quand `modifier` a annule).
+async function s33MajTaches(projId, modifier) {
+  const id = parseInt(projId, 10);
+  for (let essai = 0; essai < 3; essai++) {
+    if (essai) await new Promise(r => setTimeout(r, 300 * essai));
+    let lu;
+    try {
+      lu = await sbFetch('projects', 'GET', null, '?id=eq.' + id + '&select=tasks', true);
+    } catch (e) {
+      toast('Pas de connexion — rien n\'a été modifié. Réessayez.');
+      return null;
+    }
+    if (!Array.isArray(lu) || !lu[0]) { toast('Projet introuvable — rien n\'a été modifié'); return null; }
+    const brut = lu[0].tasks;
+    const copie = JSON.parse(JSON.stringify(Array.isArray(brut) ? brut : []));
+    const r = modifier(copie);
+    if (r === false) return null;
+    const apres = Array.isArray(r) ? r : copie;
+    let fait;
+    try {
+      fait = await sbFetch('rpc/s33_maj_taches', 'POST', { p_id: id, p_avant: brut == null ? [] : brut, p_apres: apres }, '', true);
+    } catch (e) {
+      toast('Enregistrement non abouti — vérifiez la connexion et réessayez');
+      return null;
+    }
+    if (fait === true) {
+      const p = (db.projects || []).find(x => x.id === id);
+      if (p) p.tasks = apres;
+      s33ToucherProjet(id);
+      return apres;
+    }
+  }
+  toast('Ce projet est modifié en même temps par quelqu\'un d\'autre — réessayez');
+  return null;
+}
+
+// Date du jour sur le telephone (AAAA-MM-JJ). toISOString() donne la date
+// anglaise : entre minuit et 1 h au Maroc, c'etait encore la veille.
+function s33DateLocale(d) {
+  d = d || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function s33Aujourdhui() { return s33DateLocale(new Date()); }
 async function sbUpsert(table, body) { return sbFetch(table, 'POST', body, ''); }
 
 // ===== DATA STORE =====
@@ -8273,14 +8327,6 @@ async function saveTask() {
   const priority = document.getElementById('task-priority').value;
   if (!name) return;
 
-  // Recharger les données fraîches depuis Supabase pour éviter les conflits concurrents
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-
-  // Mettre à jour aussi le cache local
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-
   // Générer un ID unique basé sur timestamp pour éviter les doublons
   const newId = Date.now();
   const _team = s33TeamList();
@@ -8291,10 +8337,8 @@ async function saveTask() {
   const newTask = { id: newId, name, done: false, status: 'todo', priority };
   if (picked.length) setTaskAssignees(newTask, picked);
   if (deadline) newTask.deadline = deadline;
-  freshTasks.push(newTask);
-  if (p) p.tasks = freshTasks;
-
-  await sbUpdate('projects', projId, {tasks: freshTasks});
+  // Pas enregistree : la fenetre reste ouverte, rien n'est perdu
+  if (!await s33MajTaches(projId, taches => { taches.push(newTask); })) return;
   closeModal('task-modal');
   openProjectDetail(projId);
   toast('Tâche ajoutée');
@@ -8333,19 +8377,17 @@ async function setTaskStatus(projId, taskId, currentStatus) {
   const nextIdx = (STATUS_ORDER.indexOf(currentStatus) + 1) % STATUS_ORDER.length;
   const newStatus = STATUS_ORDER[nextIdx];
 
-  // Reload fresh from Supabase to avoid conflicts
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const task = freshTasks.find(t => t.id === taskId);
-  if (task) {
+  let task = null, introuvable = false;
+  const freshTasks = await s33MajTaches(projId, taches => {
+    task = taches.find(t => t.id === taskId);
+    if (!task) { introuvable = true; return false; }
     task.status = newStatus;
     task.done = (newStatus === 'done');
+  });
+  if (!freshTasks) {
+    if (introuvable) toast('Cette tâche n\'existe plus — actualisez');
+    return;
   }
-
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-
-  await sbUpdate('projects', projId, {tasks: freshTasks});
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
   else openProjectDetail(projId);
@@ -8365,15 +8407,7 @@ async function toggleTask(projId, taskId) {
 }
 
 async function deleteTask(projId, taskId) {
-  // Recharger depuis Supabase pour éviter d'écraser les tâches ajoutées par d'autres
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const updated = freshTasks.filter(t => t.id !== taskId);
-
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = updated;
-
-  await sbUpdate('projects', projId, {tasks: updated});
+  if (!await s33MajTaches(projId, taches => taches.filter(t => t.id !== taskId))) return;
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
   else openProjectDetail(projId);
@@ -8388,16 +8422,10 @@ async function s33DeleteAllTasks(projId) {
   if (!n) { toast('Aucune tâche à supprimer'); return; }
   if (!confirm('Supprimer les ' + n + ' tâches du projet « ' + p.name + ' » ?\n\nLes heures pointées sur ces tâches seront perdues.')) return;
   if (!confirm('Dernière confirmation : tout supprimer, définitivement ?')) return;
-  try {
-    await sbUpdate('projects', projId, { tasks: [] });
-    p.tasks = [];
-    if (currentPage === 'project-detail') renderProjectDetailPage();
-    else if (currentPage === 'taches') renderMesTaches();
-    toast(n + ' tâches supprimées');
-  } catch(e) {
-    console.error('delete all tasks', e);
-    toast('Suppression impossible — réessayez');
-  }
+  if (!await s33MajTaches(projId, () => [])) return;
+  if (currentPage === 'project-detail') renderProjectDetailPage();
+  else if (currentPage === 'taches') renderMesTaches();
+  toast(n + ' tâches supprimées');
 }
 
 // ===== SUBTASK FUNCTIONS =====
@@ -8408,16 +8436,13 @@ function toggleSubtaskPanel(projId, taskId) {
 }
 
 async function toggleSubtask(projId, taskId, subtaskId) {
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const task = freshTasks.find(t => t.id === taskId);
-  if (!task) return;
-  task.subtasks = task.subtasks || [];
-  const sub = task.subtasks.find(s => s.id === subtaskId);
-  if (sub) sub.done = !sub.done;
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-  await sbUpdate('projects', projId, {tasks: freshTasks});
+  if (!await s33MajTaches(projId, taches => {
+    const task = taches.find(t => t.id === taskId);
+    if (!task) return false;
+    task.subtasks = task.subtasks || [];
+    const sub = task.subtasks.find(s => s.id === subtaskId);
+    if (sub) sub.done = !sub.done;
+  })) return;
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
 }
@@ -8427,29 +8452,24 @@ async function addSubtask(projId, taskId) {
   if (!inp) return;
   const name = inp.value.trim();
   if (!name) return;
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const task = freshTasks.find(t => t.id === taskId);
-  if (!task) return;
-  task.subtasks = task.subtasks || [];
-  task.subtasks.push({id: Date.now(), name, done: false});
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-  await sbUpdate('projects', projId, {tasks: freshTasks});
+  const subId = Date.now();
+  if (!await s33MajTaches(projId, taches => {
+    const task = taches.find(t => t.id === taskId);
+    if (!task) return false;
+    task.subtasks = task.subtasks || [];
+    task.subtasks.push({id: subId, name, done: false});
+  })) return;
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
   toast('Sous-tâche ajoutée');
 }
 
 async function deleteSubtask(projId, taskId, subtaskId) {
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const task = freshTasks.find(t => t.id === taskId);
-  if (!task) return;
-  task.subtasks = (task.subtasks || []).filter(s => s.id !== subtaskId);
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-  await sbUpdate('projects', projId, {tasks: freshTasks});
+  if (!await s33MajTaches(projId, taches => {
+    const task = taches.find(t => t.id === taskId);
+    if (!task) return false;
+    task.subtasks = (task.subtasks || []).filter(s => s.id !== subtaskId);
+  })) return;
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
 }
@@ -8466,29 +8486,24 @@ async function addComment(projId, taskId) {
   if (!inp) return;
   const text = inp.value.trim();
   if (!text) return;
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const task = freshTasks.find(t => t.id === taskId);
-  if (!task) return;
-  task.comments = task.comments || [];
-  task.comments.push({id: Date.now(), author: currentUser.name, text, createdAt: new Date().toISOString()});
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-  await sbUpdate('projects', projId, {tasks: freshTasks});
+  const commentaire = {id: Date.now(), author: currentUser.name, text, createdAt: new Date().toISOString()};
+  if (!await s33MajTaches(projId, taches => {
+    const task = taches.find(t => t.id === taskId);
+    if (!task) return false;
+    task.comments = task.comments || [];
+    task.comments.push(commentaire);
+  })) return;
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
   toast('Commentaire ajouté');
 }
 
 async function deleteComment(projId, taskId, commentId) {
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const task = freshTasks.find(t => t.id === taskId);
-  if (!task) return;
-  task.comments = (task.comments || []).filter(c => c.id !== commentId);
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-  await sbUpdate('projects', projId, {tasks: freshTasks});
+  if (!await s33MajTaches(projId, taches => {
+    const task = taches.find(t => t.id === taskId);
+    if (!task) return false;
+    task.comments = (task.comments || []).filter(c => c.id !== commentId);
+  })) return;
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
 }
@@ -8519,29 +8534,24 @@ async function addTimeLog(projId, taskId) {
   const minutes = h * 60 + m;
   if (minutes <= 0) { toast('Veuillez saisir une durée'); return; }
   const note = noteEl ? noteEl.value.trim() : '';
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const task = freshTasks.find(t => t.id === taskId);
-  if (!task) return;
-  task.timeLog = task.timeLog || [];
-  task.timeLog.push({id: Date.now(), author: currentUser.name, minutes, date: new Date().toISOString().slice(0,10), note});
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-  await sbUpdate('projects', projId, {tasks: freshTasks});
+  const saisie = {id: Date.now(), author: currentUser.name, minutes, date: s33Aujourdhui(), note};
+  if (!await s33MajTaches(projId, taches => {
+    const task = taches.find(t => t.id === taskId);
+    if (!task) return false;
+    task.timeLog = task.timeLog || [];
+    task.timeLog.push(saisie);
+  })) return;
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
   toast('Temps enregistré ✓');
 }
 
 async function deleteTimeLog(projId, taskId, logId) {
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-  const task = freshTasks.find(t => t.id === taskId);
-  if (!task) return;
-  task.timeLog = (task.timeLog || []).filter(l => l.id !== logId);
-  const p = db.projects.find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
-  await sbUpdate('projects', projId, {tasks: freshTasks});
+  if (!await s33MajTaches(projId, taches => {
+    const task = taches.find(t => t.id === taskId);
+    if (!task) return false;
+    task.timeLog = (task.timeLog || []).filter(l => l.id !== logId);
+  })) return;
   if (currentPage === 'project-detail') renderProjectDetailPage();
   else if (currentPage === 'taches') renderMesTaches();
 }
@@ -13275,6 +13285,7 @@ function handleMediaUpload(input) {
   const files = Array.from(input.files);
 
   let processed = 0;
+  const nonEnvoyes = [];
   files.forEach(file => {
     const reader = new FileReader();
     reader.onload = async e => {
@@ -13307,11 +13318,18 @@ function handleMediaUpload(input) {
         const r = res[0];
         if (r.thumb) _mediaThumbCache[r.id] = r.thumb;
         db.media.push({ ...r, data: undefined, thumb: r.thumb || null, isPDF: r.is_pdf, isGeneral: r.is_general, addedAt: r.added_at, projectId: r.project_id });
+      } else {
+        nonEnvoyes.push(file.name);
       }
       processed++;
       if (processed === files.length) {
         renderMediatheque();
-        toast(files.length + ' fichier(s) ajouté(s)');
+        // Ne compter comme ajoutes que les fichiers recus par la base
+        const recus = files.length - nonEnvoyes.length;
+        toast(recus + ' fichier(s) ajouté(s)' + (nonEnvoyes.length
+          ? ' • non envoyé' + (nonEnvoyes.length > 1 ? 's' : '') + ' : ' + nonEnvoyes.slice(0, 3).join(', ') +
+            (nonEnvoyes.length > 3 ? '…' : '') + ' — réessayez'
+          : ''));
       }
     };
     reader.readAsDataURL(file);
@@ -14534,14 +14552,8 @@ function taskDeadlineEditable(projId, taskId, deadline, isDone) {
 }
 
 async function setTaskDeadline(projId, taskId, newDate) {
-  const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-  const freshTasks = ((fresh||[])[0]?.tasks || []).map(t => {
-    if (String(t.id) === String(taskId)) return { ...t, deadline: newDate || null };
-    return t;
-  });
-  await sbUpdate('projects', projId, { tasks: freshTasks });
-  const p = (db.projects||[]).find(x => x.id === projId);
-  if (p) p.tasks = freshTasks;
+  if (!await s33MajTaches(projId, taches => taches.map(t =>
+    String(t.id) === String(taskId) ? { ...t, deadline: newDate || null } : t))) return;
   toast('Échéance mise à jour ✓');
   renderProjects();
 }
@@ -16099,9 +16111,10 @@ async function executeSamiaActions(text, mode) {
           assignedUserId,
           deadline: actionData.deadline || null
         };
-        if (!Array.isArray(proj.tasks)) proj.tasks = [];
-        proj.tasks.push(newTask);
-        await sbUpdate('projects', proj.id, { tasks: proj.tasks });
+        if (!await s33MajTaches(proj.id, taches => { taches.push(newTask); })) {
+          resultMsg = `Tâche <strong>"${newTask.name}"</strong> non enregistrée — vérifiez la connexion et redemandez.`;
+          break;
+        }
         resultMsg = `Tâche <strong>"${newTask.name}"</strong> assignée à <strong>${assignedLabel}</strong> sur le projet <strong>${proj.name}</strong>${newTask.deadline ? ` — échéance : ${new Date(newTask.deadline).toLocaleDateString('fr-MA')}` : ''}.`;
         if (typeof renderProjects === 'function') renderProjects();
         // Push notify the assignee (if different from current user)
@@ -17219,13 +17232,11 @@ function renderMesTaches() {
 // Marquer une tâche projet terminée (utilisé par le glissement vers la gauche)
 async function s33MarkTaskDone(projId, taskId) {
   try {
-    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-    const task = freshTasks.find(t => t.id === taskId);
-    if (task) { task.status = 'done'; task.done = true; }
-    const p = db.projects.find(x => x.id === projId);
-    if (p) p.tasks = freshTasks;
-    await sbUpdate('projects', projId, { tasks: freshTasks });
+    if (!await s33MajTaches(projId, taches => {
+      const task = taches.find(t => t.id === taskId);
+      if (!task) return false;
+      task.status = 'done'; task.done = true;
+    })) { renderMesTaches(); return; }
     toast('Tâche terminée ✓');
     renderMesTaches();
   } catch(e) {
@@ -17425,15 +17436,13 @@ async function s33QuickAddTask() {
       if (res && res[0]) { db.userTasks = db.userTasks || []; db.userTasks.push({ ...res[0], userId: res[0].user_id }); }
     } else {
       const projId = parseInt(projVal);
-      const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-      const freshTasks = (fresh && fresh[0] && Array.isArray(fresh[0].tasks)) ? fresh[0].tasks : [];
-      const newId = freshTasks.length ? Math.max(...freshTasks.map(t => t.id || 0)) + 1 : 1;
-      freshTasks.push({ id: newId, name: name, done: false, priority: 'normal',
-        assignedTo: who ? who.name : (currentUser.role === 'admin' ? '' : currentUser.name),
-        assignedUserId: who ? who.id : (currentUser.role === 'admin' ? null : currentUser.id), deadline: null });
-      const p = db.projects.find(x => x.id === projId);
-      if (p) p.tasks = freshTasks;
-      await sbUpdate('projects', projId, { tasks: freshTasks });
+      // Pas enregistree : le nom reste dans le champ
+      if (!await s33MajTaches(projId, taches => {
+        const newId = taches.length ? Math.max(...taches.map(t => t.id || 0)) + 1 : 1;
+        taches.push({ id: newId, name: name, done: false, priority: 'normal',
+          assignedTo: who ? who.name : (currentUser.role === 'admin' ? '' : currentUser.name),
+          assignedUserId: who ? who.id : (currentUser.role === 'admin' ? null : currentUser.id), deadline: null });
+      })) return;
     }
     if (nameEl) nameEl.value = '';
     renderMesTaches();
@@ -17445,30 +17454,24 @@ async function s33QuickAddTask() {
 
 async function s33ToggleDoneQuick(projId, taskId) {
   try {
-    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-    const task = freshTasks.find(t => t.id === taskId);
-    if (task) {
+    if (!await s33MajTaches(projId, taches => {
+      const task = taches.find(t => t.id === taskId);
+      if (!task) return false;
       const nowDone = !(task.status === 'done' || task.done === true);
       task.status = nowDone ? 'done' : 'todo';
       task.done = nowDone;
-    }
-    const p = db.projects.find(x => x.id === projId);
-    if (p) p.tasks = freshTasks;
-    await sbUpdate('projects', projId, { tasks: freshTasks });
+    })) return;
     if (currentPage === 'project-detail') renderProjectDetailPage(); else renderMesTaches();
   } catch(e) { console.error('toggle done', e); toast('Erreur — réessayez'); }
 }
 
 async function s33ToggleEncours(projId, taskId) {
   try {
-    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-    const task = freshTasks.find(t => t.id === taskId);
-    if (task) task.status = s33IsEnCours(task) ? 'todo' : 'inprogress';
-    const p = db.projects.find(x => x.id === projId);
-    if (p) p.tasks = freshTasks;
-    await sbUpdate('projects', projId, { tasks: freshTasks });
+    if (!await s33MajTaches(projId, taches => {
+      const task = taches.find(t => t.id === taskId);
+      if (!task) return false;
+      task.status = s33IsEnCours(task) ? 'todo' : 'inprogress';
+    })) return;
     renderMesTaches();
   } catch(e) { console.error('toggle en cours', e); }
 }
@@ -17492,13 +17495,11 @@ async function s33PostponeTask(projId, taskId, when, isAdminTask) {
       const t = (db.userTasks || []).find(x => x.id === taskId);
       if (t) t.deadline = date;
     } else {
-      const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-      const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-      const task = freshTasks.find(t => t.id === taskId);
-      if (task) task.deadline = date;
-      const p = db.projects.find(x => x.id === projId);
-      if (p) p.tasks = freshTasks;
-      await sbUpdate('projects', projId, { tasks: freshTasks });
+      if (!await s33MajTaches(projId, taches => {
+        const task = taches.find(t => t.id === taskId);
+        if (!task) return false;
+        task.deadline = date;
+      })) return;
     }
     renderMesTaches();
     toast('Reportée à ' + label);
@@ -17564,16 +17565,20 @@ async function s33CommitAssignees(projId, taskId) {
   const team = s33TeamList();
   const list = names.map(n => team.find(m => m.name === n)).filter(Boolean).map(m => ({ id: m.id, name: m.name }));
   try {
-    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-    const task = freshTasks.find(t => t.id === taskId);
-    if (!task) { toast('Tâche introuvable — actualisez'); return; }
-    const avant = taskAssigneeNames(task);
-    if (avant.length === list.length && avant.every(n => names.indexOf(n) !== -1)) return;
-    setTaskAssignees(task, list);
+    let task = null, avant = [], pareil = false, introuvable = false;
+    const ok = await s33MajTaches(projId, taches => {
+      task = taches.find(t => t.id === taskId);
+      if (!task) { introuvable = true; return false; }
+      avant = taskAssigneeNames(task);
+      pareil = avant.length === list.length && avant.every(n => names.indexOf(n) !== -1);
+      if (pareil) return false;
+      setTaskAssignees(task, list);
+    });
+    if (!ok) {
+      if (introuvable) toast('Tâche introuvable — actualisez');
+      return;
+    }
     const p = db.projects.find(x => x.id === projId);
-    if (p) p.tasks = freshTasks;
-    await sbUpdate('projects', projId, { tasks: freshTasks });
     renderMesTaches();
     toast(!list.length ? 'Tâche désassignée'
         : list.length === 1 ? 'Tâche assignée à ' + list[0].name
@@ -17594,13 +17599,13 @@ async function s33ReassignTask(projId, taskId, whoName) {
   if (pop) pop.remove();
   const who = s33TeamList().find(m => m.name === whoName) || null;
   try {
-    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-    const task = freshTasks.find(t => t.id === taskId);
-    if (task) { task.assignedTo = who ? who.name : ''; task.assignedUserId = who ? who.id : null; }
+    let task = null;
+    if (!await s33MajTaches(projId, taches => {
+      task = taches.find(t => t.id === taskId);
+      if (!task) return false;
+      task.assignedTo = who ? who.name : ''; task.assignedUserId = who ? who.id : null;
+    })) return;
     const p = db.projects.find(x => x.id === projId);
-    if (p) p.tasks = freshTasks;
-    await sbUpdate('projects', projId, { tasks: freshTasks });
     renderMesTaches();
     toast(who ? 'Tâche transférée à ' + who.name : 'Tâche désassignée');
     if (who && typeof s33SendPush === 'function' && task) {
@@ -20276,9 +20281,6 @@ async function saveNewTask() {
   const proj = db.projects.find(p => p.id === projId);
   if (!proj) return;
 
-  if (!Array.isArray(proj.tasks)) proj.tasks = [];
-  const newId = proj.tasks.length > 0 ? Math.max(...proj.tasks.map(t => t.id || 0)) + 1 : 1;
-
   let assignedTo = '';
   let assignedUserId = null;
 
@@ -20304,10 +20306,11 @@ async function saveNewTask() {
     assignedUserId = currentUser.id;
   }
 
-  const newTask = { id: newId, name, done: false, priority, assignedTo, assignedUserId, deadline };
-  proj.tasks.push(newTask);
-
-  await sbUpdate('projects', proj.id, { tasks: proj.tasks });
+  // Pas enregistree : la fenetre reste ouverte, rien n'est perdu
+  if (!await s33MajTaches(proj.id, taches => {
+    const newId = taches.length > 0 ? Math.max(...taches.map(t => t.id || 0)) + 1 : 1;
+    taches.push({ id: newId, name, done: false, priority, assignedTo, assignedUserId, deadline });
+  })) return;
   closeAddTaskModal();
   renderMesTaches();
   const label = assignedTo ? ` → ${assignedTo}` : '';
@@ -20714,13 +20717,11 @@ function getMonthTimeMinutes(memberName) {
 // Marquer une tâche terminée directement depuis la Charge d'équipe
 async function s33WorkloadTaskDone(projId, taskId) {
   try {
-    const fresh = await sbGet('projects', `?id=eq.${projId}&select=tasks`);
-    const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-    const task = freshTasks.find(t => t.id === taskId);
-    if (task) { task.status = 'done'; task.done = true; }
-    const p = db.projects.find(x => x.id === projId);
-    if (p) p.tasks = freshTasks;
-    await sbUpdate('projects', projId, { tasks: freshTasks });
+    if (!await s33MajTaches(projId, taches => {
+      const task = taches.find(t => t.id === taskId);
+      if (!task) return false;
+      task.status = 'done'; task.done = true;
+    })) return;
     toast('Tâche marquée terminée');
     renderWorkload();
   } catch(e) {
@@ -21981,6 +21982,7 @@ function escHTML(str) {
     if (existing && !(existing.projectId === projId && existing.taskId === taskId)) {
       if (!confirm('Un timer tourne déjà sur « ' + existing.taskName + ' ». L\'arrêter et enregistrer avant de démarrer celui-ci ?')) return;
       await window.s33StopTimer(true);
+      if (getRunningTimer()) return;   // pas enregistre : on garde l'ancien chrono
     } else if (existing) {
       toast('Timer déjà actif sur cette tâche'); return;
     }
@@ -22005,26 +22007,26 @@ function escHTML(str) {
     if (!t) return;
     const elapsedMs = Date.now() - t.startedAt;
     const minutes = Math.max(1, Math.round(elapsedMs / 60000));
-    try {
-      const fresh = await sbGet('projects', '?id=eq.' + t.projectId + '&select=tasks');
-      const freshTasks = (fresh && fresh[0] && fresh[0].tasks) ? fresh[0].tasks : [];
-      const task = freshTasks.find(x => x.id === t.taskId);
-      if (task) {
-        task.timeLog = task.timeLog || [];
-        task.timeLog.push({
-          id: Date.now(),
-          author: currentUser.name,
-          minutes: minutes,
-          date: new Date().toISOString().slice(0,10),
-          note: t.note || '',
-          phase: t.phase || '',
-          startedAt: new Date(t.startedAt).toISOString()
-        });
-        const p = db.projects.find(x => x.id === t.projectId);
-        if (p) p.tasks = freshTasks;
-        await sbUpdate('projects', t.projectId, { tasks: freshTasks });
-      }
-    } catch(e) { console.error('Timer stop save error:', e); }
+    // Le temps n'est pas enregistre (reseau) : le chrono continue, pour
+    // pouvoir l'arreter a nouveau. L'arreter quand meme perdait ce temps.
+    const saisie = {
+      id: Date.now(),
+      author: currentUser.name,
+      minutes: minutes,
+      date: s33Aujourdhui(),
+      note: t.note || '',
+      phase: t.phase || '',
+      startedAt: new Date(t.startedAt).toISOString()
+    };
+    let tacheDisparue = false;
+    const enregistre = await s33MajTaches(t.projectId, taches => {
+      const task = taches.find(x => x.id === t.taskId);
+      if (!task) { tacheDisparue = true; return false; }
+      task.timeLog = task.timeLog || [];
+      task.timeLog.push(saisie);
+    });
+    if (!enregistre && !tacheDisparue) return;
+    if (tacheDisparue) toast('La tâche n\'existe plus — chrono arrêté sans enregistrer');
     setRunningTimer(null);
     renderTimerWidget();
     if (!silent) toast('Timer arrêté — ' + formatTime(minutes) + ' enregistré');
@@ -23547,6 +23549,7 @@ function escHTML(str) {
     };
 
     let ok = 0, fail = 0;
+    const nonEnvoyes = [];   // noms des fichiers que la base n'a pas recus
     for (let i = 0; i < valid.length; i++) {
       let file = valid[i];
       setProgress(i, valid.length, file.name, 'lecture…');
@@ -23622,7 +23625,7 @@ function escHTML(str) {
             db.media = db.media || [];
             db.media.push(vIns);
             ok++;
-          } else { fail++; }
+          } else { fail++; nonEnvoyes.push(file.name); }
           continue;
         }
         const rawData = await new Promise((res, rej) => {
@@ -23705,13 +23708,8 @@ function escHTML(str) {
                 headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY) }
               }).catch(()=>{});
             }
-            // Local-only fallback
-            const existingIds = (db.media || []).map(m => m.id || 0);
-            inserted = Object.assign({}, docObj, {
-              file_path: null,
-              data: data,
-              id: existingIds.length ? Math.max(...existingIds) + 1 : Date.now()
-            });
+            // Plus de faux document « local » : il etait compte comme ajoute,
+            // puis disparaissait au chargement suivant.
           }
         }
         if (inserted) {
@@ -23721,10 +23719,12 @@ function escHTML(str) {
           ok++;
         } else {
           fail++;
+          nonEnvoyes.push(file.name);
         }
       } catch(err) {
         console.error('Batch upload error', file.name, err);
         fail++;
+        nonEnvoyes.push(file.name);
       }
     }
 
@@ -23742,7 +23742,11 @@ function escHTML(str) {
     if (modal) modal.remove();
     const parts = [];
     parts.push(ok + ' fichier(s) ajouté(s)');
-    if (fail) parts.push(fail + ' échec(s)');
+    if (nonEnvoyes.length) {
+      parts.push('non envoyé' + (nonEnvoyes.length > 1 ? 's' : '') + ' : ' +
+        nonEnvoyes.slice(0, 3).join(', ') + (nonEnvoyes.length > 3 ? '…' : '') + ' — réessayez');
+    }
+    if (fail > nonEnvoyes.length) parts.push((fail - nonEnvoyes.length) + ' échec(s)');
     if (rejected) parts.push(rejected + ' format(s) refusé(s)');
     toast(parts.join(' • '));
     renderDocsV2();
@@ -23846,17 +23850,13 @@ function escHTML(str) {
       }
     }
 
-    // 5) Final fallback: purely local
-    const useLocal = !inserted;
-    if (useLocal) {
-      const existingIds = (db.media || []).map(m => m.id || 0);
-      inserted = {
-        ...docObj,
-        // Local fallback always keeps base64 (no DB row → signed URL not possible)
-        file_path: null,
-        data: window._s33UploadData,
-        id: existingIds.length ? Math.max(...existingIds) + 1 : Date.now()
-      };
+    // 5) Pas enregistre : on le dit, et la fenetre reste ouverte avec le
+    // fichier pour reessayer. (Avant : faux document « local », compte comme
+    // ajoute, disparu au chargement suivant.)
+    if (!inserted) {
+      toast('« ' + name + ' » non envoyé — vérifiez la connexion et réessayez');
+      btn.disabled = false; btn.textContent = 'Enregistrer';
+      return;
     }
 
     // Ensure folder is set in-memory even if DB ignored/dropped it
@@ -23876,9 +23876,7 @@ function escHTML(str) {
     } catch(e) {}
 
     document.getElementById('s33-upload-modal').remove();
-    toast(useLocal
-      ? '« ' + name + ' » ajouté (local — pas synchronisé avec la base)'
-      : storagePath
+    toast(storagePath
         ? '« ' + name + ' » ajouté ✓'
         : '« ' + name + ' » ajouté');
     renderDocsV2();
@@ -24110,8 +24108,53 @@ function escHTML(str) {
     const host = document.getElementById(prefix + '-entries');
     if (!host) return;
     host.innerHTML = '';
+    // Un brouillon du jour (page quittee, reconnexion, telephone eteint) :
+    // on remet ce qui avait ete tape au lieu d'un formulaire vide
+    const brouillon = mrLireBrouillon();
+    if (brouillon) {
+      brouillon.forEach((v, i) => window.mrAdd(prefix, { startCollapsed: i > 0, noScroll: true, valeurs: v }));
+      toast('Brouillon de rapport retrouvé');
+      return;
+    }
     window.mrAdd(prefix, { startCollapsed: true, noScroll: true });
   };
+
+  // ── BROUILLON ───────────────────────────────────────────────
+  // Ce qui est tape est garde sur le telephone a chaque saisie, pour la
+  // personne connectee et pour le jour meme. Efface une fois le rapport parti
+  // (ou mis en file d'envoi).
+  function cleBrouillon() { return 's33_rapport_brouillon_' + (currentUser ? currentUser.id : ''); }
+  function mrLireBrouillon() {
+    try {
+      const b = JSON.parse(localStorage.getItem(cleBrouillon()) || 'null');
+      if (!b || b.date !== s33Aujourdhui() || !Array.isArray(b.entrees)) return null;
+      const utiles = b.entrees.filter(v => v && (v.projectId || v.tasks || v.hours || v.blockers));
+      return utiles.length ? utiles : null;
+    } catch (_) { return null; }
+  }
+  window.mrEffacerBrouillon = function() {
+    try { localStorage.removeItem(cleBrouillon()); } catch (_) {}
+  };
+  let _mrBrouillonT = null;
+  function mrSauverBrouillon(prefix) {
+    clearTimeout(_mrBrouillonT);
+    _mrBrouillonT = setTimeout(() => {
+      if (!currentUser || window._mrSubmitting) return;
+      const entrees = window.mrCollect(prefix).map(e => ({
+        projectId: e.projectId, tasks: e.tasks, hours: isNaN(e.hours) ? '' : e.hours, blockers: e.blockers
+      }));
+      if (!entrees.some(v => v.projectId || v.tasks || v.hours || v.blockers)) return;
+      try { localStorage.setItem(cleBrouillon(), JSON.stringify({ date: s33Aujourdhui(), entrees })); } catch (_) {}
+    }, 400);
+  }
+  // Le projet et la duree se choisissent aussi par des boutons : on ecoute
+  // les clics en plus de la frappe.
+  ['input', 'change', 'click'].forEach(type => document.addEventListener(type, e => {
+    const host = e.target && e.target.closest ? e.target.closest('[id$="-entries"]') : null;
+    if (!host) return;
+    const prefix = host.id.slice(0, -'-entries'.length);
+    if (Array.isArray(window[uidsKey(prefix)])) mrSauverBrouillon(prefix);
+  }, true));
 
   window.mrAdd = function(prefix, opts) {
     opts = opts || {};
@@ -24122,7 +24165,7 @@ function escHTML(str) {
     uids.forEach(u => collapseEntry(prefix, u, true));
     const uid = makeUid();
     uids.push(uid);
-    host.insertAdjacentHTML('beforeend', entryHtml(prefix, uid, !!opts.startCollapsed));
+    host.insertAdjacentHTML('beforeend', entryHtml(prefix, uid, !!opts.startCollapsed, opts.valeurs));
     const el = document.getElementById(prefix + '-entry-' + uid);
     if (el && !opts.noScroll) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
     window.mrRefreshSummary(prefix);
@@ -24474,7 +24517,7 @@ function escHTML(str) {
       if (!confirm('Total : ' + totalHours + 'h sur une journée — confirmer ?')) { releaseLock(); return; }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = s33Aujourdhui();
     const uid   = String(currentUser.id);
 
     // Désactiver le bouton
@@ -24561,25 +24604,24 @@ function escHTML(str) {
         ok++;
       } catch(err) {
         console.error('Échec enregistrement rapport:', err.message);
-        // Échec pendant un envoi : si le réseau a lâché, mettre en file plutôt qu'échouer
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-          s33QueueOfflineReport(reportData);
-          db.dailyReports = (db.dailyReports || []).filter(r =>
-            !(String(r.user_id) === uid && r.date === today && parseInt(r.project_id) === projId && !Number.isInteger(r.id)));
-          db.dailyReports.unshift({ ...reportData, id: '_offline_' + Date.now() + '_' + projId, _pendingSync: true });
-          queued++;
-        } else {
-          failed++;
-          toast('Erreur enregistrement projet ' + (project ? project.name : '#' + projId) + ' — réessayez', 'error');
-        }
+        // Echec (hors ligne, reseau faible, serveur injoignable) : le rapport
+        // part dans la file du telephone au lieu d'etre perdu, et sera renvoye
+        // tout seul. Avant, seul « hors ligne » etait garde : sur un reseau
+        // faible, le formulaire etait vide et le texte perdu.
+        s33QueueOfflineReport(reportData);
+        db.dailyReports = (db.dailyReports || []).filter(r =>
+          !(String(r.user_id) === uid && r.date === today && parseInt(r.project_id) === projId && !Number.isInteger(r.id)));
+        db.dailyReports.unshift({ ...reportData, id: '_offline_' + Date.now() + '_' + projId, _pendingSync: true });
+        queued++;
       }
     }
 
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origLabel; }
     releaseLock();
+    if (!failed) window.mrEffacerBrouillon();
 
     if (queued > 0) {
-      toast('Hors-ligne — ' + queued + ' rapport' + (queued > 1 ? 's' : '') + ' enregistré' + (queued > 1 ? 's' : '') + ' et synchronisé' + (queued > 1 ? 's' : '') + ' dès le retour du réseau', 'warning');
+      toast('Pas de réseau stable — ' + queued + ' rapport' + (queued > 1 ? 's' : '') + ' gardé' + (queued > 1 ? 's' : '') + ' sur ce téléphone, envoi automatique dès que le réseau revient', 'warning');
       s33UpdateOfflineBadge();
     }
 
@@ -24644,14 +24686,17 @@ async function s33FlushOfflineReports(manual) {
     return;
   }
   let q = s33GetOfflineQueue();
-  if (!q.length) return;
+  if (!q.length || !currentUser) return;
   _s33Flushing = true;
   let synced = 0;
   const remaining = [];
   for (const rd of q) {
+    // Sur un poste partage, le rapport d'une autre personne attend qu'elle
+    // se reconnecte : il partira avec SA session.
+    if (String(rd.user_id) !== String(currentUser.id)) { remaining.push(rd); continue; }
     const payload = { ...rd }; delete payload._queuedAt;
     try {
-      await sbInsertOrThrow('daily_reports', payload);
+      await s33EnvoyerRapport(payload);
       synced++;
     } catch(err) {
       console.warn('Sync rapport hors-ligne échouée, on garde en file:', err.message);
@@ -24669,9 +24714,34 @@ async function s33FlushOfflineReports(manual) {
   }
 }
 
+// Un rapport en file peut deja exister en base (deja depose plus tot, ou
+// l'envoi est passe sans que la reponse revienne) : un simple ajout etait
+// alors refuse a chaque essai, pour toujours. On insere OU on met a jour,
+// sur la cle (personne, jour, projet) de la base.
+async function s33EnvoyerRapport(payload) {
+  const envoi = jeton => fetch(SUPABASE_URL + '/rest/v1/daily_reports?on_conflict=user_id,date,project_id', {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + jeton,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates,return=minimal'
+    },
+    body: JSON.stringify(payload)
+  });
+  let r = await envoi(supabaseToken || SUPABASE_KEY);
+  if (r.status === 401 && await refreshSupabaseToken()) r = await envoi(supabaseToken);
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text().catch(() => '')).slice(0, 160));
+}
+
 // Synchronise au retour du réseau + au démarrage
 window.addEventListener('online', () => { s33UpdateOfflineBadge(); s33FlushOfflineReports(); });
 window.addEventListener('offline', () => s33UpdateOfflineBadge());
+// Un reseau faible ne declenche jamais « online » : on reessaie aussi
+// toutes les 2 minutes tant qu'un rapport attend.
+setInterval(() => {
+  if (currentUser && s33GetOfflineQueue().length) s33FlushOfflineReports();
+}, 120000);
 
 // ═══════════════════════════════════════════════════════════════════
 // ░░ SPRINT 2 — PIPELINE CRM (Prospects avant clients)              ░
@@ -25857,14 +25927,12 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
     let msg = [];
 
     if (applyTasks) {
-      const existingTasks = Array.isArray(proj.tasks) ? proj.tasks : [];
       const now = new Date();
       const newTasks = (tpl.tasks || []).map(function(tk, idx) {
         const due = new Date(now.getTime() + (tk.offset_days || 0) * 86400000);
         return { id: Date.now() + idx, name: tk.name, phase: tk.phase || null, priority: tk.priority || 'normal', deadline: due.toISOString().slice(0,10), done: false, status: 'todo' };
       });
-      update.tasks = existingTasks.concat(newTasks);
-      proj.tasks = update.tasks;
+      if (!await s33MajTaches(projId, function(taches){ return taches.concat(newTasks); })) return;
       msg.push(newTasks.length + ' tâches ajoutées');
     }
 
@@ -25878,7 +25946,7 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
     }
 
     try {
-      await sbUpdate('projects', projId, update);
+      if (Object.keys(update).length) await sbUpdateOrThrow('projects', projId, update);
       toast('Template appliqué sur "' + proj.name + '" — ' + msg.join(', '));
       if (typeof renderProjects === 'function') renderProjects();
     } catch(e) {
@@ -25956,14 +26024,12 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
     var msg = [];
 
     if (applyTasks) {
-      const existingTasks = Array.isArray(proj.tasks) ? proj.tasks : [];
       const now = new Date();
       const newTasks = (tpl.tasks || []).map(function(tk, idx) {
         const due = new Date(now.getTime() + (tk.offset_days || 0) * 86400000);
         return { id: Date.now() + idx, name: tk.name, phase: tk.phase || null, priority: tk.priority || 'normal', deadline: due.toISOString().slice(0,10), done: false, status: 'todo' };
       });
-      update.tasks = existingTasks.concat(newTasks);
-      proj.tasks = update.tasks;
+      if (!await s33MajTaches(projId, function(taches){ return taches.concat(newTasks); })) return;
       msg.push(newTasks.length + ' tâche' + (newTasks.length > 1 ? 's' : '') + ' ajoutée' + (newTasks.length > 1 ? 's' : ''));
     }
 
@@ -25976,10 +26042,10 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
       msg.push(newFolders.length + ' dossier' + (newFolders.length > 1 ? 's' : '') + ' ajouté' + (newFolders.length > 1 ? 's' : ''));
     }
 
-    if (!Object.keys(update).length) { toast('Rien à ajouter (doublons évités)'); return; }
+    if (!Object.keys(update).length && !msg.length) { toast('Rien à ajouter (doublons évités)'); return; }
 
     try {
-      await sbUpdate('projects', projId, update);
+      if (Object.keys(update).length) await sbUpdateOrThrow('projects', projId, update);
       toast('Template "' + tpl.name + '" appliqué — ' + msg.join(', '));
       renderProjectDetailPage();
     } catch(e) {
@@ -26086,18 +26152,15 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
                 status: 'todo'
               };
             });
-            recent.tasks = tasks;
             // Folders
             if (Array.isArray(tpl.folders) && tpl.folders.length) {
               recent.document_folders = tpl.folders.slice();
+              try { await sbUpdate('projects', recent.id, { document_folders: recent.document_folders }); } catch(e) {}
             }
-            // Persist
-            try {
-              await sbUpdate('projects', recent.id, { tasks: tasks, document_folders: recent.document_folders || [] });
-            } catch(e) {
-              try { await sbUpdate('projects', recent.id, { tasks: tasks }); } catch(e2) {}
+            // Taches ajoutees a la liste relue, jamais a la place
+            if (await s33MajTaches(recent.id, function(t){ return t.concat(tasks); })) {
+              toast('Template appliqué — ' + tasks.length + ' tâches créées');
             }
-            toast('Template appliqué — ' + tasks.length + ' tâches créées');
           }
         } catch(e) { console.warn('Template apply error:', e); }
       }
@@ -27571,21 +27634,12 @@ window.addEventListener('offline', () => s33UpdateOfflineBadge());
       if (storagePath) sbStorageRemove(storagePath);
     }
     if (!saved) {
-      // Fallback: localStorage only — must keep base64 since no DB row exists
-      if (!doc.file_data && storagePath) {
-        // Re-read file as base64 for offline mode
-        doc = await new Promise(function(resolve) {
-          const r = new FileReader();
-          r.onload = function(e) { resolve(Object.assign({}, baseDoc, { file_data: e.target.result })); };
-          r.readAsDataURL(file);
-        });
-        sbStorageRemove(storagePath);
-      }
-      doc.id = Date.now();
-      if (!db.admin_docs) db.admin_docs = [];
-      db.admin_docs.push(doc);
-      localStorage.setItem('s33_admin_docs_cache', JSON.stringify(db.admin_docs));
-      if (typeof toast === 'function') toast('Sauvegardé localement (Supabase indispo)');
+      // Pas enregistre. Avant : « Sauvegardé localement », puis le document
+      // disparaissait au chargement suivant. On le dit, et la fenetre reste
+      // ouverte avec le fichier pour reessayer.
+      if (typeof toast === 'function') toast('Document non envoyé — vérifiez la connexion et réessayez');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = origLabel || 'Enregistrer'; }
+      return;
     } else {
       if (!db.admin_docs) db.admin_docs = [];
       db.admin_docs.push(saved);

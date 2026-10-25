@@ -3253,7 +3253,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-25.2 — chiffres justes : dates, numeros de facture, heures, TVA';
+const S33_BUILD = '2026-10-25.3 — droits de l equipe : chacune voit ses sections';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -7110,10 +7110,12 @@ try {
 } catch(e) { console.warn('[notif] ecoute service worker', e); }
 
 function navigate(page) {
-  // Bloquer l'accès à Administratif pour les co-admins avec no_administratif
-  if (page === 'administratif' && currentUser?.permissions?.no_administratif === true) {
-    toast('Accès non autorisé', 'warning');
-    return;
+  // Une page reservee ne s'ouvre pas par un lien direct (?p=finance) ou une
+  // notification : avant, seule l'entree du menu etait cachee.
+  const _section = S33_PAGES_RESERVEES[page];
+  if (_section && currentUser && !s33PeutVoir(_section)) {
+    toast('Cette page ne fait pas partie de vos accès');
+    page = 'dashboard';
   }
 
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -7503,14 +7505,24 @@ const S33_SHORTCUTS = [
 
 // Permissions reelles (pas l'etat du menu, qui peut ne pas encore etre
 // applique au premier rendu — sinon un bouton apparait puis disparait).
-function s33ScPeutVoir(key) {
+// Cette personne voit-elle la section ? La base applique la meme regle
+// (fonction SQL s33_voit) : le menu, les liens directs (?p=finance) et les
+// donnees disent la meme chose.
+function s33PeutVoir(key) {
   if (!currentUser) return false;
-  const perms = currentUser.permissions || {};
-  if (currentUser.role === 'admin') return true;
-  const sec = perms.sections || {};
-  if (perms.is_co_admin === true) return sec[key] !== false;
+  const p = currentUser.permissions || {};
+  const sec = p.sections || {};
+  if (currentUser.role === 'admin') return key === 'administratif' ? !p.no_administratif : true;
+  if (p.is_co_admin === true) return key === 'administratif' ? sec[key] === true : sec[key] !== false;
   return sec[key] === true;
 }
+function s33ScPeutVoir(key) { return s33PeutVoir(key); }
+
+// Pages reservees, et la section qui y donne acces
+const S33_PAGES_RESERVEES = {
+  finance: 'finance', invoices: 'invoices', devis: 'devis', clients: 'clients', contacts: 'contacts',
+  administratif: 'administratif', mediatheque: 'mediatheque', library: 'library', equipe: 'equipe'
+};
 
 function s33ShortcutsHtml(avant) {
   return S33_SHORTCUTS
@@ -13875,7 +13887,9 @@ async function renderTrashBody() {
         '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + nm + '</div>' +
           (when ? '<div style="font-size:10px;color:var(--text-faint);">supprimé le ' + when + '</div>' : '') + '</div>' +
         '<button onclick="trashRestore(\'' + table + '\',\'' + r.id + '\')" title="Restaurer" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:5px 12px;font-size:11px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;flex-shrink:0;">Restaurer</button>' +
-        '<button onclick="trashPurge(\'' + table + '\',\'' + r.id + '\',this)" title="Supprimer définitivement" style="background:#fff0f0;border:1px solid #f5c6cb;border-radius:var(--radius-pill);width:30px;height:30px;color:#c0392b;cursor:pointer;flex-shrink:0;"><span class="mi mi-sm">delete_forever</span></button>' +
+        (currentUser && currentUser.role === 'admin'
+          ? '<button onclick="trashPurge(\'' + table + '\',\'' + r.id + '\',this)" title="Supprimer définitivement" style="background:#fff0f0;border:1px solid #f5c6cb;border-radius:var(--radius-pill);width:30px;height:30px;color:#c0392b;cursor:pointer;flex-shrink:0;"><span class="mi mi-sm">delete_forever</span></button>'
+          : '') +
       '</div>';
     });
   });
@@ -13891,6 +13905,8 @@ async function trashRestore(table, id) {
   toast('Élément restauré');
 }
 async function trashPurge(table, id, btn) {
+  // La base le refuse aussi aux autres (decision de Chaima, 25/10/2026)
+  if (!currentUser || currentUser.role !== 'admin') { toast('Seule l\'administratrice peut supprimer définitivement'); return; }
   if (!confirm('Supprimer DÉFINITIVEMENT cet élément ? Cette action est irréversible.')) return;
   const ok = await sbDelete(table, id);
   if (ok === false) { toast('Suppression refusée par la base', 'error'); return; }
@@ -20446,18 +20462,7 @@ function updateUIForUser() {
   const isCoAdmin = !isAdmin && currentUser.permissions?.is_co_admin === true;
   const p = currentUser.permissions || {};
 
-  function _canSee(key) {
-    const sec = p.sections || {};
-    if (isAdmin) {
-      if (key === 'administratif') return !p.no_administratif;
-      return true;
-    }
-    if (isCoAdmin) {
-      if (key === 'administratif') return sec[key] === true;
-      return sec[key] !== false;
-    }
-    return sec[key] === true;
-  }
+  function _canSee(key) { return s33PeutVoir(key); }
   function _setVis(ids, visible) {
     ids.forEach(id => {
       const el = document.getElementById(id);
@@ -20511,8 +20516,8 @@ function updateUIForUser() {
     footer.innerHTML = `
     ${avatarHTML(currentUser.id, 36)}
     <div style="flex:1;overflow:hidden;">
-      <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${currentUser.name}</div>
-      <div style="font-size:10px;color:var(--text-faint);">${currentUser.jobTitle || (isAdmin ? 'Administrateur' : 'Membre')}</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHTML(currentUser.name)}</div>
+      <div style="font-size:10px;color:var(--text-faint);">${escHTML(currentUser.jobTitle || (isAdmin ? 'Administrateur' : 'Membre'))}</div>
     </div>
     <div style="position:relative;flex-shrink:0;" onclick="event.stopPropagation()">
       <button id="notif-bell-btn" onclick="toggleNotifPanel()" title="Notifications" style="background:none;border:none;cursor:pointer;padding:4px;display:flex;align-items:center;gap:2px;color:var(--text-dim);font-family:'Inter',system-ui,-apple-system,sans-serif;">
@@ -21334,10 +21339,10 @@ function renderEquipe() {
       return `<div onclick="viewMemberReports(${JSON.stringify(m.id)})" style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid ${submitted ? 'var(--green)' : 'var(--border)'};border-radius:var(--radius);padding:12px 18px;cursor:pointer;transition:all .15s;min-width:150px;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='';this.style.transform=''">
         ${avatarHTML(m.id, 36)}
         <div style="flex:1;">
-          <div style="font-size:15px;color:var(--text);font-weight:700;">${m.name}</div>
+          <div style="font-size:15px;color:var(--text);font-weight:700;">${escHTML(m.name)}</div>
           <div style="font-size:11px;font-weight:500;color:${submitted ? 'var(--green)' : 'var(--red)'};">${submitted ? 'Soumis ✓' : (dejaRelance ? 'En attente · relancée' : 'En attente')}</div>
         </div>
-        ${peutRelancer ? `<span onclick="s33RelancerUn(event, ${JSON.stringify(m.id)}, '${activeDate}')" title="${dejaRelance ? 'Déjà relancée aujourd\'hui' : 'Envoyer un rappel à ' + m.name}" class="mi" style="font-size:19px;color:${dejaRelance ? 'var(--text-faint)' : 'var(--gold)'};padding:4px;border-radius:50%;">notifications</span>` : ''}
+        ${peutRelancer ? `<span onclick="s33RelancerUn(event, ${JSON.stringify(m.id)}, '${activeDate}')" title="${dejaRelance ? 'Déjà relancée aujourd\'hui' : 'Envoyer un rappel à ' + escHTML(m.name)}" class="mi" style="font-size:19px;color:${dejaRelance ? 'var(--text-faint)' : 'var(--gold)'};padding:4px;border-radius:50%;">notifications</span>` : ''}
       </div>`;
     }).join('')}
   </div>`;
@@ -21666,7 +21671,7 @@ function renderPPEquipe() {
         <div style="font-size:11px;color:var(--text-dim);">${escHTML(m.job_title || '')} ${m.role === 'admin' ? '<span style="background:var(--gold);color:#fff;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;">Admin</span>' : ''}</div>
       </div>
       <button onclick="toggleMemberEdit(${m.id})" title="Modifier" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:15px;padding:4px;"><span class="mi mi-sm">edit</span></button>
-      <button onclick="deleteMember(${m.id}, '${escHTML(m.display_name || m.username)}')" title="Supprimer" style="background:none;border:none;cursor:pointer;color:var(--red,#e53);font-size:15px;padding:4px;"><span class="mi mi-sm">delete</span></button>
+      <button onclick="deleteMember(${m.id})" title="Supprimer" style="background:none;border:none;cursor:pointer;color:var(--red,#e53);font-size:15px;padding:4px;"><span class="mi mi-sm">delete</span></button>
     </div>
     <div class="member-edit-form" id="medit-${m.id}">
       <div class="pp-form-row">
@@ -21864,10 +21869,13 @@ async function savePermissionToggle(id) {
   }
 }
 
-async function deleteMember(id, name) {
-  if (!confirm(`Supprimer le membre "${name}" ? Cette action est irréversible.`)) return;
+async function deleteMember(id) {
+  // Le nom est relu ici : place dans l'attribut onclick, une apostrophe dans
+  // un nom cassait (ou detournait) le code du bouton.
   const tm = (db.teamMembers || []).find(m => m.id === id);
   if (!tm) return;
+  const name = tm.display_name || tm.username || '';
+  if (!confirm(`Supprimer le membre "${name}" ? Cette action est irréversible.`)) return;
   try {
     // Delete from auth
     await adminUsers('delete', { auth_user_id: tm.user_id });

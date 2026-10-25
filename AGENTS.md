@@ -54,6 +54,22 @@ ligne), sans framework ni étape de compilation.
   même jour décrivent le même travail ; on garde le plus grand des deux, on
   n'additionne jamais.
 
+## Droits de l'équipe
+- Chaque personne voit des **sections** (réglées par l'admin dans l'onglet
+  Équipe). Une seule règle : `s33PeutVoir(section)` dans l'app, sa copie
+  `s33_voit(section)` dans la base. Les pages réservées (`S33_PAGES_RESERVEES`)
+  ne s'ouvrent pas par un lien direct.
+- La base applique ces règles par des politiques **restrictives** (elles
+  retirent des droits) : factures/échéances → `invoices`, devis → `devis`,
+  charges/entrées → `finance`, documents administratifs → `administratif`,
+  salaires → admin et co-admins (`s33_is_admin()`), suppression définitive
+  de factures, devis, projets, clients → admin seule (`s33_admin_principale()`).
+- `team_members` : seule l'admin change rôles, droits et comptes (déclencheur
+  `s33_garde_equipe`) ; chacune peut changer son nom et son poste ; `<` `>`
+  refusés dans un nom.
+- Ne pas supprimer de politique avec DROP (Supabase demande une confirmation) :
+  ajouter une politique restrictive, ou `alter policy`.
+
 ## Fonctions serveur
 Chaque fonction vérifie qui l'appelle :
 - `admin-users` : admin connectée uniquement.
@@ -62,6 +78,8 @@ Chaque fonction vérifie qui l'appelle :
 - `send-push` : membre connecté ou autre fonction serveur ; le lien de la
   notification reste sur le site.
 - `devis-sign`, `pv-sign` : la signature doit être une vraie image base64.
+- `brief-client` : réponses du questionnaire client (`brief.html?b=<jeton>`),
+  écrites par jeton ; la table `client_briefs` n'est pas ouverte sans compte.
 
 ## Règles à respecter
 - **Aucun secret dans le dépôt ni dans l'app** (le dépôt est public) : mots de

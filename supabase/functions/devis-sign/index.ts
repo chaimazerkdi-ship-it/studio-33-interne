@@ -4,7 +4,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // consulte le résumé du devis AVEC son échéancier de paiement et signe.
 // Après signature, il peut télécharger son devis signé en PDF (à joindre à
 // son bon de commande) : le GET renvoie donc aussi le HT, la TVA, la date et
-// — uniquement si le devis est signé — la signature apposée.
+// — uniquement si le devis est signé — la signature apposée. Le détail de
+// la mission (prestations comprises) est renvoyé quand le devis le porte.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -37,7 +38,7 @@ async function restWrite(path: string, method: string, body: unknown) {
 }
 
 async function findDevis(token: string) {
-  const rows = await rest(`devis?sign_token=eq.${encodeURIComponent(token)}&deleted_at=is.null&select=id,num,ref,client_name,projet,ttc,ht,tva_rate,date_val,status,signatures,phases&limit=1`);
+  const rows = await rest(`devis?sign_token=eq.${encodeURIComponent(token)}&deleted_at=is.null&select=id,num,ref,client_name,projet,ttc,ht,tva_rate,date_val,status,signatures,phases,mission_detail&limit=1`);
   return rows[0] || null;
 }
 
@@ -83,11 +84,17 @@ Deno.serve(async (req) => {
           montant: Math.round(ttc * (parseFloat(p.taux) || 0) / 100),
         }))
         .filter((p: any) => p.taux > 0);
+      // Detail de la mission : seulement les lignes retenues, si le devis le porte
+      const md = d.mission_detail && typeof d.mission_detail === "object" ? d.mission_detail : null;
+      const mission = md && md.actif && Array.isArray(md.items)
+        ? md.items.filter((x: any) => x && x.ok !== false && String(x.t || "").trim())
+            .map((x: any) => String(x.t).trim().slice(0, 600)).slice(0, 60)
+        : [];
       return json({
         num: d.num || d.ref, client_name: d.client_name, projet: d.projet,
         ttc, ht: parseFloat(d.ht) || 0, tva_rate: d.tva_rate == null ? 20 : parseFloat(d.tva_rate),
         date_val: d.date_val || null,
-        status: d.status, phases,
+        status: d.status, phases, mission,
         signed: !!clientSig, signed_at: clientSig ? clientSig.signed_at : null,
         signer_name: clientSig ? clientSig.signer_name : null,
         // La signature n'est rendue que si le devis est signé. Ce lien permet

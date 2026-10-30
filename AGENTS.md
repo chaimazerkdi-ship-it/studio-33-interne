@@ -52,6 +52,11 @@ ligne), sans framework ni étape de compilation.
   validation de devis, échéances d'honoraires, Samia) : numéro par la base,
   échéance, TVA habituelle du projet, échéance d'honoraires liée. Pas
   d'insertion directe dans `invoices`.
+- **Détail de la mission d'un devis** (`devis.mission_detail`,
+  `{ actif, modele, items: [{ t, ok }] }`) : modèles par type de projet dans
+  `S33_MISSIONS` ; seules les lignes cochées, et seulement si « Dans le
+  devis » est coché, vont dans l'aperçu, le PDF et la page de signature du
+  client (`s33DvMissionListe()`, fonction `devis-sign` → `mission`).
 - **Montant d'une facture** (`invoices.amount`) : **TTC**. Le HT se déduit avec
   `s33InvTvaRate(inv)`.
 - **Visites de chantier** : un seul module, le **PV de chantier**

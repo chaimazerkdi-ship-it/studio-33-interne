@@ -1265,6 +1265,10 @@
   #devis-doc .dv-title-bar h3 { font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
   #devis-doc .dv-title-bar p { font-size: 12.5px; color: #666; margin-top: 5px; font-style: italic; }
 
+  #devis-doc .dv-mission { margin: 18px 0 6px; }
+  #devis-doc .dv-mission .dv-mission-title { font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; text-decoration: underline; text-underline-offset: 3px; margin-bottom: 8px; }
+  #devis-doc .dv-mission .dv-mission-li { display: flex; gap: 6px; font-size: 12px; line-height: 1.55; color: #1a1a1a; }
+  #devis-doc .dv-mission .dv-mission-li span:first-child { flex-shrink: 0; min-width: 22px; }
   #devis-doc .dv-amount-hero { text-align: center; margin: 24px 0; }
   #devis-doc .dv-amount-hero .ht-val {
     font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 28px; font-weight: 700; color: #1a1a1a;
@@ -1302,6 +1306,13 @@
   #devis-doc .dv-bottom-bar .dv-bottom-info .gold { color: #9a7b3a; font-weight: 500; letter-spacing: 1.5px; }
 
   /* Phase editor rows */
+  /* Detail de la mission (editeur de devis) */
+  .dv-mi-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+  .dv-mi-row input[type=checkbox] { width: 18px; height: 18px; margin-top: 8px; flex-shrink: 0; accent-color: var(--gold); }
+  .dv-mi-row .dv-mi-n { font-size: 12px; font-weight: 700; color: var(--text-dim); min-width: 22px; margin-top: 9px; flex-shrink: 0; }
+  .dv-mi-row textarea { flex: 1; min-height: 38px; resize: vertical; font-size: 12.5px; line-height: 1.4; padding: 7px 9px; }
+  .dv-mi-row.off textarea { opacity: .45; text-decoration: line-through; }
+  .dv-mi-row .phase-del-btn { margin-top: 6px; }
   .phase-edit-row {
     display: grid; grid-template-columns: 40px 1fr 60px 28px;
     gap: 6px; align-items: center; margin-bottom: 8px;
@@ -1915,6 +1926,11 @@
     input[type="text"], input[type="email"], input[type="password"], input[type="number"],
     input[type="date"], input[type="time"], input[type="search"], input[type="tel"], input[type="url"],
     select, textarea { font-size: 16px !important; }
+
+    /* Devis sur telephone : la conception du devis d'abord, la liste ensuite */
+    #page-devis.active { display: flex; flex-direction: column; }
+    #dv-sep { order: 9; }
+    #dv-liste-bloc { order: 10; margin-top: 8px; }
 
     /* Éditeur devis : empiler panneau + aperçu, réduire l'aperçu A4 */
     #dv-main-cols { flex-direction: column; }
@@ -3256,7 +3272,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-25.4 — app plus legere, PV de chantier unique, factures unifiees';
+const S33_BUILD = '2026-10-30.1 — devis : conception en premier sur telephone, detail de la mission';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -4283,7 +4299,7 @@ const S33_BUILD = '2026-10-25.4 — app plus legere, PV de chantier unique, fact
       </div>
 
       <!-- SAVED DEVIS LIST -->
-      <div style="margin-bottom:28px;">
+      <div id="dv-liste-bloc" style="margin-bottom:28px;">
         <div class="section-title">Devis enregistrés</div>
         <input class="search-input" id="devis-search" placeholder="Rechercher un devis (client, projet, n°, statut)…" oninput="window._dvQuery=this.value;window._dvShowAll=false;renderDevisList();" style="max-width:360px;margin-bottom:10px;">
         <div class="table-wrap">
@@ -4304,7 +4320,7 @@ const S33_BUILD = '2026-10-25.4 — app plus legere, PV de chantier unique, fact
         </div>
       </div>
 
-      <div class="divider"></div>
+      <div class="divider" id="dv-sep"></div>
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
         <div class="section-title" id="devis-editor-label" style="margin-bottom:0;">Éditeur — Nouveau devis</div>
         <button id="dv-toggle-panel-btn" onclick="toggleDevisPanel()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);padding:5px 12px;font-size:10px;letter-spacing:.15em;text-transform:uppercase;border-radius:var(--radius);cursor:pointer;font-family:'Inter',system-ui,-apple-system,sans-serif;transition:all .15s;white-space:nowrap;">&#9664; Masquer</button>
@@ -4334,6 +4350,21 @@ const S33_BUILD = '2026-10-25.4 — app plus legere, PV de chantier unique, fact
               <label>Description du projet</label>
               <textarea id="dv-projet" style="min-height:70px;" oninput="updateDevis()">Études et conception architecturale</textarea>
             </div>
+          </div>
+
+          <div class="card" id="dv-mission-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+              <div class="section-title" style="margin-bottom:0;">Détail de la mission</div>
+              <label style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--text-dim);cursor:pointer;white-space:nowrap;">
+                <input type="checkbox" id="dv-mission-actif" onchange="s33DvMissionActif(this.checked)" style="width:18px;height:18px;accent-color:var(--gold);"> Dans le devis
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Type de projet</label>
+              <select id="dv-mission-modele" onchange="s33DvMissionModele(this.value)"></select>
+            </div>
+            <div id="dv-mission-items"></div>
+            <button class="btn btn-outline" style="width:100%;margin-top:6px;font-size:11px;" onclick="s33DvMissionAjouter()">+ Ajouter une ligne</button>
           </div>
 
           <div class="card">
@@ -12445,6 +12476,207 @@ let devisPhases = [
   { phase: 'C', mission: 'Réception & conformité', taux: 5 },
 ];
 
+// ═══ DÉTAIL DE LA MISSION ══════════════════════════════════════
+// La liste des prestations comprises, ajoutée ou non au devis (case
+// « Dans le devis »). On part d'un modèle par type de projet, puis chaque
+// ligne se coche, se décoche ou se réécrit. Enregistré dans
+// devis.mission_detail : { actif, modele, items: [{ t, ok }] }.
+const S33_MISSIONS = [
+  { id: 'villa-int-ext', label: 'Villa — conception intérieure et extérieure', items: [
+    'Établissement des études préliminaires',
+    "Images 3D et rendu d'ambiance, la colorimétrie, les matériaux, les revêtements et le travail de la lumière",
+    "Établissement du dossier de l'avant-projet sommaire comprenant plans, coupes, façades au 1/100ème et images de synthèse",
+    "Dépôt et suivi du dossier d'autorisation",
+    "Établissement du dossier de l'avant-projet détaillé ou définitif",
+    'Coordination avec les ingénieurs et autres consultants',
+    "Établissement du dossier d'exécution comprenant le projet d'exécution au 1/20ème ou échelle adéquate ainsi que les détails techniques et architectoniques nécessaires à l'exécution du projet",
+    'Établissement des plans de repérage électricité et lustrerie',
+    'Établissement des plans faux plafonds',
+    'Établissement des plans de calepinage sols et murs pour les revêtements',
+    "Consultation de différentes entreprises pour l'obtention des devis",
+    "Suivi et coordination des travaux d'aménagement d'intérieur",
+    'Sélection du mobilier, décoration et choix des couleurs',
+    'Mise en place du mobilier et de la décoration'
+  ] },
+  { id: 'villa-archi', label: 'Villa — architecture (sans intérieur)', items: [
+    'Établissement des études préliminaires : programme, analyse du terrain et du règlement d\'urbanisme',
+    "Établissement de l'esquisse",
+    "Établissement du dossier de l'avant-projet sommaire comprenant plans, coupes, façades au 1/100ème et images de synthèse",
+    "Dépôt et suivi du dossier d'autorisation de construire",
+    "Établissement du dossier de l'avant-projet détaillé ou définitif",
+    "Coordination avec le bureau d'études techniques, le topographe et les autres consultants",
+    "Établissement du dossier d'exécution comprenant les plans au 1/50ème ainsi que les détails techniques et architectoniques nécessaires à l'exécution du projet",
+    'Établissement du dossier de consultation des entreprises',
+    "Consultation de différentes entreprises et assistance au choix de l'entreprise",
+    'Suivi et coordination des travaux, visites de chantier et procès-verbaux',
+    'Assistance à la réception des travaux',
+    "Assistance à l'obtention du permis d'habiter"
+  ] },
+  { id: 'interieur', label: 'Aménagement intérieur (appartement, villa)', items: [
+    "Relevé de l'existant et prise de mesures",
+    'Établissement des études préliminaires et du programme',
+    "Proposition d'aménagement : plans d'agencement et planche d'ambiance",
+    "Images 3D et rendu d'ambiance, la colorimétrie, les matériaux, les revêtements et le travail de la lumière",
+    "Établissement des plans d'exécution : cloisons, agencement et détails de menuiserie",
+    'Établissement des plans de repérage électricité et lustrerie',
+    'Établissement des plans de repérage plomberie et sanitaires',
+    'Établissement des plans faux plafonds',
+    'Établissement des plans de calepinage sols et murs pour les revêtements',
+    "Consultation de différentes entreprises pour l'obtention des devis",
+    "Suivi et coordination des travaux d'aménagement d'intérieur",
+    'Sélection du mobilier, décoration et choix des couleurs',
+    'Mise en place du mobilier et de la décoration'
+  ] },
+  { id: 'exterieur', label: 'Aménagement extérieur et paysager (jardin, piscine)', items: [
+    "Relevé du site et analyse de l'existant : accès, orientation, niveaux et végétation",
+    'Établissement des études préliminaires et du programme',
+    "Plan masse d'aménagement et esquisse paysagère",
+    "Images 3D et rendu d'ambiance de l'aménagement extérieur",
+    'Choix des matériaux : revêtements de sol, murets, pergolas et mobilier extérieur',
+    'Choix des plantations adaptées au climat et au site',
+    "Établissement des plans d'exécution : implantation, niveaux, détails de la piscine, des bassins et des ouvrages",
+    "Établissement des plans d'éclairage extérieur et d'arrosage",
+    "Consultation de différentes entreprises pour l'obtention des devis",
+    "Suivi et coordination des travaux d'aménagement extérieur",
+    'Assistance à la réception des travaux'
+  ] },
+  { id: 'immeuble', label: 'Immeuble / résidence', items: [
+    "Établissement des études préliminaires : programme, analyse du terrain et du règlement d'urbanisme",
+    "Établissement de l'esquisse et étude de faisabilité",
+    "Établissement du dossier de l'avant-projet sommaire comprenant plans, coupes, façades au 1/100ème et images de synthèse",
+    "Dépôt et suivi du dossier d'autorisation de construire",
+    "Établissement du dossier de l'avant-projet détaillé ou définitif",
+    "Coordination avec le bureau d'études techniques, le bureau de contrôle, le topographe et les autres consultants",
+    "Établissement du dossier d'exécution comprenant les plans au 1/50ème ainsi que les détails techniques et architectoniques",
+    'Établissement des plans de vente des appartements',
+    'Établissement du dossier de consultation des entreprises',
+    'Consultation des entreprises et assistance à la passation des marchés',
+    'Suivi et coordination des travaux, visites de chantier et procès-verbaux',
+    'Assistance aux opérations de réception provisoire et définitive',
+    "Assistance à l'obtention du permis d'habiter"
+  ] },
+  { id: 'commercial', label: 'Local commercial / bureaux', items: [
+    "Relevé de l'existant et prise de mesures",
+    'Établissement des études préliminaires et du programme fonctionnel',
+    "Proposition d'aménagement : plans d'agencement et organisation des espaces",
+    "Images 3D et rendu d'ambiance : identité de la marque, matériaux et travail de la lumière",
+    "Dépôt et suivi du dossier d'autorisation, le cas échéant",
+    "Établissement des plans d'exécution : cloisons, agencement et mobilier sur mesure",
+    'Établissement des plans de repérage électricité, courants faibles et éclairage',
+    'Établissement des plans faux plafonds et de calepinage des revêtements',
+    "Coordination avec les bureaux d'études : climatisation, sécurité incendie",
+    "Consultation de différentes entreprises pour l'obtention des devis",
+    "Suivi et coordination des travaux d'aménagement",
+    'Assistance à la réception des travaux'
+  ] },
+  { id: 'hotel', label: 'Hôtel, bien-être, équipement', items: [
+    "Établissement des études préliminaires : programme, normes du secteur, analyse du terrain et du règlement d'urbanisme",
+    "Établissement de l'esquisse et étude de faisabilité",
+    "Établissement du dossier de l'avant-projet sommaire comprenant plans, coupes, façades au 1/100ème et images de synthèse",
+    "Dépôt et suivi du dossier d'autorisation de construire",
+    "Établissement du dossier de l'avant-projet détaillé ou définitif",
+    "Coordination avec le bureau d'études techniques, le bureau de contrôle et les consultants spécialisés (cuisine, spa, piscine, sécurité incendie)",
+    "Établissement du dossier d'exécution comprenant les plans au 1/50ème ainsi que les détails techniques et architectoniques",
+    "Conception des espaces intérieurs : ambiances, matériaux, mobilier et signalétique",
+    'Établissement du dossier de consultation des entreprises',
+    'Consultation des entreprises et assistance à la passation des marchés',
+    'Suivi et coordination des travaux, visites de chantier et procès-verbaux',
+    "Assistance à la réception des travaux et à l'obtention du permis d'habiter"
+  ] },
+  { id: 'libre', label: 'Vide — je rédige moi-même', items: [] }
+];
+
+let devisMission = { actif: false, modele: '', items: [] };
+
+function s33DvMissionVide() { return { actif: false, modele: '', items: [] }; }
+
+// Copie propre d'un detail enregistre (vieux devis : rien)
+function s33DvMissionDepuis(v) {
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch(_) { v = null; } }
+  if (!v || typeof v !== 'object') return s33DvMissionVide();
+  return {
+    actif: !!v.actif, modele: String(v.modele || ''),
+    items: (Array.isArray(v.items) ? v.items : []).map(x => ({ t: String((x && x.t) || ''), ok: !(x && x.ok === false) }))
+  };
+}
+
+// Les lignes qui vont dans le devis (aucune si la case est decochee)
+function s33DvMissionListe() {
+  if (!devisMission || !devisMission.actif) return [];
+  return (devisMission.items || []).filter(x => x.ok !== false && String(x.t || '').trim()).map(x => String(x.t).trim());
+}
+
+function s33DvMissionRender() {
+  const sel = document.getElementById('dv-mission-modele');
+  const box = document.getElementById('dv-mission-items');
+  const cb = document.getElementById('dv-mission-actif');
+  if (!sel || !box) return;
+  sel.innerHTML = '<option value="">— Choisir un modèle —</option>' +
+    S33_MISSIONS.map(m => '<option value="' + m.id + '"' + (devisMission.modele === m.id ? ' selected' : '') + '>' + escHTML(m.label) + '</option>').join('');
+  if (cb) cb.checked = !!devisMission.actif;
+  let n = 0;
+  box.innerHTML = (devisMission.items || []).map((x, i) => {
+    const ok = x.ok !== false;
+    if (ok) n++;
+    return '<div class="dv-mi-row' + (ok ? '' : ' off') + '">' +
+      '<input type="checkbox"' + (ok ? ' checked' : '') + ' onchange="s33DvMissionCoche(' + i + ', this.checked)" title="Inclure cette ligne">' +
+      '<span class="dv-mi-n">' + (ok ? n + '-' : '') + '</span>' +
+      '<textarea rows="' + Math.min(8, Math.max(2, Math.ceil(String(x.t || '').length / 26))) + '" placeholder="Prestation…" oninput="s33DvMissionTexte(' + i + ', this.value);s33DvMissionHauteur(this)">' + escHTML(x.t || '') + '</textarea>' +
+      '<button class="phase-del-btn" onclick="s33DvMissionRetirer(' + i + ')" title="Retirer la ligne">×</button>' +
+    '</div>';
+  }).join('') ||
+    '<div style="font-size:12px;color:var(--text-faint);margin:2px 0 8px;">Choisissez un type de projet pour partir d\'un modèle, ou ajoutez vos lignes.</div>';
+}
+
+// Le cadre grandit avec le texte : une ligne longue se lit en entier
+function s33DvMissionHauteur(t) {
+  if (!t || !t.scrollHeight) return;
+  t.style.height = 'auto';
+  t.style.height = (t.scrollHeight + 2) + 'px';
+}
+
+function s33DvMissionModele(id) {
+  const m = S33_MISSIONS.find(x => x.id === id);
+  if (!m) return;
+  const actuel = (devisMission.items || []).map(x => (x.ok === false ? '0' : '1') + x.t).join('\n');
+  const prec = S33_MISSIONS.find(x => x.id === devisMission.modele);
+  const intact = prec && actuel === prec.items.map(t => '1' + t).join('\n');
+  if ((devisMission.items || []).length && !intact &&
+      !confirm('Remplacer les lignes actuelles par le modèle « ' + m.label + ' » ?')) {
+    s33DvMissionRender(); return;
+  }
+  devisMission = { actif: true, modele: m.id, items: m.items.map(t => ({ t, ok: true })) };
+  s33DvMissionRender();
+  updateDevis();
+}
+
+function s33DvMissionActif(v) {
+  devisMission.actif = !!v;
+  if (v && !(devisMission.items || []).length) toast('Choisissez un type de projet ou ajoutez vos lignes');
+  updateDevis();
+}
+function s33DvMissionCoche(i, v) {
+  if (!devisMission.items[i]) return;
+  devisMission.items[i].ok = !!v;
+  s33DvMissionRender(); updateDevis();
+}
+function s33DvMissionTexte(i, v) {
+  if (!devisMission.items[i]) return;
+  devisMission.items[i].t = v;
+  updateDevis();
+}
+function s33DvMissionAjouter() {
+  devisMission.items.push({ t: '', ok: true });
+  devisMission.actif = true;
+  s33DvMissionRender(); updateDevis();
+  const ta = document.querySelectorAll('#dv-mission-items textarea');
+  if (ta.length) ta[ta.length - 1].focus();
+}
+function s33DvMissionRetirer(i) {
+  devisMission.items.splice(i, 1);
+  s33DvMissionRender(); updateDevis();
+}
+
 function initDevis() {
   const sel = document.getElementById('dv-client');
   if (!sel) return;
@@ -12470,6 +12702,7 @@ function initDevis() {
     document.getElementById('dv-date').value = s33Aujourdhui();
   }
   renderPhasesEditor();
+  s33DvMissionRender();
   updateDevis();
   renderDevisList();
 }
@@ -12586,6 +12819,14 @@ function updateDevis() {
 
   const totalTaux = devisPhases.reduce((s, p) => s + p.taux, 0);
 
+  // Detail de la mission (si coche « Dans le devis »)
+  const missionL = s33DvMissionListe();
+  const missionHTML = missionL.length
+    ? '<div class="dv-mission"><div class="dv-mission-title">Détail de la mission</div>' +
+      missionL.map((t, i) => '<div class="dv-mission-li"><span>' + (i + 1) + '-</span><span>' + escHTML(t) + '</span></div>').join('') +
+      '</div>'
+    : '';
+
   document.getElementById('devis-doc').innerHTML = `
     <div class="dv-body">
     <div class="dv-header">
@@ -12603,6 +12844,7 @@ function updateDevis() {
       <h3>Note d'honoraires &amp; Échéancier de paiement</h3>
       <p>/ ${projet}</p>
     </div>
+    ${missionHTML}
 
     <div class="dv-amount-hero">
       <div class="intro">Nos honoraires pour la mission sont fixés à la somme forfaitaire HT de :</div>
@@ -12689,6 +12931,7 @@ async function saveDevis() {
     ref, client_name: clientName, date_val: dateVal, projet, ht,
     tva_rate: tvaRate, ttc,
     phases: JSON.parse(JSON.stringify(devisPhases)),
+    mission_detail: JSON.parse(JSON.stringify(devisMission)),
     status: 'Envoyé'
   };
 
@@ -12810,6 +13053,7 @@ function loadDevis(id) {
   if (!d) return;
   currentDevisId = id;
   devisPhases = JSON.parse(JSON.stringify(d.phases));
+  devisMission = s33DvMissionDepuis(d.mission_detail);
 
   document.getElementById('dv-ref').value = d.ref;
   document.getElementById('dv-client').value = d.clientName;
@@ -12825,6 +13069,7 @@ function loadDevis(id) {
   document.getElementById('dv-tva').value = d.tvaRate;
 
   renderPhasesEditor();
+  s33DvMissionRender();
   updateDevis();
   renderDevisList();
   document.getElementById('devis-editor-label').textContent = 'Éditeur — ' + d.ref;
@@ -13130,7 +13375,9 @@ function resetDevis() {
   document.getElementById('dv-projet').value = 'Études et conception architecturale';
   document.getElementById('dv-date').value = s33Aujourdhui();
   document.getElementById('devis-editor-label').textContent = 'Éditeur — Nouveau devis';
+  devisMission = s33DvMissionVide();
   renderPhasesEditor();
+  s33DvMissionRender();
   updateDevis();
   toast('Nouveau devis initialisé');
 }
@@ -13218,6 +13465,32 @@ async function s33BuildDevisPdf(d) {
     doc.setDrawColor(221); doc.setLineWidth(0.2);
     doc.line(M, y, W - M, y); y += 9;
 
+    // Passage a la page suivante avant le bas de page (avec le detail de la
+    // mission, le devis peut faire deux pages)
+    const BAS = 268;
+    const place = h => { if (y + h > BAS) { doc.addPage(); y = 20; } };
+
+    // Detail de la mission, si le devis le porte
+    const mission = (Array.isArray(d.mission) ? d.mission : []).map(t => String(t || '').trim()).filter(Boolean);
+    if (mission.length) {
+      const titreM = 'DÉTAIL DE LA MISSION';
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
+      doc.text(titreM, M, y);
+      doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.25);
+      doc.line(M, y + 1.1, M + doc.getTextWidth(titreM), y + 1.1);
+      y += 6.5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      mission.forEach((t, i) => {
+        const lignes = doc.splitTextToSize(t, W - 2 * M - 8);
+        place(lignes.length * 4.1 + 1);
+        doc.text((i + 1) + '-', M, y);
+        doc.text(lignes, M + 7, y);
+        y += lignes.length * 4.1 + 1.2;
+      });
+      y += 6;
+      place(46);   // le montant et le titre du tableau restent ensemble
+    }
+
     // Montant en vedette
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, DIM);
     doc.text('Nos honoraires pour la mission sont fixés à la somme forfaitaire HT de :', W / 2, y, { align: 'center' }); y += 8;
@@ -13248,7 +13521,7 @@ async function s33BuildDevisPdf(d) {
     });
     let headBottomY = null, footTopY = null, tableTopY = null;
     doc.autoTable({
-      startY: y, margin: { left: M, right: M },
+      startY: y, margin: { left: M, right: M, top: 20, bottom: 300 - BAS },
       head: [['PHASE', 'CONTENU / MISSION', 'TAUX', 'CUMUL', 'MONTANT TTC']],
       body: body,
       foot: [[{ content: 'TOTAL', colSpan: 2 }, Math.round(phases.reduce((a, r) => a + r.taux, 0)) + '%', '', money(ttc) + ' MAD']],
@@ -13284,15 +13557,18 @@ async function s33BuildDevisPdf(d) {
     // Conditions
     const bullet = (txt) => {
       const lines = doc.splitTextToSize(txt, W - 2 * M - 5);
+      place(lines.length * 3.9 + 1.5);
       doc.circle(M + 1.2, y - 1.2, 0.55, 'F');
       doc.text(lines, M + 4, y);
       y += lines.length * 3.9 + 1.5;
     };
+    place(16);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor.apply(doc, INK);
     doc.text('Conditions de paiements', M, y); y += 4.6;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.4); doc.setFillColor.apply(doc, DIM); doc.setTextColor(85);
     bullet("Les paiements des honoraires seront effectués conformément au tableau d'échéancier ci-dessus, représentant la répartition des honoraires de la mission complète du projet. Chaque versement interviendra à la fin de chaque étape validée par le maître d'ouvrage, sur présentation d'une facture correspondante émise par Studio 33 Architects.");
     y += 1.5;
+    place(14);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor.apply(doc, INK);
     doc.text('Moyen de paiements', M, y); y += 4.6;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.4); doc.setTextColor(85);
@@ -13376,7 +13652,7 @@ async function s33DevisPdf() {
   try {
     const doc = await s33BuildDevisPdf({
       ref: ref, clientName: clientName, projet: projet, ht: ht, tvaRate: tvaRate,
-      dateStr: dateStr, phases: devisPhases, logo: logo, sigs: _dSig.signatures || {}
+      dateStr: dateStr, phases: devisPhases, mission: s33DvMissionListe(), logo: logo, sigs: _dSig.signatures || {}
     });
     await s33DownloadPdf(doc, 'Devis_' + (ref || 'S33').replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf');
   } catch(e) {
@@ -13423,6 +13699,10 @@ function printDevis() {
   .dv-title-bar{border-top:1.5px solid #1a1a1a;border-bottom:1px solid #ddd;padding:10px 0;margin-bottom:14px;}
   .dv-title-bar h3{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
   .dv-title-bar p{font-size:10.5px;color:#666;margin-top:3px;font-style:italic;}
+  .dv-mission{margin:12px 0 4px;}
+  .dv-mission-title{font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;text-decoration:underline;margin-bottom:6px;}
+  .dv-mission-li{display:flex;gap:5px;font-size:10.5px;line-height:1.5;}
+  .dv-mission-li span:first-child{flex-shrink:0;min-width:18px;}
   .dv-amount-hero{text-align:center;margin:14px 0;}
   .ht-val{font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:22px;font-weight:700;color:#1a1a1a;}
   .ttc-val{font-size:11px;color:#666;margin-top:3px;}
@@ -35745,6 +36025,16 @@ window.openVisitReport = function(pid) {
                 '<span style="font-size:12px;color:#666;">Montant TTC</span>' +
                 '<span style="font-size:20px;font-weight:800;color:#a5813c;">' + (Math.round(d.ttc) || 0).toLocaleString('fr-MA') + ' MAD</span>' +
               '</div>' +
+              (Array.isArray(d.mission) && d.mission.length ?
+                '<div style="margin-top:14px;border:1px solid #f0ece2;border-radius:12px;overflow:hidden;">' +
+                  '<div style="background:#faf8f3;padding:9px 14px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a58a3c;">Détail de la mission</div>' +
+                  '<div style="padding:8px 14px 10px;">' +
+                  d.mission.map(function(t, i) {
+                    return '<div style="display:flex;gap:8px;font-size:12.5px;line-height:1.5;color:#1a1a1a;padding:3px 0;">' +
+                      '<span style="flex-shrink:0;min-width:20px;font-weight:700;color:#a58a3c;">' + (i + 1) + '-</span><span>' + esc(t) + '</span></div>';
+                  }).join('') +
+                  '</div>' +
+                '</div>' : '') +
               (Array.isArray(d.phases) && d.phases.length ?
                 '<div style="margin-top:14px;border:1px solid #f0ece2;border-radius:12px;overflow:hidden;">' +
                   '<div style="background:#faf8f3;padding:9px 14px;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a58a3c;">Échéancier de paiement</div>' +
@@ -35791,6 +36081,7 @@ window.openVisitReport = function(pid) {
           ref: d.num || '', clientName: d.client_name || '', projet: d.projet || '',
           ht: ht, tvaRate: tva, dateStr: dateStr,
           phases: Array.isArray(d.phases) ? d.phases : [],
+          mission: Array.isArray(d.mission) ? d.mission : [],
           logo: (typeof S33_LOGO_BW !== 'undefined') ? { data: S33_LOGO_BW, w: 1000, h: 384 } : null,
           sigs: d.signature ? { client: d.signature } : {}
         });

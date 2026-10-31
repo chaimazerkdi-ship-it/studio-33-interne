@@ -38,10 +38,12 @@ ligne), sans framework ni étape de compilation.
 - **Lien envoyé à un client** : toujours `s33LienCourt(type, jeton)` →
   `client.studio33.ma/<type>/?<début du jeton>` (`pv`, `espace`,
   `chantier`, `questionnaire`). **Devis** : `s33LienCourt('devis', jeton, num)`
-  → `client.studio33.ma/devis/?DEV-019` (choix de Chaima, 31/10/2026, en
+  → `client.studio33.ma/honoraires/?DEV-019` (choix de Chaima, 31/10/2026, en
   connaissance de cause : taper un autre numéro ouvre l'autre devis s'il a
-  déjà été partagé). La page `/<type>/` retrouve le lien complet par la
-  fonction `lien-court`. Les anciens liens restent valides.
+  déjà été partagé ; le mot « honoraires » plutôt que « devis » dans le lien).
+  La page `/<type>/` (`/honoraires/` pour un devis) retrouve le lien complet
+  par la fonction `lien-court`. Les anciens liens (`/devis/?…`, liens longs)
+  restent valides.
 - **Tâches** (`projects.tasks`, une liste JSON) : toujours modifier par
   `s33MajTaches(projId, modifier)`. Elle relit la liste (sans relecture
   réussie, rien n'est écrit) et n'enregistre que si personne ne l'a changée

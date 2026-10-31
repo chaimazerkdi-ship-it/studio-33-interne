@@ -3272,7 +3272,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-31.3 — Agadir et Casablanca';
+const S33_BUILD = '2026-10-31.4 — lien de devis en honoraires';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -14384,11 +14384,12 @@ function _s33PortalLink(token) {
 // ═══ LIENS ENVOYÉS AUX CLIENTS ════════════════════════════════════
 // Lien court et lisible : client.studio33.ma/<type>/?<code>, où <code> est
 // le début du jeton (10 caractères ; 12 pour l'espace client). La page
-// /<type>/ retrouve le lien complet par la fonction lien-court. Calcul
+// /<chemin>/ retrouve le lien complet par la fonction lien-court. Calcul
 // immédiat (WhatsApp s'ouvre au clic) ; jeton absent ou inattendu → ancien
-// lien long, qui reste valide.
+// lien long, qui reste valide. Devis : la page s'appelle /honoraires/
+// (choix de Chaima, 31/10/2026) ; /devis/ reste valide pour les liens envoyés.
 const S33_LIENS = {
-  devis:         { param: '?sign=',   n: 10 },
+  devis:         { param: '?sign=',   n: 10, chemin: 'honoraires' },
   pv:            { param: '?pvsign=', n: 10 },
   espace:        { param: '?portal=', n: 12 },
   chantier:      { param: '?ent=',    n: 10 },
@@ -14399,12 +14400,12 @@ function s33LienCourt(type, jeton, numero) {
   // Devis : le lien porte son numero (DEV-019), choix de Chaima le 31/10/2026
   // en connaissance de cause (un autre numero tape ouvre l'autre devis).
   if (type === 'devis' && jeton && /^DEV-\d+$/i.test(String(numero || ''))) {
-    return location.origin + '/devis/?' + String(numero).toUpperCase();
+    return location.origin + '/' + d.chemin + '/?' + String(numero).toUpperCase();
   }
   const j = String(jeton || '');
   const long = !d ? '' : (d.param ? location.origin + location.pathname + d.param + j : new URL('brief.html?b=' + j, location.href).href);
   if (!d || !/^[a-z0-9]+$/.test(j) || j.length < d.n + 4) return long;
-  return location.origin + '/' + type + '/?' + j.slice(0, d.n);
+  return location.origin + '/' + (d.chemin || type) + '/?' + j.slice(0, d.n);
 }
 
 async function openClientPortalShare(projectId) {

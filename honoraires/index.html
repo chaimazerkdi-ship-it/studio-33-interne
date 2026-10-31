@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Studio 33 Architects — Votre devis</title>
+<meta name="description" content="Consultez et signez votre devis en ligne.">
+<meta property="og:site_name" content="Studio 33 Architects">
+<meta property="og:title" content="Studio 33 Architects — Votre devis">
+<meta property="og:description" content="Consultez et signez votre devis en ligne.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://client.studio33.ma/logo%20S33.png">
+<meta name="theme-color" content="#ffffff">
+<meta name="robots" content="noindex">
+<style>
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         background: #f7f6f3; color: #1a1a1a; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .carte { background: #fff; border: 1px solid #eee; border-radius: 16px; padding: 32px 26px; margin: 16px;
+           max-width: 360px; width: 100%; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,.05); }
+  .carte img { width: 120px; height: 120px; display: block; margin: -10px auto 6px; }
+  .nom { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #777; }
+  .msg { font-size: 15px; margin-top: 18px; line-height: 1.5; }
+  .roue { width: 22px; height: 22px; margin: 18px auto 0; border: 2px solid #eee; border-top-color: #F97316;
+          border-radius: 50%; animation: t .8s linear infinite; }
+  @keyframes t { to { transform: rotate(360deg); } }
+  a { color: #a5813c; }
+</style>
+</head>
+<body>
+<div class="carte">
+  <img src="../logo%20S33.png" alt="Studio 33 Architects">
+  <div class="nom">Studio 33 Architects</div>
+  <div class="msg" id="msg">Ouverture de votre devis…</div>
+  <div class="roue" id="roue"></div>
+</div>
+<script>
+// Lien court du devis : client.studio33.ma/honoraires/?DEV-019 (numero du
+// devis) ou ?<debut du jeton> ; la fonction lien-court renvoie le lien
+// complet. Meme page que /devis/, qui reste valide pour les liens envoyes.
+(function () {
+  var code = (location.search || '').replace(/^\?/, '').split('&')[0].toLowerCase();
+  function echec() {
+    document.getElementById('roue').style.display = 'none';
+    document.getElementById('msg').innerHTML =
+      'Ce lien n\u2019est plus valide.<br>Contactez Studio 33 Architects : ' +
+      '<a href="tel:+212528843330">05 28 84 33 30</a>';
+  }
+  // Devis : le numero (DEV-019) ou, pour les liens deja envoyes, le debut du jeton
+  if (!/^[a-z0-9]{10,12}$/.test(code) && !/^dev-?\d{1,5}$/.test(code)) { echec(); return; }
+  fetch('https://yjxcqptgugatrxeyzrdc.supabase.co/functions/v1/lien-court?t=devis&c=' + code)
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (j && typeof j.url === 'string' && /^\/[a-z.]*\?[a-z]+=[a-z0-9]+$/.test(j.url)) location.replace(j.url);
+      else echec();
+    })
+    .catch(function () {
+      document.getElementById('roue').style.display = 'none';
+      document.getElementById('msg').textContent = 'Pas de connexion. Vérifiez votre réseau, puis rouvrez le lien.';
+    });
+})();
+</script>
+</body>
+</html>

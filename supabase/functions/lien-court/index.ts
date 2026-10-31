@@ -6,7 +6,12 @@
 // client. Rien ne change dans les jetons : les liens longs deja envoyes
 // restent valides.
 //
-// GET ?t=<type>&c=<code>
+// Devis : le lien porte directement le numero (client.studio33.ma/devis/?DEV-019),
+// choix de Chaima le 31/10/2026 en connaissance de cause : quelqu'un qui tape
+// un autre numero peut ouvrir et signer ce devis. Seuls les devis deja
+// partages (qui ont un jeton de signature) s'ouvrent ainsi.
+//
+// GET ?t=<type>&c=<code>   (ou t=devis&c=DEV-019)
 //   200 { url } — exactement un jeton commence par ce code
 //   404          — aucun, ou plusieurs (on refuse plutot que de deviner)
 //   400          — type inconnu ou code mal forme
@@ -40,6 +45,19 @@ Deno.serve(async (req) => {
     const u = new URL(req.url);
     const t = TYPES[u.searchParams.get("t") || ""];
     const c = (u.searchParams.get("c") || "").toLowerCase();
+    // Numero de devis : DEV-019 (ou dev-19) -> DEV-019
+    const n = c.match(/^dev-?(\d{1,5})$/);
+    if (t === TYPES.devis && n) {
+      const num = "DEV-" + String(parseInt(n[1], 10)).padStart(3, "0");
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/devis?num=eq.${num}&deleted_at=is.null&sign_token=not.is.null&select=sign_token&limit=2`,
+        { headers: H },
+      );
+      if (!r.ok) return json({ error: "server_error" }, 500);
+      const rows = await r.json();
+      if (!Array.isArray(rows) || rows.length !== 1 || !rows[0].sign_token) return json({ error: "not_found" }, 404);
+      return json({ url: t.url(String(rows[0].sign_token)) });
+    }
     // Lettres et chiffres seulement : aucun joker ne peut passer dans la recherche
     if (!t || !/^[a-z0-9]{10,12}$/.test(c)) return json({ error: "invalid" }, 400);
     const r = await fetch(

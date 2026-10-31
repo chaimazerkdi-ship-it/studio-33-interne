@@ -3272,7 +3272,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-31.1 — liens clients courts et lisibles';
+const S33_BUILD = '2026-10-31.2 — lien de devis avec son numero';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -14394,8 +14394,13 @@ const S33_LIENS = {
   chantier:      { param: '?ent=',    n: 10 },
   questionnaire: { param: null,       n: 10 }
 };
-function s33LienCourt(type, jeton) {
+function s33LienCourt(type, jeton, numero) {
   const d = S33_LIENS[type];
+  // Devis : le lien porte son numero (DEV-019), choix de Chaima le 31/10/2026
+  // en connaissance de cause (un autre numero tape ouvre l'autre devis).
+  if (type === 'devis' && jeton && /^DEV-\d+$/i.test(String(numero || ''))) {
+    return location.origin + '/devis/?' + String(numero).toUpperCase();
+  }
   const j = String(jeton || '');
   const long = !d ? '' : (d.param ? location.origin + location.pathname + d.param + j : new URL('brief.html?b=' + j, location.href).href);
   if (!d || !/^[a-z0-9]+$/.test(j) || j.length < d.n + 4) return long;
@@ -35987,7 +35992,7 @@ window.openVisitReport = function(pid) {
         Object.assign(d, patch);
         renderDevisList();
       }
-      const link = s33LienCourt('devis', token);
+      const link = s33LienCourt('devis', token, d.num);
       try { await navigator.clipboard.writeText(link); } catch(_) {}
       const nameLc = (d.clientName || '').trim().toLowerCase();
       const contact = db.clients.find(c => (c.name || '').trim().toLowerCase() === nameLc)

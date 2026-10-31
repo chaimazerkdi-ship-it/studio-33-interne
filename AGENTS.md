@@ -34,9 +34,12 @@ ligne), sans framework ni étape de compilation.
 - Les portails publics (espace client, signature de devis, PV, entreprise)
   passent par leurs fonctions serveur, jamais par la clé publique.
 - **Lien envoyé à un client** : toujours `s33LienCourt(type, jeton)` →
-  `client.studio33.ma/<type>/?<début du jeton>` (`devis`, `pv`, `espace`,
-  `chantier`, `questionnaire`). La page `/<type>/` retrouve le lien complet
-  par la fonction `lien-court`. Les anciens liens longs restent valides.
+  `client.studio33.ma/<type>/?<début du jeton>` (`pv`, `espace`,
+  `chantier`, `questionnaire`). **Devis** : `s33LienCourt('devis', jeton, num)`
+  → `client.studio33.ma/devis/?DEV-019` (choix de Chaima, 31/10/2026, en
+  connaissance de cause : taper un autre numéro ouvre l'autre devis s'il a
+  déjà été partagé). La page `/<type>/` retrouve le lien complet par la
+  fonction `lien-court`. Les anciens liens restent valides.
 - **Tâches** (`projects.tasks`, une liste JSON) : toujours modifier par
   `s33MajTaches(projId, modifier)`. Elle relit la liste (sans relecture
   réussie, rien n'est écrit) et n'enregistre que si personne ne l'a changée
@@ -117,7 +120,8 @@ Chaque fonction vérifie qui l'appelle :
 - `brief-client` : réponses du questionnaire client (`brief.html?b=<jeton>`),
   écrites par jeton ; la table `client_briefs` n'est pas ouverte sans compte.
 - `lien-court` : public, lecture seule ; un code de 10 à 12 lettres et
-  chiffres → le lien complet si un seul jeton commence par ce code, sinon 404.
+  chiffres → le lien complet si un seul jeton commence par ce code ; pour un
+  devis, `DEV-019` → son lien de signature s'il a déjà été partagé ; sinon 404.
 
 ## Règles à respecter
 - **Aucun secret dans le dépôt ni dans l'app** (le dépôt est public) : mots de

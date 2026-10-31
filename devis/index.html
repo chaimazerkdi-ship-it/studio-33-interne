@@ -34,8 +34,8 @@
   <div class="roue" id="roue"></div>
 </div>
 <script>
-// Lien court : client.studio33.ma/devis/?<code>. Le code est le debut du
-// jeton du document ; la fonction lien-court renvoie le lien complet.
+// Lien court : client.studio33.ma/devis/?DEV-019 (numero du devis) ou
+// ?<debut du jeton> ; la fonction lien-court renvoie le lien complet.
 (function () {
   var code = (location.search || '').replace(/^\?/, '').split('&')[0].toLowerCase();
   function echec() {
@@ -44,7 +44,8 @@
       'Ce lien n\u2019est plus valide.<br>Contactez Studio 33 Architects : ' +
       '<a href="tel:+212528843330">05 28 84 33 30</a>';
   }
-  if (!/^[a-z0-9]{10,12}$/.test(code)) { echec(); return; }
+  // Devis : le numero (DEV-019) ou, pour les liens deja envoyes, le debut du jeton
+  if (!/^[a-z0-9]{10,12}$/.test(code) && !/^dev-?\d{1,5}$/.test(code)) { echec(); return; }
   fetch('https://yjxcqptgugatrxeyzrdc.supabase.co/functions/v1/lien-court?t=devis&c=' + code)
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {

@@ -279,7 +279,7 @@ function renderGantt() {
     html += '<div class="glegend"><span><i style="background:#F97316;"></i>Gros œuvre</span><span><i style="background:#0e9f6e;"></i>Second œuvre</span></div>';
   }
   html += '<div class="gfoot"><div class="gsig">L\'Architecte</div><div class="gsig">L\'Entreprise</div><div class="gsig">Le Maître d\'ouvrage</div></div>' +
-    '<div class="gnote">Studio 33 Architects — Agadir, Maroc · Planning prévisionnel établi le ' + fmtD(new Date()) + ' — durées en semaines calendaires, à ajuster selon les conditions de chantier.</div>' +
+    '<div class="gnote">Studio 33 Architects — Agadir · Casablanca · Planning prévisionnel établi le ' + fmtD(new Date()) + ' — durées en semaines calendaires, à ajuster selon les conditions de chantier.</div>' +
   '</div>';
   out.innerHTML = html;
   document.getElementById('recap').textContent = state.rows.length + ' lots · ' + maxW + ' semaines · fin estimée ' + fmtD(end);

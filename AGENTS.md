@@ -16,8 +16,10 @@ ligne), sans framework ni étape de compilation.
 ## Mise en ligne
 - GitHub Pages publie la branche `main` sur **https://client.studio33.ma**
   (fichier `CNAME`). Rien d'autre : pas de Netlify, pas de glisser-déposer.
-- On développe sur une branche de travail. **On ne fusionne dans `main` que
-  quand Chaima dit « publie ».**
+- On développe sur une branche de travail. **Chaque modification est publiée
+  directement** dans `main` une fois les vérifications passées, sans attendre
+  de « publie » (demande de Chaima, 31/10/2026). Une modification de la base
+  ou un choix qui revient à Chaima se demande toujours avant.
 - À chaque publication, mettre à jour `const S33_BUILD = '...';` dans
   `index.html` (date + courte description, **sans apostrophe**).
 

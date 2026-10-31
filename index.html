@@ -3272,7 +3272,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-31.2 — lien de devis avec son numero';
+const S33_BUILD = '2026-10-31.3 — Agadir et Casablanca';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -11113,7 +11113,7 @@ window.s33ReuPdf = async function(id) {
     for (let i = 1; i <= n; i++) {
       doc.setPage(i);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150, 150, 150);
-      doc.text('Studio 33 Architects - Agadir, Maroc', M, 820);
+      doc.text('Studio 33 Architects - Agadir - Casablanca', M, 820);
       doc.text(i + ' / ' + n, 595 - M, 820, { align: 'right' });
     }
     const safe = String((reuClientName(r.client_id) || 'client')).replace(/[^a-zA-Z0-9À-ÿ _-]/g, '').slice(0, 34);
@@ -11978,14 +11978,14 @@ function printInvoice(id) {
 <body>
 <div class="header">
   <div>
-    ${_logoB64 ? `<img src="${_logoB64}" style="height:70px;width:auto;display:block;margin-bottom:4px;" alt="Studio 33">` : `<div class="firm">Studio 33 Architects<small>Cabinet d'architecture — Agadir, Maroc</small></div>`}
+    ${_logoB64 ? `<img src="${_logoB64}" style="height:70px;width:auto;display:block;margin-bottom:4px;" alt="Studio 33">` : `<div class="firm">Studio 33 Architects<small>Cabinet d'architecture — Agadir · Casablanca</small></div>`}
   </div>
   <div class="inv-num">Facture<strong>${inv.num}</strong>${inv.date}</div>
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:40px;">
   <div><div class="label">Émetteur</div>
-    <div class="value"><strong>Studio 33 Architects</strong><br>Agadir, Maroc</div>
+    <div class="value"><strong>Studio 33 Architects</strong><br>Agadir · Casablanca</div>
   </div>
   <div><div class="label">Client</div>
     <div class="value"><strong>${client ? client.name : '—'}</strong><br>${client ? (client.phone || '') : ''}<br>${client ? (client.email || '') : ''}</div>
@@ -12011,7 +12011,7 @@ function printInvoice(id) {
   Statut : <strong style="color:${inv.status==='Payée'?'#2a7a2a':'#b00'}">${inv.status}</strong>
 </div>
 
-<div class="footer">Studio 33 Architects — Agadir, Maroc · RC / IF / ICE xxxxxx · Tél : +212 xxx xxx xxx</div>
+<div class="footer">Studio 33 Architects — Agadir · Casablanca · RC / IF / ICE xxxxxx · Tél : +212 xxx xxx xxx</div>
 </body></html>`;
 
   s33PrintHTML(html);
@@ -16298,7 +16298,7 @@ function getDbContext() {
       .map(r => `- ${r.date} | ${r.project_name} | ${r.hours}h | ${(r.tasks||'').slice(0,120)}${r.blockers ? ' | blocage: '+r.blockers : ''}`)
       .join('\n');
 
-    return `Tu es Samia, l'assistante IA de Studio 33 Architects, cabinet d'architecture à Agadir, Maroc.
+    return `Tu es Samia, l'assistante IA de Studio 33 Architects, cabinet d'architecture à Agadir et Casablanca (Maroc).
 Tu parles en français, tu es précise, chaleureuse et professionnelle.
 Tu t'adresses à **${userName}**, membre de l'équipe.
 
@@ -16396,7 +16396,7 @@ Sois concise, utile et directe. Utilise du **gras** pour les infos importantes.`
       .reduce((s, i) => s + (Number(i.amount) || 0), 0);
   const solde = totalEntrees - totalCharges;
 
-  return `Tu es Samia, l'assistante IA de Studio 33 Architects, cabinet fondé par l'architecte Chaima Zerkdi à Agadir, Maroc.
+  return `Tu es Samia, l'assistante IA de Studio 33 Architects, cabinet fondé par l'architecte Chaima Zerkdi, installé à Agadir et Casablanca (Maroc).
 Tu es intégrée dans l'outil de gestion interne. Tu parles en français, tu es précise, chaleureuse et professionnelle.
 Tu as accès aux données en temps réel du cabinet.
 
@@ -31415,7 +31415,7 @@ window.openVisitReport = function(pid) {
       msgNote: 'Votre message est transmis à l\'équipe Studio 33 — la réponse s\'affichera ici.',
       rateLimited: 'Trop de messages envoyés aujourd\'hui — réessayez demain.',
       sendFailed: 'Message non envoyé — vérifiez votre connexion et réessayez.',
-      footer: 'Studio 33 Architects · Agadir, Maroc', footer2: 'Espace en lecture seule — mis à jour en temps réel',
+      footer: 'Studio 33 Architects · Agadir · Casablanca', footer2: 'Espace en lecture seule — mis à jour en temps réel',
       phases: { ESQ: 'Esquisse', APS: 'Avant-projet sommaire', APD: 'Avant-projet définitif', EXE: 'Études d\'exécution', Chantier: 'Chantier' },
       locale: 'fr-FR', langBtn: 'العربية'
     },
@@ -34999,7 +34999,7 @@ window.openVisitReport = function(pid) {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
       doc.text('STUDIO 33 ARCHITECTS', M, 14);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor.apply(doc, GREY);
-      doc.text('Architecture · Agadir, Maroc', M, 19);
+      doc.text('Architecture · Agadir · Casablanca', M, 19);
       doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor.apply(doc, ORANGE);
       doc.text('PV DE CHANTIER', W - M, 13, { align: 'right' });
       doc.setFontSize(11); doc.setTextColor.apply(doc, DARK);
@@ -36102,7 +36102,7 @@ window.openVisitReport = function(pid) {
               '<button onclick="s33sClear()" style="margin-top:8px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline;">Effacer et recommencer</button>' +
               '<button id="s33s-submit" onclick="s33sSubmit()" style="width:100%;margin-top:16px;padding:14px;background:#F97316;color:#fff;border:none;border-radius:99px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;">J\'accepte et je signe</button>' +
             '</div>' +
-            '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir, Maroc</div>');
+            '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir · Casablanca</div>');
           initPad();
         })
         .catch(() => { host.innerHTML = shell('<div style="text-align:center;padding:40px 20px;color:#777;">Connexion impossible — vérifiez votre réseau et rechargez la page.</div>'); });
@@ -38772,7 +38772,7 @@ window.openVisitReport = function(pid) {
               '<button onclick="s33pvClear()" style="margin-top:8px;background:none;border:none;color:#999;font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline;">Effacer et recommencer</button>' +
               '<button id="s33pv-submit" onclick="s33pvSubmit()" style="width:100%;margin-top:16px;padding:14px;background:#F97316;color:#fff;border:none;border-radius:99px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;">Je signe le PV</button>' +
             '</div>' +
-            '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir, Maroc</div>');
+            '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir · Casablanca</div>');
           initPad('s33pv-pad');
         })
         .catch(() => { host.innerHTML = shell('Signature de PV de chantier', '<div style="text-align:center;padding:40px 20px;color:#777;">Connexion impossible — vérifiez votre réseau et rechargez la page.</div>'); });
@@ -38862,7 +38862,7 @@ window.openVisitReport = function(pid) {
             '</div>';
           }).join('') : '<div style="font-size:12.5px;color:#16a34a;font-weight:600;">✓ Aucune réserve ouverte — bravo, tout est en ordre.</div>') +
         '</div>' +
-        '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir, Maroc</div>');
+        '<div style="text-align:center;font-size:10.5px;color:#bbb;margin-top:18px;">Studio 33 Architects · Agadir · Casablanca</div>');
     };
     window.s33EntOk = async function(rid, btn) {
       const who = prompt('Votre nom ou celui de votre entreprise :') || '';
@@ -39101,7 +39101,7 @@ window.openVisitReport = function(pid) {
 
       // Pied de page
       doc.setFontSize(8.5); doc.setTextColor(150, 150, 150); doc.setFont('helvetica', 'normal');
-      doc.text('Studio 33 Architects — Agadir, Maroc · Rapport généré automatiquement depuis le suivi du projet', M, 812);
+      doc.text('Studio 33 Architects — Agadir · Casablanca · Rapport généré automatiquement depuis le suivi du projet', M, 812);
 
       const safe = String(p.name || 'projet').replace(/[^a-zA-Z0-9À-ÿ _-]/g, '').slice(0, 40);
       doc.save('Rapport-' + safe + '-' + now.toISOString().slice(0, 7) + '.pdf');
@@ -39616,7 +39616,7 @@ window.openVisitReport = function(pid) {
       for (let i = 1; i <= n; i++) {
         doc.setPage(i);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150, 150, 150);
-        doc.text('Studio 33 Architects - Agadir, Maroc', M, 822);
+        doc.text('Studio 33 Architects - Agadir - Casablanca', M, 822);
         doc.text(i + ' / ' + n, 595 - M, 822, { align: 'right' });
       }
 

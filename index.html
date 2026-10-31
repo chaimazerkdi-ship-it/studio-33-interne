@@ -3272,7 +3272,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-30.2 — devis : vrai numero en reference, detail de la mission apres le tableau';
+const S33_BUILD = '2026-10-31.1 — liens clients courts et lisibles';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -14378,7 +14378,28 @@ function _s33GenToken() {
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
 }
 function _s33PortalLink(token) {
-  return location.origin + location.pathname + '?portal=' + token;
+  return s33LienCourt('espace', token);
+}
+
+// ═══ LIENS ENVOYÉS AUX CLIENTS ════════════════════════════════════
+// Lien court et lisible : client.studio33.ma/<type>/?<code>, où <code> est
+// le début du jeton (10 caractères ; 12 pour l'espace client). La page
+// /<type>/ retrouve le lien complet par la fonction lien-court. Calcul
+// immédiat (WhatsApp s'ouvre au clic) ; jeton absent ou inattendu → ancien
+// lien long, qui reste valide.
+const S33_LIENS = {
+  devis:         { param: '?sign=',   n: 10 },
+  pv:            { param: '?pvsign=', n: 10 },
+  espace:        { param: '?portal=', n: 12 },
+  chantier:      { param: '?ent=',    n: 10 },
+  questionnaire: { param: null,       n: 10 }
+};
+function s33LienCourt(type, jeton) {
+  const d = S33_LIENS[type];
+  const j = String(jeton || '');
+  const long = !d ? '' : (d.param ? location.origin + location.pathname + d.param + j : new URL('brief.html?b=' + j, location.href).href);
+  if (!d || !/^[a-z0-9]+$/.test(j) || j.length < d.n + 4) return long;
+  return location.origin + '/' + type + '/?' + j.slice(0, d.n);
 }
 
 async function openClientPortalShare(projectId) {
@@ -35374,7 +35395,7 @@ window.openVisitReport = function(pid) {
       if (ok === false) { toast('Impossible de créer le lien — vérifie la connexion'); return; }
       pv.sign_token = token;
     }
-    const link = location.origin + location.pathname + '?pvsign=' + token;
+    const link = s33LienCourt('pv', token);
     try { await navigator.clipboard.writeText(link); } catch(_) {}
     const msg = encodeURIComponent(
       'Bonjour,\n\n' +
@@ -35966,7 +35987,7 @@ window.openVisitReport = function(pid) {
         Object.assign(d, patch);
         renderDevisList();
       }
-      const link = location.origin + location.pathname + '?sign=' + token;
+      const link = s33LienCourt('devis', token);
       try { await navigator.clipboard.writeText(link); } catch(_) {}
       const nameLc = (d.clientName || '').trim().toLowerCase();
       const contact = db.clients.find(c => (c.name || '').trim().toLowerCase() === nameLc)
@@ -37245,7 +37266,7 @@ window.openVisitReport = function(pid) {
     }
     const cli = (db.clients || []).find(c => c.id === (p.clientId != null ? p.clientId : p.client_id));
     const manquantes = _pcRows.filter(r => r.status !== 'recue').map(r => '• ' + r.label);
-    const link = p.portal_token ? (location.origin + location.pathname + '?portal=' + p.portal_token) : '';
+    const link = p.portal_token ? s33LienCourt('espace', p.portal_token) : '';
     const digits = cli && cli.phone ? String(cli.phone).replace(/\D/g, '') : '';
     const intl = digits ? (digits.startsWith('0') ? '212' + digits.slice(1) : digits) : '';
     const txt = encodeURIComponent(
@@ -37445,7 +37466,7 @@ window.openVisitReport = function(pid) {
     if (!c || !c.phone) { toast('Pas de téléphone sur cette fiche client'); return; }
     const proj = (db.projects || []).filter(p => !p.archived && (p.clientId != null ? p.clientId : p.client_id) === c.id)
       .sort((a, b) => (b.id || 0) - (a.id || 0))[0] || null;
-    const link = proj && proj.portal_token ? (location.origin + location.pathname + '?portal=' + proj.portal_token) : '';
+    const link = proj && proj.portal_token ? s33LienCourt('espace', proj.portal_token) : '';
     const T = [
       { ic: 'event_available', t: 'Confirmation de rendez-vous', ask: 'Date et heure du rendez-vous ? (ex : mardi 22 juillet à 15h)', msg: q =>
         'Bonjour ' + c.name + ',\n\nNous vous confirmons notre rendez-vous ' + q + ', à notre cabinet (N°01, Imm La Paternelle, Rue Madrid, Agadir).\n\nAu plaisir de vous recevoir,\nStudio 33 Architects' },
@@ -37882,7 +37903,7 @@ window.openVisitReport = function(pid) {
   const esc = s => (typeof escHTML === 'function' ? escHTML(s == null ? '' : String(s)) : String(s == null ? '' : s));
   let _briefs = null;
 
-  const briefUrl = t => new URL('brief.html?b=' + t, location.href).href;
+  const briefUrl = t => s33LienCourt('questionnaire', t);
 
   async function loadBriefs() {
     try { _briefs = await sbGet('client_briefs', '?order=created_at.desc&select=id,token,client_name,project_id,submitted_at,imported,created_at') || []; }
@@ -38612,7 +38633,7 @@ window.openVisitReport = function(pid) {
     ov.id = 's33-ent-modal';
     ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
     const render = () => {
-      const link = p.entreprise_token ? (location.origin + location.pathname + '?ent=' + p.entreprise_token) : '';
+      const link = p.entreprise_token ? s33LienCourt('chantier', p.entreprise_token) : '';
       ov.innerHTML = '<div class="modal" style="max-width:560px;" onclick="event.stopPropagation()">' +
         '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
         '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">engineering</span> Espace entreprise — ' + escHTML(p.name) + '</div>' +
@@ -38646,13 +38667,13 @@ window.openVisitReport = function(pid) {
   window.s33EntCopy = async function(pid) {
     const p = (db.projects || []).find(x => x.id === pid);
     if (!p || !p.entreprise_token) return;
-    const link = location.origin + location.pathname + '?ent=' + p.entreprise_token;
+    const link = s33LienCourt('chantier', p.entreprise_token);
     try { await navigator.clipboard.writeText(link); toast('Lien copié'); } catch(_) { prompt('Copiez le lien :', link); }
   };
   window.s33EntWa = function(pid) {
     const p = (db.projects || []).find(x => x.id === pid);
     if (!p || !p.entreprise_token) return;
-    const link = location.origin + location.pathname + '?ent=' + p.entreprise_token;
+    const link = s33LienCourt('chantier', p.entreprise_token);
     const msg = encodeURIComponent(
       'Bonjour,\n\nVoici l accès chantier du projet « ' + p.name + ' » :\n' + link + '\n\n' +
       'Vous y trouverez les plans à jour et la liste des réserves à corriger. Quand un point est corrigé, appuyez sur « C est corrigé » pour nous prévenir.\n\n' +
@@ -38881,7 +38902,7 @@ window.openVisitReport = function(pid) {
     if (!p) return;
     if (!p.portal_token) { toast('Génère d abord le lien de l espace client'); return; }
     const c = clientOf(p);
-    const link = location.origin + location.pathname + '?portal=' + p.portal_token;
+    const link = s33LienCourt('espace', p.portal_token);
     const nom = c ? c.name : '';
     const msg = encodeURIComponent(
       'Bonjour ' + nom + ',\n\n' +
@@ -38902,7 +38923,7 @@ window.openVisitReport = function(pid) {
     const c = clientOf(p);
     const next = (allTasks || []).find(t => t && t !== task && !(t.done === true || t.status === 'done' || t.status === 'termine'));
     const tName = task.name || task.label || task.text || 'Étape';
-    const link = p.portal_token ? (location.origin + location.pathname + '?portal=' + p.portal_token) : '';
+    const link = p.portal_token ? s33LienCourt('espace', p.portal_token) : '';
     const msgFR = 'Bonne nouvelle ' + (c ? c.name : '') + ' !\n' +
       'L étape « ' + tName + ' » de votre projet « ' + p.name + ' » est terminée.' +
       (next ? '\nProchaine étape : « ' + (next.name || next.label || '') + ' ».' : '\nToutes les étapes sont terminées !') +

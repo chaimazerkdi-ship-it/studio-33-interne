@@ -3272,7 +3272,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-31.4 — lien de devis en honoraires';
+const S33_BUILD = '2026-10-31.5 — message proposition d honoraires';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -13141,13 +13141,13 @@ function s33RelancerDevis(devisId) {
   const sentTxt = sentStr ? new Date(String(sentStr).slice(0, 10) + 'T00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : '';
   const txt = encodeURIComponent(
     'Bonjour ' + (d.clientName || '') + ',\n\n' +
-    'Nous espérons que vous allez bien. Nous revenons vers vous au sujet de notre devis ' + (d.num || d.ref || '') +
-    (d.projet ? ' pour « ' + d.projet + ' »' : '') +
+    'Nous espérons que vous allez bien. Nous revenons vers vous au sujet de notre proposition d\'honoraires' +
+    (d.projet ? ' pour le projet « ' + d.projet + ' »' : '') +
     ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' MAD TTC)' +
-    (sentTxt ? ', transmis le ' + sentTxt : '') + '.\n' +
+    (sentTxt ? ', transmise le ' + sentTxt : '') + '.\n' +
     'Avez-vous eu le temps de l\'examiner ? Nous restons à votre disposition pour en discuter ou l\'ajuster.\n\n' +
     'مرحباً،\n' +
-    'نعود إليكم بخصوص عرض الأتعاب رقم ' + (d.num || d.ref || '') + (d.projet ? ' الخاص بمشروع « ' + d.projet + ' »' : '') + '.\n' +
+    'نعود إليكم بخصوص عرض الأتعاب' + (d.projet ? ' الخاص بمشروع « ' + d.projet + ' »' : '') + '.\n' +
     'هل تمكنتم من الاطلاع عليه؟ نبقى رهن إشارتكم لأي توضيح أو تعديل.\n\n' +
     'Studio 33 Architects');
   window.open('https://wa.me/' + intl + '?text=' + txt, '_blank');
@@ -36002,11 +36002,11 @@ window.openVisitReport = function(pid) {
       const intl = digits ? (digits.startsWith('0') ? '212' + digits.slice(1) : digits) : '';
       const msg = encodeURIComponent(
         'Bonjour ' + (d.clientName || '') + ',\n\n' +
-        'Voici notre devis ' + (d.num || d.ref || '') + (d.projet ? ' pour « ' + d.projet + ' »' : '') +
+        'Voici notre proposition d\'honoraires' + (d.projet ? ' pour le projet « ' + d.projet + ' »' : '') +
         ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' MAD TTC).\n' +
-        'Vous pouvez le consulter et le signer directement depuis votre téléphone ici :\n' + link + '\n\n' +
+        'Vous pouvez la consulter et la signer directement depuis votre téléphone ici :\n' + link + '\n\n' +
         'مرحباً،\n' +
-        'هذا عرض أتعابنا رقم ' + (d.num || d.ref || '') + (d.projet ? ' الخاص بمشروع « ' + d.projet + ' »' : '') +
+        'هذا عرض أتعابنا' + (d.projet ? ' الخاص بمشروع « ' + d.projet + ' »' : '') +
         ' (' + formatNum(Math.round(s33DevisTTC(d))) + ' درهم شامل الضريبة).\n' +
         'يمكنكم الاطلاع عليه وتوقيعه مباشرة من هاتفكم عبر الرابط أعلاه.\n\n' +
         'Studio 33 Architects');

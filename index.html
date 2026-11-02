@@ -1115,6 +1115,22 @@
     display: flex; align-items: center; justify-content: center;
   }
   .proj-card-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  /* Jour du rapport (aujourd'hui, hier, autre jour) */
+  .s33-rj { margin: 2px 0 14px; }
+  .s33-rj-l { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .s33-rj-b {
+    padding: 7px 14px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .s33-rj-b.on { background: var(--gold); border-color: var(--gold); color: #fff; }
+  .s33-rj-d {
+    padding: 6px 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text); font-family: inherit; font-size: 12px; max-width: 150px;
+  }
+  .s33-rj-d.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+  .s33-rj-a { font-size: 11.5px; color: var(--text-faint); margin-left: 4px; }
+  .s33-rj-n { margin-top: 9px; font-size: 12px; color: var(--text-dim); line-height: 1.45; display: flex; gap: 6px; align-items: flex-start; }
+  .s33-rj-n .mi { font-size: 16px; color: var(--gold); }
   .proj-card-ini {
     font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 600;
     color: var(--gold); letter-spacing: .04em;
@@ -3287,7 +3303,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-02.2 — PV avec tirets et retours a la ligne';
+const S33_BUILD = '2026-11-02.3 — rapport oublie, hier ou autre jour';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -4983,7 +4999,8 @@ const S33_BUILD = '2026-11-02.2 — PV avec tirets et retours a la ligne';
 <div class="modal-overlay" id="daily-report-modal" style="z-index:1100;">
   <div class="modal" style="max-width:640px;">
     <div class="modal-title" style="margin-bottom:4px;">Rapport journalier</div>
-    <p style="font-size:11px;color:var(--text-faint);margin-bottom:16px;letter-spacing:.05em;">Ajoutez un bloc par projet sur lequel vous avez travaillé aujourd'hui.</p>
+    <p style="font-size:11px;color:var(--text-faint);margin-bottom:12px;letter-spacing:.05em;">Ajoutez un bloc par projet sur lequel vous avez travaillé.</p>
+    <div id="dr-jour" class="s33-rj"></div>
     <div id="dr-entries"></div>
     <button type="button" class="mr-add-btn" onclick="mrAdd('dr')"><span class="mi mi-sm">add</span> Ajouter un autre projet</button>
     <div id="dr-summary" class="mr-summary-bar"></div>
@@ -17201,6 +17218,57 @@ async function aiFloatSend() {
 
 // ===== GESTION ÉQUIPE =====
 
+// ═══ JOUR DU RAPPORT ═══════════════════════════════════════════════
+// Par defaut aujourd'hui. Une fille qui a oublie peut deposer le rapport
+// d'hier, ou d'un des 7 derniers jours (le lundi : vendredi ou samedi) ;
+// jamais un jour a venir. Un choix par formulaire : 'rp' (page Rapport),
+// 'dr' (fenetre du rapport). Demande de Chaima, 02/11/2026.
+const _s33RapportJour = {};
+function s33JourMoins(n) { const d = new Date(); d.setDate(d.getDate() - n); return s33DateLocale(d); }
+function s33RapportJour(prefix) {
+  const j = _s33RapportJour[prefix], auj = s33Aujourdhui();
+  return (j && /^\d{4}-\d{2}-\d{2}$/.test(j) && j < auj && j >= s33JourMoins(7)) ? j : auj;
+}
+function s33JourTexte(j) {
+  return new Date(j + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+// Mes vrais rapports (deja en base) pour un jour
+function s33MesRapports(jour) {
+  const uid = String((currentUser && currentUser.id) || '');
+  return (db.dailyReports || []).filter(r => String(r.user_id) === uid && r.date === jour &&
+    r.id && Number.isInteger(Number(r.id)) && !String(r.id).includes('.'));
+}
+function s33RapportJourHTML(prefix) {
+  const auj = s33Aujourdhui(), hier = s33JourMoins(1), j = s33RapportJour(prefix);
+  const autre = j !== auj && j !== hier;
+  const bouton = (lib, val) => '<button type="button" class="s33-rj-b' + (j === val ? ' on' : '') + '" onclick="s33RapportChoisirJour(\'' + prefix + '\',\'' + val + '\')">' + lib + '</button>';
+  let note = '';
+  if (j !== auj) {
+    const deja = s33MesRapports(j);
+    note = '<div class="s33-rj-n"><span class="mi">history</span><span>Rapport du <b>' + s33JourTexte(j) + '</b>' +
+      (deja.length ? '. Déjà envoyé ce jour-là : ' + deja.map(r => escHTML(r.project_name || '—') + ' (' + r.hours + ' h)').join(', ') +
+        '. Un projet renvoyé remplace son rapport, les autres s\'ajoutent.' : '.') + '</span></div>';
+  }
+  return '<div class="s33-rj-l">' + bouton('Aujourd\'hui', auj) + bouton('Hier', hier) +
+      '<span class="s33-rj-a">ou</span><input type="date" class="s33-rj-d' + (autre ? ' on' : '') + '" min="' + s33JourMoins(7) + '" max="' + hier + '"' +
+      ' value="' + (autre ? j : '') + '" title="Un autre jour (7 derniers jours)" aria-label="Autre jour" onchange="s33RapportChoisirJour(\'' + prefix + '\', this.value)">' +
+    '</div>' + note;
+}
+window.s33RapportChoisirJour = function(prefix, j) {
+  const auj = s33Aujourdhui();
+  if (j && j !== auj && !(j < auj && j >= s33JourMoins(7))) {
+    toast('Choisissez un jour parmi les 7 derniers');
+    j = _s33RapportJour[prefix] || auj;
+  }
+  _s33RapportJour[prefix] = (j && j !== auj) ? j : null;
+  const box = document.getElementById(prefix + '-jour');
+  // Page Rapport : passer du rapport deja envoye au formulaire (ou l'inverse) redessine la page
+  if (prefix === 'rp' && (!box || (!_s33RapportJour.rp && s33MesRapports(auj).length))) { renderRapport(); return; }
+  if (box) box.innerHTML = s33RapportJourHTML(prefix);
+  const titre = document.getElementById(prefix + '-jour-titre');
+  if (titre) titre.textContent = _s33RapportJour[prefix] ? 'Rapport oublié' : 'Rapport du jour';
+};
+
 function renderRapport() {
   if (!currentUser) return;
   const today = s33Aujourdhui();
@@ -17228,7 +17296,9 @@ function renderRapport() {
   // Rapports de toute l'équipe aujourd'hui (admin uniquement)
   const teamTodayReports = isAdmin ? reports.filter(r => r.date === today) : [];
 
-  const formHtml = todayReport ? `
+  // Rapport du jour deja envoye : on le montre, sauf si l'on rattrape un autre jour
+  const jourRp = s33RapportJour('rp');
+  const formHtml = (todayReport && jourRp === today) ? `
     <div class="card" style="margin-bottom:24px;border-left:2px solid var(--green);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
         <div>
@@ -17248,17 +17318,21 @@ function renderRapport() {
           ${r.blockers ? `<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Blocages</div><div style="font-size:12px;color:var(--red);white-space:pre-wrap;">${escHTML(r.blockers)}</div>` : ''}
         </div>`).join('')}
       <div style="margin-top:8px;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="editTodayReport()">Modifier / Réécrire tout</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-outline" onclick="editTodayReport()">Modifier / Réécrire tout</button>
+          <button class="btn btn-outline" onclick="s33RapportChoisirJour('rp', s33JourMoins(1))"><span class="mi mi-sm">history</span> Déposer un rapport oublié</button>
+        </div>
       </div>
     </div>` : `
     <div class="card" style="margin-bottom:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <div class="section-title" style="margin:0;">Rapport du jour</div>
+        <div class="section-title" id="rp-jour-titre" style="margin:0;">${jourRp === today ? 'Rapport du jour' : 'Rapport oublié'}</div>
         <select id="rp-type" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-pill);font-family:'Inter',system-ui,sans-serif;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;">
           <option value="daily">Rapport journalier</option>
           <option value="weekly">Rapport hebdomadaire</option>
         </select>
       </div>
+      <div id="rp-jour" class="s33-rj">${s33RapportJourHTML('rp')}</div>
       <p style="font-size:12px;color:var(--text-faint);margin:0 0 16px;">Ajoutez un bloc par projet sur lequel vous avez travaillé. Cliquez sur l'en-tête pour replier/déplier.</p>
       <div id="rp-entries"></div>
       <button type="button" class="mr-add-btn" onclick="mrAdd('rp')"><span class="mi mi-sm">add</span> Ajouter un autre projet</button>
@@ -17327,6 +17401,8 @@ function renderRapport() {
       const totalH    = g.rows.reduce((s, r) => s + (parseFloat(r.hours) || 0), 0);
       const dateLabel = new Date(g.date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'});
       const hasBlockers = g.rows.some(r => r.blockers);
+      // Rapport depose apres coup : on le dit (d'apres l'heure d'envoi)
+      const deposeLe = g.rows.map(r => r.submitted_at ? s33DateLocale(new Date(r.submitted_at)) : '').filter(d => d > g.date).sort().pop();
       const allIds = g.rows.map(r => r.id).join(',');
       return `<div class="card" style="margin-bottom:10px;">
         <!-- En-tête de la carte : date + nom + total heures -->
@@ -17334,6 +17410,7 @@ function renderRapport() {
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             ${isAdmin ? `<span style="font-size:13px;font-weight:700;color:var(--text);">${escHTML(g.user_name || '—')}</span><span style="color:var(--border2)">·</span>` : ''}
             <span style="font-size:12px;color:var(--text-dim);text-transform:capitalize;">${dateLabel}</span>
+            ${deposeLe ? `<span class="badge badge-dim" style="font-size:10px;">déposé le ${new Date(deposeLe + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>` : ''}
             ${hasBlockers ? `<span class="mi" style="font-size:14px;color:var(--red);" title="Blocage signalé">warning</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
@@ -17460,7 +17537,7 @@ function renderRapport() {
   document.getElementById('rapport-content').innerHTML = quiHtml + teamTodayHtml + formHtml + weekBarsHtml + teamHtml + historyHtml;
 
   // If no report yet today, init the multi-project form
-  if (!todayReport && typeof window.mrInit === 'function' && document.getElementById('rp-entries')) {
+  if (typeof window.mrInit === 'function' && document.getElementById('rp-entries')) {
     window.mrInit('rp');
   }
 }
@@ -21081,6 +21158,8 @@ function checkDailyReport() {
 
 function openDailyReportModal() {
   document.getElementById('daily-report-modal').style.display = 'flex';
+  const jour = document.getElementById('dr-jour');
+  if (jour) jour.innerHTML = s33RapportJourHTML('dr');
   if (typeof window.mrInit === 'function') {
     window.mrInit('dr');
   }
@@ -25052,7 +25131,10 @@ function escHTML(str) {
     // Les deux boutons d'envoi passent par ici : une seule garde suffit.
     // C'est le dernier moment ou une erreur de compte se voit encore.
     var _nom = (currentUser && currentUser.name) || '';
-    if (_nom && !confirm('Enregistrer ce rapport au nom de ' + _nom + ' ?')) return;
+    // Le jour choisi (aujourd'hui par defaut, ou un rapport oublie)
+    var _jour = s33RapportJour(prefix);
+    var _enRetard = _jour !== s33Aujourdhui();
+    if (_nom && !confirm('Enregistrer ce rapport' + (_enRetard ? ' du ' + s33JourTexte(_jour) : '') + ' au nom de ' + _nom + ' ?')) return;
 
     // ── VERROU ANTI-DOUBLE-CLIC ──────────────────────────────────
     if (window._mrSubmitting) { toast('Envoi déjà en cours…'); return; }
@@ -25088,7 +25170,7 @@ function escHTML(str) {
       if (!confirm('Total : ' + totalHours + 'h sur une journée — confirmer ?')) { releaseLock(); return; }
     }
 
-    const today = s33Aujourdhui();
+    const today = _jour; // jour du rapport (pas forcement aujourd'hui)
     const uid   = String(currentUser.id);
 
     // Désactiver le bouton
@@ -25190,6 +25272,7 @@ function escHTML(str) {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origLabel; }
     releaseLock();
     if (!failed) window.mrEffacerBrouillon();
+    _s33RapportJour[prefix] = null; // le prochain rapport repart sur aujourd'hui
 
     if (queued > 0) {
       toast('Pas de réseau stable — ' + queued + ' rapport' + (queued > 1 ? 's' : '') + ' gardé' + (queued > 1 ? 's' : '') + ' sur ce téléphone, envoi automatique dès que le réseau revient', 'warning');
@@ -25197,14 +25280,14 @@ function escHTML(str) {
     }
 
     if (ok > 0) {
-      logActivity('add_report', currentUser.name + ' a soumis son rapport journalier', 'report', null, null);
-      toast('Rapport soumis ✓ — ' + ok + ' projet' + (ok > 1 ? 's' : '') + ' · ' + totalHours + 'h');
+      logActivity('add_report', currentUser.name + ' a soumis son rapport journalier' + (_enRetard ? ' du ' + s33JourTexte(_jour) : ''), 'report', null, null);
+      toast('Rapport soumis' + (_enRetard ? ' pour ' + s33JourTexte(_jour) : '') + ' — ' + ok + ' projet' + (ok > 1 ? 's' : '') + ' · ' + totalHours + 'h');
       // Notification push admin (une seule fois par soumission)
       if (currentUser.role !== 'admin' && typeof s33SendPush === 'function') {
         const label = ok > 1
           ? (ok + ' projets · ' + totalHours + 'h')
           : (((db.projects || []).find(p => String(p.id) === String(entries[0].projectId)) || {}).name || 'projet') + ' · ' + totalHours + 'h';
-        s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + label, 'equipe', 'report_' + Date.now());
+        s33SendPush({ roles: ['admin'] }, 'Nouveau rapport', currentUser.name + ' — ' + label + (_enRetard ? ' (rapport du ' + s33JourTexte(_jour) + ')' : ''), 'equipe', 'report_' + Date.now());
       }
     }
 
@@ -39249,6 +39332,8 @@ window.openVisitReport = function(pid) {
       { t: 'warn', x: 'Il faut vraiment appuyer sur le projet dans la liste déroulante. Si tu écris seulement son nom sans le sélectionner, l’application refusera avec le message « sélectionnez un projet ».' },
       { t: 'h', x: 'Si tu n’as pas de réseau (sur chantier)' },
       { t: 'p', x: 'Écris quand même ton rapport et envoie-le. Une pastille orange « N en attente » apparaît en bas à gauche. Dès que tu retrouves du réseau, appuie dessus pour synchroniser.' },
+      { t: 'h', x: 'Si tu as oublié ton rapport' },
+      { t: 'p', x: 'Au-dessus du formulaire, choisis « Hier » (ou un autre jour, jusqu’à 7 jours en arrière) avant d’écrire. Si ton rapport du jour est déjà envoyé, appuie sur « Déposer un rapport oublié ».' },
       { t: 'warn', x: '« Modifier / Réécrire tout » efface tout le rapport du jour avant de rouvrir un formulaire vide. À n’utiliser que si tu veux vraiment tout recommencer.' }
     ] },
 

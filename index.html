@@ -1106,6 +1106,19 @@
   }
   .proj-card:hover { border-color: var(--border2); transform: translateY(-1px); }
   .proj-card.pinned { border-left: 2px solid var(--gold); }
+  /* Photo du projet (sa 3D de couverture, sinon ses initiales), comme dans
+     l'ecran Plus */
+  .proj-card-cover {
+    position: relative; height: 120px; margin: -18px -20px 14px;
+    border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+    background: var(--surface2); overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .proj-card-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .proj-card-ini {
+    font-family: 'Cormorant Garamond', serif; font-size: 34px; font-weight: 600;
+    color: var(--gold); letter-spacing: .04em;
+  }
 
   .proj-card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
   .proj-card-name { font-size:14px; font-weight:400; color:var(--text); line-height:1.3; flex:1; }
@@ -1885,6 +1898,8 @@
       gap: 10px !important;
     }
     #proj-pinned-grid .proj-card, #proj-cards-grid .proj-card { padding: 12px 11px; }
+    #proj-pinned-grid .proj-card-cover, #proj-cards-grid .proj-card-cover { height: 78px; margin: -12px -11px 10px; }
+    #proj-pinned-grid .proj-card-ini, #proj-cards-grid .proj-card-ini { font-size: 25px; }
     #proj-pinned-grid .proj-card-name, #proj-cards-grid .proj-card-name {
       font-size: 12.5px;
       line-height: 1.3;
@@ -3272,7 +3287,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-10-31.5 — message proposition d honoraires';
+const S33_BUILD = '2026-11-02.1 — photos des projets dans Projets';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -8343,9 +8358,14 @@ function makeProjectCard(p, small) {
       </span>`
     : '';
 
+  // Photo : la 3D de couverture (posee par s33ChargerCouvertures), sinon les initiales
+  const coverId = parseInt(p.cover_media_id, 10);
+  const cover = `<div class="proj-card-cover"><span class="proj-card-ini">${escHTML(typeof _s33NavInitiales === 'function' ? _s33NavInitiales(p.name) : String(p.name || '?').slice(0, 2).toUpperCase())}</span>${coverId > 0 ? `<img alt="" data-cover="${coverId}">` : ''}</div>`;
+
   return `<div class="proj-card ${p.pinned ? 'pinned' : ''} ${p.archived ? 'archived' : ''} ${healthClass}" onclick="openProjectDetail(${p.id})" style="${p.archived ? 'opacity:0.72;' : ''}">
+    ${cover}
     <div class="proj-card-top">
-      <div class="proj-card-name">${p.name}${p.archived ? ' <span style="font-size:9px;letter-spacing:.06em;color:#7c5cbf;font-weight:700;background:#f0ebff;padding:2px 7px;border-radius:99px;vertical-align:middle;">ARCHIVÉ</span>' : ''}</div>
+      <div class="proj-card-name">${escHTML(p.name)}${p.archived ? ' <span style="font-size:9px;letter-spacing:.06em;color:#7c5cbf;font-weight:700;background:#f0ebff;padding:2px 7px;border-radius:99px;vertical-align:middle;">ARCHIVÉ</span>' : ''}</div>
       <div style="display:flex;gap:4px;align-items:center;">
         ${!p.archived ? `<button class="pin-btn ${p.pinned?'active':''}" onclick="event.stopPropagation();togglePin(${p.id})" title="${p.pinned?'Désépingler':'Épingler'}"><span class="mi mi-sm">push_pin</span></button>` : ''}
       </div>
@@ -8412,6 +8432,9 @@ function renderProjectsCards() {
   } else {
     grid.innerHTML = displayed.map(p => makeProjectCard(p)).join('');
   }
+
+  // Photos des cartes : une seule demande pour toutes, puis le cache
+  if (typeof _s33NavCouvertures === 'function') _s33NavCouvertures(document.getElementById('page-projects')).catch(() => {});
 
   const moreWrap = document.getElementById('proj-show-more-wrap');
   const moreBtn = document.getElementById('proj-show-more-btn');

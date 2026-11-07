@@ -1115,6 +1115,53 @@
     display: flex; align-items: center; justify-content: center;
   }
   .proj-card-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  /* Photos des fournisseurs */
+  .sup-photo-cover {
+    position: relative; height: 120px; margin: -16px -16px 12px; cursor: pointer; overflow: hidden;
+    border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; background: var(--surface2);
+    display: flex; align-items: center; justify-content: center; color: var(--text-faint);
+  }
+  .sup-photo-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .sup-photo-n {
+    position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 4px;
+    background: rgba(0,0,0,.6); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px;
+  }
+  .sup-photo-n .mi { font-size: 14px; }
+  .s33-fs-ov {
+    position: fixed; inset: 0; z-index: 700; background: rgba(0,0,0,.55);
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .s33-fs-box {
+    background: var(--surface); width: 100%; max-width: 720px; max-height: 88vh; overflow-y: auto;
+    border-radius: 18px 18px 0 0; padding: 18px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  .s33-fs-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .s33-fs-titre { font-size: 16px; font-weight: 800; color: var(--text); }
+  .s33-fs-sous { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; }
+  .s33-fs-x { background: var(--surface2); border: 1px solid var(--border); border-radius: 99px; width: 36px; height: 36px; cursor: pointer; color: var(--text); display: flex; align-items: center; justify-content: center; }
+  .s33-fs-ajout {
+    width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px;
+    background: var(--gold); color: #fff; border: none; border-radius: 99px; font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  }
+  .s33-fs-ajout:disabled { opacity: .7; cursor: wait; }
+  .s33-fs-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
+  .s33-fs-item { display: flex; flex-direction: column; gap: 6px; }
+  .s33-fs-img { position: relative; aspect-ratio: 4 / 3; border: none; padding: 0; border-radius: 10px; overflow: hidden; background: var(--surface2); cursor: zoom-in; }
+  .s33-fs-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .s33-fs-item textarea {
+    width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit; font-size: 12px; line-height: 1.4;
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text);
+  }
+  .s33-fs-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10.5px; color: var(--text-faint); }
+  .s33-fs-meta button { background: none; border: none; color: #ef4444; cursor: pointer; padding: 4px; display: flex; }
+  .s33-fs-vide { grid-column: 1 / -1; text-align: center; color: var(--text-dim); font-size: 13px; line-height: 1.5; padding: 22px 10px; }
+  .s33-fs-vide .mi { display: block; font-size: 30px; color: var(--gold); margin-bottom: 6px; }
+  .s33-fs-attente { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; font-size: 11.5px; color: var(--text-dim); }
+  .s33-fs-attente img { width: 54px; height: 54px; object-fit: cover; border-radius: 8px; }
+  @media (max-width: 767px) {
+    .s33-fs-ov { z-index: 1600; }
+    .s33-fs-grille { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  }
   /* Jour du rapport (aujourd'hui, hier, autre jour) */
   .s33-rj { margin: 2px 0 14px; }
   .s33-rj-l { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -3303,7 +3350,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-02.3 — rapport oublie, hier ou autre jour';
+const S33_BUILD = '2026-11-07.1 — photos des fournisseurs';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5454,6 +5501,10 @@ const S33_BUILD = '2026-11-02.3 — rapport oublie, hier ou autre jour';
     <div class="form-row">
       <label>Notes</label>
       <textarea id="sup-notes" placeholder="Conditions, délais, remarques..." rows="2"></textarea>
+    </div>
+    <div class="form-row">
+      <label>Photos (magasin, échantillons, prix…)</label>
+      <div id="sup-photos-zone"></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-outline" onclick="closeModal('supplier-modal')">Annuler</button>
@@ -9392,13 +9443,15 @@ function renderMateriaux() {
       const mats   = (db.matMaterials||[]).filter(m=>parseInt(m.supplier_id)===s.id);
       const projSet = new Set(mats.flatMap(m=>Array.isArray(m.project_ids)?m.project_ids:[]));
       const projs  = [...projSet].map(id=>(db.projects||[]).find(p=>p.id===parseInt(id))).filter(Boolean);
+      const photos = s33FsDe(s.id);
       return `<div class="sup-card">
+        ${photos.length ? `<div class="sup-photo-cover" onclick="s33FsPhotos(${s.id})" title="Voir les photos"><span class="mi">image</span><img alt="" data-fsphoto="${photos[0].id}"><span class="sup-photo-n"><span class="mi">photo_library</span>${photos.length} photo${photos.length > 1 ? 's' : ''}</span></div>` : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><div class="sup-specialty-badge">${escHTML(s.specialty||'Autre')}</div>${s.subcat?`<span style="font-size:10px;font-weight:700;background:rgba(201,169,110,.14);color:var(--gold);border-radius:99px;padding:3px 10px;">${escHTML(s.subcat)}</span>`:''}${s.suggested?`<span style="font-size:10px;font-weight:700;background:rgba(34,197,94,.13);color:#16a34a;border-radius:99px;padding:3px 10px;">Proposé</span>`:''}</div>
         <div style="font-size:14px;font-weight:700;color:var(--text);margin:6px 0 2px;">${escHTML(s.name)}</div>
         ${s.contact_name?`<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">${escHTML(s.contact_name)}</div>`:'<div style="margin-bottom:10px;"></div>'}
         <div class="contact-info">
-          ${s.phone?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">phone</span><a href="tel:${s.phone}">${escHTML(s.phone)}</a></div>`:''}
-          ${s.email?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">mail</span><a href="mailto:${s.email}">${escHTML(s.email)}</a></div>`:''}
+          ${s.phone?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">phone</span><a href="tel:${escHTML(s.phone)}">${escHTML(s.phone)}</a></div>`:''}
+          ${s.email?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">mail</span><a href="mailto:${escHTML(s.email)}">${escHTML(s.email)}</a></div>`:''}
           ${s.website?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">link</span><a href="${escHTML(s.website)}" target="_blank" rel="noopener">Site web</a></div>`:''}
           ${s.address?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">location_on</span>${escHTML(s.address)}</div>`:''}
         </div>
@@ -9408,6 +9461,7 @@ function renderMateriaux() {
         <div class="mat-card-actions">
           ${s.suggested?`<button onclick="s33SupAdopt(${s.id})" style="flex:1;padding:6px;background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.4);border-radius:var(--radius-sm);font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;color:#16a34a;display:flex;align-items:center;justify-content:center;gap:4px;"><span class="mi mi-sm">add_circle</span> Ajouter à mes fournisseurs</button>`
           :`<button onclick="editSupplier(${s.id})" style="flex:1;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;gap:4px;"><span class="mi mi-sm">edit</span> Modifier</button>`}
+          <button onclick="s33FsPhotos(${s.id})" title="Photos du fournisseur" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text);display:flex;align-items:center;gap:4px;font-family:inherit;font-size:11px;font-weight:700;"><span class="mi mi-sm">photo_camera</span>${photos.length || ''}</button>
           <button onclick="deleteSupplier(${s.id})" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:#ef4444;display:flex;align-items:center;"><span class="mi mi-sm">delete</span></button>
         </div>
       </div>`;
@@ -9429,6 +9483,7 @@ function renderMateriaux() {
       const filtered = allSups.filter(su => (su.name||'').toLowerCase().includes(q) || (su.contact_name||'').toLowerCase().includes(q) || (su.phone||'').includes(q) || (su.subcat||'').toLowerCase().includes(q) || (su.specialty||'').toLowerCase().includes(q));
       grid.innerHTML = filtered.length ? `<div class="mat-grid">${filtered.map(supCard).join('')}</div>`
         : emptyStateHTML('Aucun fournisseur correspond', { icon:'local_shipping', sub:'Modifiez la recherche.' });
+      s33FsApresAffichage(grid);
       return;
     }
     if (!sups.length) { grid.innerHTML = emptyStateHTML(window._matSupSrc==='sugg'?'Aucun fournisseur proposé':'Aucun fournisseur', { icon:'local_shipping', sub:window._matSupSrc==='sugg'?'Toutes les propositions ont été adoptées ou supprimées.':'Ajoutez votre premier fournisseur, ou piochez dans « Proposés — Maroc ».', btnLabel:window._matSupSrc==='sugg'?'':'Nouveau fournisseur', btnAction:'openSupplierModal()' }); return; }
@@ -9475,6 +9530,7 @@ function renderMateriaux() {
     grid.innerHTML = backBar(backLbl, backTo, titre) +
       (list.length ? `<div class="mat-grid">${list.map(supCard).join('')}</div>`
         : emptyStateHTML('Aucun fournisseur ici', { icon:'local_shipping', sub:'Ajoutez-en un avec « + Fournisseur ».' }));
+    s33FsApresAffichage(grid);
   }
 }
 
@@ -9662,6 +9718,8 @@ function openSupplierModal(id) {
   document.getElementById('sup-website').value = s?.website||'';
   document.getElementById('sup-address').value = s?.address||'';
   document.getElementById('sup-notes').value = s?.notes||'';
+  _s33FsEnAttente = [];
+  s33FsZoneFiche(id || null);
   openModal('supplier-modal');
 }
 async function saveSupplier() {
@@ -9679,15 +9737,31 @@ async function saveSupplier() {
     notes:        document.getElementById('sup-notes').value.trim()||null
   };
   const editId = document.getElementById('sup-edit-id').value;
-  if (editId) {
-    await sbUpdate('mat_suppliers', parseInt(editId), obj);
-    db.matSuppliers = (db.matSuppliers||[]).map(s=>s.id===parseInt(editId)?{...s,...obj}:s);
-    toast('Fournisseur modifié');
-  } else {
-    const res = await sbInsert('mat_suppliers', obj);
-    const ins = (Array.isArray(res)&&res[0]) ? res[0] : {...obj,id:Date.now()};
-    db.matSuppliers = [...(db.matSuppliers||[]),ins];
-    toast('Fournisseur ajouté');
+  // Un enregistrement rate ne s'annonce pas reussi : la fenetre reste ouverte
+  try {
+    if (editId) {
+      await sbUpdateOrThrow('mat_suppliers', parseInt(editId), obj);
+      db.matSuppliers = (db.matSuppliers||[]).map(s=>s.id===parseInt(editId)?{...s,...obj}:s);
+      toast('Fournisseur modifié');
+    } else {
+      const res = await sbInsertOrThrow('mat_suppliers', obj);
+      const ins = (Array.isArray(res)&&res[0]) ? res[0] : null;
+      if (!ins || !ins.id) throw new Error('fournisseur non enregistre');
+      db.matSuppliers = [...(db.matSuppliers||[]),ins];
+      const attente = _s33FsEnAttente; _s33FsEnAttente = [];
+      if (attente.length) {
+        closeModal('supplier-modal'); renderMateriaux();
+        toast('Fournisseur ajouté — envoi des photos…');
+        await s33FsEnvoyer(ins.id, attente);
+        renderMateriaux();
+        return;
+      }
+      toast('Fournisseur ajouté');
+    }
+  } catch (e) {
+    console.error('fournisseur', e);
+    toast('Enregistrement impossible — vérifiez la connexion et réessayez', 'error');
+    return;
   }
   closeModal('supplier-modal'); renderMateriaux();
 }
@@ -9700,13 +9774,234 @@ async function s33SupAdopt(id) {
 }
 async function deleteSupplier(id) {
   const s = (db.matSuppliers||[]).find(x=>x.id===id);
-  if (!s||!confirm(`Supprimer « ${s.name} » ?\n\nLes matériaux liés perdront ce fournisseur.`)) return;
-  await sbDelete('mat_suppliers', id);
+  const photos = s33FsDe(id);
+  if (!s||!confirm(`Supprimer « ${s.name} » ?\n\nLes matériaux liés perdront ce fournisseur.` + (photos.length ? `\nSes ${photos.length} photo${photos.length > 1 ? 's' : ''} ser${photos.length > 1 ? 'ont supprimées' : 'a supprimée'}.` : ''))) return;
+  if (!(await sbDelete('mat_suppliers', id))) return; // message d'echec deja affiche
+  // Les lignes de photos partent avec le fournisseur ; on retire aussi leurs fichiers
+  photos.forEach(p => s33FsRetirerFichier(p.file_path));
+  if (_s33FsPhotos) _s33FsPhotos = _s33FsPhotos.filter(p => p.supplier_id !== id);
   db.matSuppliers = (db.matSuppliers||[]).filter(x=>x.id!==id);
   db.matMaterials = (db.matMaterials||[]).map(m=>parseInt(m.supplier_id)===id?{...m,supplier_id:null}:m);
   toast('Fournisseur supprimé'); renderMateriaux();
 }
 function editSupplier(id) { openSupplierModal(id); }
+
+// ═══ PHOTOS DES FOURNISSEURS ═══════════════════════════════════════
+// Demande de Chaima (07/11/2026) : les photos prises dans les magasins des
+// fournisseurs (ou ailleurs), rangees avec leur fiche. Table
+// mat_supplier_photos (chemin, vignette 420 px, legende) ; le fichier est dans
+// le stockage, dossier fournisseurs/<id>/ — jamais en base64 dans la table.
+// La liste (sans vignettes) se lit une fois ; les vignettes affichees sont
+// demandees ensemble puis gardees en memoire ; la photo en grand n'est
+// chargee qu'a l'ouverture (lien signe).
+let _s33FsPhotos = null;     // null : pas encore lue
+let _s33FsEchec = false;     // derniere lecture ratee : on reessaie a l'ouverture
+let _s33FsLecture = null;
+let _s33FsEnAttente = [];    // photos choisies pour un fournisseur pas encore enregistre
+const _s33FsVignettes = {};  // id -> data URL (null : pas de vignette)
+
+function s33FsDe(supId) {
+  return (_s33FsPhotos || []).filter(p => p.supplier_id === supId);
+}
+function s33FsCharger(force) {
+  if (_s33FsPhotos && !force) return Promise.resolve(_s33FsPhotos);
+  if (_s33FsLecture) return _s33FsLecture;
+  _s33FsLecture = sbFetch('mat_supplier_photos', 'GET', null, '?select=id,supplier_id,file_path,note,added_by,created_at&order=created_at.desc', true)
+    .then(r => { _s33FsPhotos = Array.isArray(r) ? r : []; _s33FsEchec = false; return _s33FsPhotos; })
+    .catch(e => { console.warn('photos fournisseurs', e); _s33FsEchec = true; if (!_s33FsPhotos) _s33FsPhotos = []; return _s33FsPhotos; })
+    .finally(() => { _s33FsLecture = null; });
+  return _s33FsLecture;
+}
+// Apres l'affichage des cartes : premiere lecture, puis vignettes
+function s33FsApresAffichage(box) {
+  if (!box) return;
+  if (!_s33FsPhotos) {
+    s33FsCharger().then(() => {
+      if (currentPage === 'materiaux' && document.body.contains(box) && s33FsDe && (_s33FsPhotos || []).length) renderMateriaux();
+    });
+    return;
+  }
+  _s33FsPoserVignettes(box);
+}
+async function _s33FsPoserVignettes(box) {
+  const imgs = Array.from(box.querySelectorAll('img[data-fsphoto]'));
+  const manque = [...new Set(imgs.map(i => i.getAttribute('data-fsphoto')).filter(id => _s33FsVignettes[id] === undefined))];
+  if (manque.length) {
+    try {
+      const rows = await sbFetch('mat_supplier_photos', 'GET', null, '?select=id,thumb&id=in.(' + manque.map(Number).join(',') + ')', true);
+      (rows || []).forEach(r => { _s33FsVignettes[r.id] = r.thumb || null; });
+    } catch (_) { /* reseau : on garde l'icone, on reessaiera */ return; }
+  }
+  imgs.forEach(im => {
+    const src = _s33FsVignettes[im.getAttribute('data-fsphoto')];
+    if (src && /^data:image\//.test(src)) im.src = src; else if (src === null) im.remove();
+  });
+}
+function s33FsRetirerFichier(chemin) {
+  if (!chemin || !/^fournisseurs\//.test(chemin)) return;
+  fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + chemin, {
+    method: 'DELETE',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY) }
+  }).catch(() => {});
+}
+function _s33FsRafraichir(supId) {
+  s33FsGrille(supId);
+  s33FsZoneFiche(parseInt((document.getElementById('sup-edit-id') || {}).value) || null);
+  if (currentPage === 'materiaux') renderMateriaux();
+}
+
+// Envoi : photo allegee (2560 px), vignette, fichier dans le stockage, puis
+// la ligne ; sans depot reussi, rien dans la table.
+async function s33FsEnvoyer(supId, files) {
+  files = Array.from(files || []);
+  if (!files.length) return { ok: 0, ko: [] };
+  const btn = document.getElementById('s33-fs-ajout');
+  const texte = btn ? btn.innerHTML : '';
+  let ok = 0; const ko = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="mi">cloud_upload</span> Envoi ' + (i + 1) + ' / ' + files.length + '…'; }
+    let chemin = null;
+    try {
+      const brut = await _s33LireFichier(f);
+      const leger = await s33AllegerPhoto(brut, f.type);
+      const data = leger && leger.data;
+      // Une photo que le telephone n'a pas su lire (ex. format HEIC) n'est pas envoyee
+      if (!/^data:image\/(jpeg|png|webp);base64,/.test(String(data || ''))) throw new Error('format non lu');
+      const vignette = await s33VignettePhoto(data);
+      const blob = _s33DataUrlVersBlob(data);
+      const ext = blob.type === 'image/png' ? '.png' : blob.type === 'image/webp' ? '.webp' : '.jpg';
+      chemin = 'fournisseurs/' + supId + '/' + Date.now() + '_' + Math.random().toString(36).slice(2, 7) + ext;
+      const up = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + chemin, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY), 'Content-Type': blob.type },
+        body: blob
+      });
+      if (!up.ok) { chemin = null; throw new Error('depot refuse (' + up.status + ')'); }
+      const r = await sbInsertOrThrow('mat_supplier_photos', {
+        supplier_id: supId, file_path: chemin, thumb: vignette || null,
+        added_by: (currentUser && currentUser.name) || null
+      });
+      const ligne = Array.isArray(r) && r[0] ? r[0] : null;
+      if (!ligne || !ligne.id) throw new Error('photo non enregistree');
+      _s33FsVignettes[ligne.id] = vignette || null;
+      delete ligne.thumb;
+      _s33FsPhotos = [ligne, ...(_s33FsPhotos || [])];
+      ok++;
+    } catch (e) {
+      console.warn('photo fournisseur', f && f.name, e);
+      if (chemin) s33FsRetirerFichier(chemin); // fichier depose mais ligne ratee
+      ko.push((f && f.name) || 'photo');
+    }
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = texte; }
+  const pl = n => n > 1 ? 's' : '';
+  if (!ko.length) toast(ok + ' photo' + pl(ok) + ' ajoutée' + pl(ok), 'success');
+  else toast((ok ? ok + ' ajoutée' + pl(ok) + ' · ' : '') + 'non envoyée' + pl(ko.length) + ' : ' + ko.join(', ') + ' — réessayez', 'error');
+  _s33FsRafraichir(supId);
+  return { ok, ko };
+}
+function _s33FsChoisirFichiers(fait) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+  inp.onchange = () => { const f = Array.from(inp.files || []); if (f.length) fait(f); };
+  inp.click();
+}
+
+// Fenetre « Photos — <fournisseur> »
+window.s33FsPhotos = async function(supId) {
+  const s = (db.matSuppliers || []).find(x => x.id === supId);
+  if (!s) return;
+  s33FsFermer();
+  const ov = document.createElement('div');
+  ov.id = 's33-fs-ov'; ov.className = 's33-fs-ov';
+  ov.innerHTML =
+    '<div class="s33-fs-box" onclick="event.stopPropagation()">' +
+      '<div class="s33-fs-tete"><div><div class="s33-fs-titre">Photos</div><div class="s33-fs-sous">' + escHTML(s.name) + '</div></div>' +
+        '<button class="s33-fs-x" onclick="s33FsFermer()" aria-label="Fermer"><span class="mi">close</span></button></div>' +
+      '<button id="s33-fs-ajout" class="s33-fs-ajout" onclick="s33FsAjouter(' + supId + ')"><span class="mi">add_a_photo</span> Prendre ou ajouter des photos</button>' +
+      '<div id="s33-fs-grille" class="s33-fs-grille" data-sup="' + supId + '"><div class="s33-fs-vide">Chargement…</div></div>' +
+    '</div>';
+  ov.addEventListener('click', s33FsFermer);
+  document.body.appendChild(ov);
+  await s33FsCharger(_s33FsEchec);
+  s33FsGrille(supId);
+};
+window.s33FsFermer = function() {
+  const ov = document.getElementById('s33-fs-ov');
+  if (ov) ov.remove();
+};
+window.s33FsAjouter = function(supId) { _s33FsChoisirFichiers(f => s33FsEnvoyer(supId, f)); };
+function s33FsGrille(supId) {
+  const g = document.getElementById('s33-fs-grille');
+  if (!g || String(g.getAttribute('data-sup')) !== String(supId)) return;
+  const ph = s33FsDe(supId);
+  if (!ph.length) {
+    g.innerHTML = _s33FsEchec
+      ? '<div class="s33-fs-vide"><span class="mi">wifi_off</span>Photos indisponibles — vérifiez la connexion, puis rouvrez.</div>'
+      : '<div class="s33-fs-vide"><span class="mi">photo_camera</span>Aucune photo pour l’instant.<br>Prenez en photo une vitrine, un échantillon, une étiquette de prix…</div>';
+    return;
+  }
+  g.innerHTML = ph.map(p =>
+    '<div class="s33-fs-item">' +
+      '<button class="s33-fs-img" onclick="s33FsVoir(' + p.id + ')" title="Voir en grand"><img alt="" data-fsphoto="' + p.id + '"></button>' +
+      '<textarea rows="2" maxlength="500" placeholder="Légende (facultatif)" onchange="s33FsLegende(' + p.id + ', this)">' + escHTML(p.note || '') + '</textarea>' +
+      '<div class="s33-fs-meta"><span>' + escHTML(p.created_at ? new Date(p.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '') +
+        (p.added_by ? ' · ' + escHTML(p.added_by) : '') + '</span>' +
+        '<button onclick="s33FsSupprimer(' + p.id + ')" title="Supprimer la photo" aria-label="Supprimer la photo"><span class="mi mi-sm">delete</span></button></div>' +
+    '</div>').join('');
+  _s33FsPoserVignettes(g);
+}
+window.s33FsVoir = async function(id) {
+  const p = (_s33FsPhotos || []).find(x => x.id === id);
+  if (!p) return;
+  const url = await _mediaStorageUrl(p.file_path, 3600);
+  if (!url) { toast('Photo indisponible — vérifiez la connexion', 'error'); return; }
+  const s = (db.matSuppliers || []).find(x => x.id === p.supplier_id);
+  showImageLightbox(url, p.note || (s ? s.name : ''));
+};
+window.s33FsLegende = async function(id, el) {
+  const p = (_s33FsPhotos || []).find(x => x.id === id);
+  if (!p || !el) return;
+  const note = String(el.value || '').trim().slice(0, 500) || null;
+  try {
+    await sbFetch('mat_supplier_photos', 'PATCH', { note }, '?id=eq.' + id, true);
+    p.note = note;
+    toast('Légende enregistrée', 'success');
+  } catch (_) {
+    toast('Légende non enregistrée — vérifiez la connexion et réessayez', 'error');
+  }
+};
+window.s33FsSupprimer = async function(id) {
+  const p = (_s33FsPhotos || []).find(x => x.id === id);
+  if (!p || !confirm('Supprimer cette photo ?')) return;
+  try { await sbFetch('mat_supplier_photos', 'DELETE', null, '?id=eq.' + id, true); }
+  catch (_) { toast('Suppression impossible — vérifiez la connexion', 'error'); return; }
+  s33FsRetirerFichier(p.file_path);
+  _s33FsPhotos = _s33FsPhotos.filter(x => x.id !== id);
+  toast('Photo supprimée');
+  _s33FsRafraichir(p.supplier_id);
+};
+// Section « Photos » de la fiche fournisseur
+function s33FsZoneFiche(supId) {
+  const z = document.getElementById('sup-photos-zone');
+  if (!z) return;
+  const b = 'display:inline-flex;align-items:center;gap:6px;';
+  if (supId) {
+    const n = s33FsDe(supId).length;
+    z.innerHTML = '<button type="button" class="btn btn-outline" style="' + b + '" onclick="s33FsPhotos(' + supId + ')"><span class="mi mi-sm">photo_library</span> ' +
+      (n ? 'Voir / ajouter des photos (' + n + ')' : 'Ajouter des photos') + '</button>';
+    return;
+  }
+  z.innerHTML = '<button type="button" class="btn btn-outline" style="' + b + '" onclick="s33FsChoisirAvant()"><span class="mi mi-sm">add_a_photo</span> Prendre ou ajouter des photos</button>' +
+    (_s33FsEnAttente.length
+      ? '<div class="s33-fs-attente">' + _s33FsEnAttente.map(f => '<img alt="" src="' + URL.createObjectURL(f) + '">').join('') +
+        '<span>' + _s33FsEnAttente.length + ' photo' + (_s33FsEnAttente.length > 1 ? 's partiront' : ' partira') + ' à l’enregistrement · <a href="#" onclick="_s33FsEnAttente=[];s33FsZoneFiche(null);return false;">retirer</a></span></div>'
+      : '');
+}
+window.s33FsChoisirAvant = function() {
+  _s33FsChoisirFichiers(f => { _s33FsEnAttente = _s33FsEnAttente.concat(f).slice(0, 20); s33FsZoneFiche(null); });
+};
 
 // ══════════════════════════════════════════
 // CONCOURS / APPELS D'OFFRES

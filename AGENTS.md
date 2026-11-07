@@ -90,6 +90,9 @@ ligne), sans framework ni étape de compilation.
   Si le dépôt échoue, on le dit ; on ne met pas le fichier dans la table.
 - **Photos** : `s33AllegerPhoto(dataUrl, mime)` (2560 px, JPEG 0,82) puis
   `s33VignettePhoto(data)` → colonne `thumb`, fabriquée à l'envoi.
+- **Photos d'un fournisseur** : table `mat_supplier_photos` (chemin, vignette,
+  légende), fichier dans le stockage `fournisseurs/<id>/` ; envoi par
+  `s33FsEnvoyer(supId, fichiers)` (pas de ligne sans dépôt réussi).
 - **Boucles réseau** (`setInterval`) : ne rien faire quand `document.hidden`
   (app en arrière-plan) ; ne demander que le nouveau (ex. messages :
   `created_at=gt.<dernier>`).

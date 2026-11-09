@@ -2067,6 +2067,25 @@
   }
   .mat-info-row { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); margin-bottom:4px; }
   .mat-info-row a { color:var(--gold); text-decoration:none; }
+  /* Prix client / prix architecte, materiaux d'un fournisseur */
+  .mat-prix { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .mat-prix .mat-price-tag { margin-bottom: 0; }
+  .mat-price-tag.archi { background: rgba(245,107,24,.09); border-color: rgba(245,107,24,.35); color: var(--text); }
+  .mat-price-tag.archi b { color: var(--gold); }
+  .mat-remise { font-size: 12px; color: var(--text-dim); margin: -8px 0 14px; min-height: 16px; }
+  .mat-remise b { color: var(--gold); }
+  .sup-mats { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+  .sup-mats-t { font-size: 11px; font-weight: 700; color: var(--text-dim); letter-spacing: .04em; }
+  .sup-mat {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left;
+    padding: 7px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: inherit; cursor: pointer; color: var(--text);
+  }
+  .sup-mat-n { font-size: 12px; font-weight: 700; line-height: 1.3; }
+  .sup-mat-d { font-weight: 500; color: var(--text-dim); }
+  .sup-mat-p { font-size: 11px; color: var(--text-dim); }
+  .sup-mat-p b { color: var(--gold); }
+  .sup-mat-plus { background: none; border: none; color: var(--gold); font-family: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; padding: 2px 0; text-align: left; }
   .mat-price-tag {
     display:inline-flex; align-items:center; gap:4px;
     background:var(--surface2); border:1px solid var(--border);
@@ -3350,7 +3369,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-07.1 — photos des fournisseurs';
+const S33_BUILD = '2026-11-09.1 — materiaux prix client et prix architecte';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5405,15 +5424,27 @@ const S33_BUILD = '2026-11-07.1 — photos des fournisseurs';
     </div>
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
-        <label>Prix unitaire (MAD)</label>
-        <input type="number" id="mat-price" placeholder="0" step="0.01">
+        <label>Prix client (MAD)</label>
+        <input type="number" id="mat-price" placeholder="Ex : 200" step="0.01" min="0" inputmode="decimal" oninput="s33MatRemise()">
       </div>
       <div class="form-row" style="margin-bottom:0">
+        <label>Prix architecte (MAD)</label>
+        <input type="number" id="mat-price-archi" placeholder="Ex : 180" step="0.01" min="0" inputmode="decimal" oninput="s33MatRemise()">
+      </div>
+    </div>
+    <div class="mat-remise" id="mat-remise"></div>
+    <div class="form-row-2">
+      <div class="form-row" style="margin-bottom:0">
         <label>Unité</label>
-        <select id="mat-unit">
-          <option>m²</option><option>ml</option><option>unité</option>
+        <select id="mat-unit" onchange="s33MatRemise()">
+          <option>m²</option><option>ml</option><option>m³</option><option>unité</option>
+          <option>panneau</option><option>rouleau</option><option>sac</option>
           <option>kg</option><option>L</option><option>forfait</option>
         </select>
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <label>Dimensions / format</label>
+        <input type="text" id="mat-dimensions" maxlength="200" placeholder="Ex : 20 × 120 cm, ép. 9 mm">
       </div>
     </div>
     <div class="form-row-2">
@@ -5432,7 +5463,7 @@ const S33_BUILD = '2026-11-07.1 — photos des fournisseurs';
     </div>
     <div class="form-row">
       <label>Notes</label>
-      <textarea id="mat-notes" placeholder="Dimensions, pose, remarques..." rows="2"></textarea>
+      <textarea id="mat-notes" placeholder="Pose, délais, stock, remarques..." rows="2"></textarea>
     </div>
     <div class="form-actions">
       <button class="btn btn-outline" onclick="closeModal('material-modal')">Annuler</button>
@@ -9394,7 +9425,7 @@ function renderMateriaux() {
 
     const filtered = items.filter(m => {
       const okCat = _matActiveCat==='Tous' || m.category===_matActiveCat;
-      const okQ   = !q || (m.name||'').toLowerCase().includes(q) || (m.reference||'').toLowerCase().includes(q) || (m.finish||'').toLowerCase().includes(q);
+      const okQ   = !q || (m.name||'').toLowerCase().includes(q) || (m.reference||'').toLowerCase().includes(q) || (m.finish||'').toLowerCase().includes(q) || (m.dimensions||'').toLowerCase().includes(q);
       return okCat && okQ;
     });
 
@@ -9415,7 +9446,8 @@ function renderMateriaux() {
             ${m.reference?`<div class="mat-card-ref">Réf: ${escHTML(m.reference)}</div>`:''}
           </div>
         </div>
-        ${m.price?`<div class="mat-price-tag"><span class="mi" style="font-size:13px">sell</span>${Number(m.price).toLocaleString('fr-MA')} MAD / ${escHTML(m.unit||'m²')}</div>`:''}
+        ${s33MatPrixHTML(m)}
+        ${m.dimensions?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">straighten</span>${escHTML(m.dimensions)}</div>`:''}
         ${m.finish?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">palette</span>${escHTML(m.finish)}</div>`:''}
         ${sup?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">storefront</span><span style="cursor:pointer;color:var(--gold)" onclick="switchMatTab('fournisseurs')">${escHTML(sup.name)}</span></div>`:''}
         ${m.fiche_url?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">description</span><a href="${escHTML(m.fiche_url)}" target="_blank" rel="noopener">Fiche technique</a></div>`:''}
@@ -9455,12 +9487,13 @@ function renderMateriaux() {
           ${s.website?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">link</span><a href="${escHTML(s.website)}" target="_blank" rel="noopener">Site web</a></div>`:''}
           ${s.address?`<div class="mat-info-row"><span class="mi" style="font-size:13px;color:var(--gold)">location_on</span>${escHTML(s.address)}</div>`:''}
         </div>
-        ${mats.length?`<div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--text-dim);letter-spacing:.04em;">MATÉRIAUX (${mats.length})</div><div class="mat-proj-chips" style="margin-top:4px;">${mats.slice(0,6).map(m=>`<span class="mat-proj-chip" onclick="switchMatTab('materiaux')">${escHTML(m.name)}</span>`).join('')}${mats.length>6?`<span class="mat-proj-chip">+${mats.length-6}</span>`:''}</div>`:''}
+        ${mats.length?`<div class="sup-mats"><div class="sup-mats-t">MATÉRIAUX (${mats.length})</div>${(_s33SupMatsOuverts.has(s.id) ? mats : mats.slice(0,4)).map(s33SupMatLigne).join('')}${mats.length>4 && !_s33SupMatsOuverts.has(s.id)?`<button class="sup-mat-plus" onclick="_s33SupMatsOuverts.add(${s.id});renderMateriaux()">Voir les ${mats.length-4} autres</button>`:''}</div>`:''}
         ${projs.length?`<div class="mat-proj-chips" style="margin-top:8px;">${projs.map(p=>`<span class="mat-proj-chip" onclick="openProjectDetail(${p.id})">${escHTML(p.name)}</span>`).join('')}</div>`:''}
         ${s.notes?`<div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-style:italic;">${escHTML(s.notes)}</div>`:''}
         <div class="mat-card-actions">
           ${s.suggested?`<button onclick="s33SupAdopt(${s.id})" style="flex:1;padding:6px;background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.4);border-radius:var(--radius-sm);font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;color:#16a34a;display:flex;align-items:center;justify-content:center;gap:4px;"><span class="mi mi-sm">add_circle</span> Ajouter à mes fournisseurs</button>`
           :`<button onclick="editSupplier(${s.id})" style="flex:1;padding:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;color:var(--text);display:flex;align-items:center;justify-content:center;gap:4px;"><span class="mi mi-sm">edit</span> Modifier</button>`}
+          <button onclick="openMaterialModal(null, { supplierId: ${s.id} })" title="Ajouter un matériau de ce fournisseur" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text);display:flex;align-items:center;gap:4px;font-family:inherit;font-size:11px;font-weight:700;"><span class="mi mi-sm">add</span>Matériau</button>
           <button onclick="s33FsPhotos(${s.id})" title="Photos du fournisseur" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:var(--text);display:flex;align-items:center;gap:4px;font-family:inherit;font-size:11px;font-weight:700;"><span class="mi mi-sm">photo_camera</span>${photos.length || ''}</button>
           <button onclick="deleteSupplier(${s.id})" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;color:#ef4444;display:flex;align-items:center;"><span class="mi mi-sm">delete</span></button>
         </div>
@@ -9535,12 +9568,61 @@ function renderMateriaux() {
 }
 
 // ── Matériau CRUD ──
-function openMaterialModal(id) {
+// ── Prix client / prix architecte (demande de Chaima, 09/11/2026) ──
+// price = prix client, price_archi = prix architecte (vus par l'equipe dans
+// l'app seulement, jamais dans une page ou un document client).
+const _s33SupMatsOuverts = new Set();
+function s33MatPrix(n) { return Number(n).toLocaleString('fr-MA', { maximumFractionDigits: 2 }); }
+function s33MatRemisePct(client, archi) {
+  const c = parseFloat(client), a = parseFloat(archi);
+  return (c > 0 && a >= 0 && a < c) ? Math.round((c - a) / c * 100) : null;
+}
+function s33MatPrixHTML(m) {
+  const u = escHTML(m.unit || 'm²');
+  const aClient = m.price != null && m.price !== '', aArchi = m.price_archi != null && m.price_archi !== '';
+  if (!aClient && !aArchi) return '';
+  const pct = s33MatRemisePct(m.price, m.price_archi);
+  return '<div class="mat-prix">' +
+    (aClient ? '<span class="mat-price-tag"><span class="mi" style="font-size:13px">sell</span>Client ' + s33MatPrix(m.price) + ' MAD / ' + u + '</span>' : '') +
+    (aArchi ? '<span class="mat-price-tag archi"><span class="mi" style="font-size:13px">architecture</span>Architecte ' + s33MatPrix(m.price_archi) + ' MAD / ' + u + (pct != null ? ' <b>−' + pct + ' %</b>' : '') + '</span>' : '') +
+    '</div>';
+}
+function s33SupMatLigne(m) {
+  const u = escHTML(m.unit || 'm²');
+  const prix = [m.price != null ? 'Client ' + s33MatPrix(m.price) : '', m.price_archi != null ? '<b>Archi ' + s33MatPrix(m.price_archi) + '</b>' : ''].filter(Boolean).join(' · ');
+  return '<button class="sup-mat" onclick="openMaterialModal(' + m.id + ')">' +
+    '<span class="sup-mat-n">' + escHTML(m.name) + (m.dimensions ? ' <span class="sup-mat-d">· ' + escHTML(m.dimensions) + '</span>' : '') + '</span>' +
+    (prix ? '<span class="sup-mat-p">' + prix + ' MAD / ' + u + '</span>' : '') + '</button>';
+}
+window.s33MatRemise = function() {
+  const el = document.getElementById('mat-remise');
+  if (!el) return;
+  const c = parseFloat(document.getElementById('mat-price').value), a = parseFloat(document.getElementById('mat-price-archi').value);
+  const u = document.getElementById('mat-unit').value || 'unité';
+  const pct = s33MatRemisePct(c, a);
+  if (pct != null) el.innerHTML = 'Remise architecte : <b>' + pct + ' %</b> (' + s33MatPrix(c - a) + ' MAD de moins par ' + escHTML(u) + ')';
+  else if (c > 0 && a > c) el.textContent = 'Le prix architecte est plus élevé que le prix client : vérifiez.';
+  else el.textContent = '';
+};
+// Categorie de materiau deduite du fournisseur (sa specialite, son sous-dossier)
+function s33MatCategoriePour(sup) {
+  const t = ((sup && sup.subcat) || '') + ' ' + ((sup && sup.specialty) || '');
+  const r = [[/marbre|pierre|granit/i, 'Marbre & pierre'], [/parquet|bois/i, 'Bois & parquet'], [/mdf|panneau/i, 'MDF & panneaux'],
+    [/verre|miroir/i, 'Verre & miroir'], [/alu/i, 'Aluminium'], [/pl[aâ]tre|staff/i, 'Plâtre & staff'], [/peinture|enduit/i, 'Peinture & enduits'],
+    [/carrelage|zellige|fa[iï]ence|rev[eê]tement/i, 'Carrelage & zellige'], [/plomberie|sanitaire/i, 'Plomberie'], [/[ée]lectricit/i, 'Électricité'],
+    [/isolation|[ée]tanch/i, 'Isolation & étanchéité'], [/construction|gros/i, 'Gros œuvre']];
+  const t2 = r.find(x => x[0].test(t));
+  return t2 ? t2[1] : 'Autre';
+}
+
+function openMaterialModal(id, opts) {
+  opts = opts || {};
   const m = id ? (db.matMaterials||[]).find(x=>x.id===id) : null;
+  const supDepart = !m && opts.supplierId ? (db.matSuppliers||[]).find(x=>x.id===opts.supplierId) : null;
   document.getElementById('mat-edit-id').value = id||'';
   document.getElementById('material-modal-title').textContent = id?'Modifier le matériau':'Nouveau matériau';
   const matCatSel = document.getElementById('mat-category');
-  matCatSel.value = m?.category||'Marbre & pierre';
+  matCatSel.value = m?.category || (supDepart ? s33MatCategoriePour(supDepart) : 'Marbre & pierre');
   if (m && m.category && matCatSel.value !== m.category) {
     // catégorie absente de la liste (ancienne donnée) : on l'ajoute pour ne pas l'écraser
     const o = document.createElement('option'); o.textContent = m.category;
@@ -9548,15 +9630,24 @@ function openMaterialModal(id) {
   }
   document.getElementById('mat-name').value = m?.name||'';
   document.getElementById('mat-reference').value = m?.reference||'';
-  document.getElementById('mat-price').value = m?.price||'';
-  document.getElementById('mat-unit').value = m?.unit||'m²';
+  document.getElementById('mat-price').value = m?.price ?? '';
+  document.getElementById('mat-price-archi').value = m?.price_archi ?? '';
+  document.getElementById('mat-dimensions').value = m?.dimensions || '';
+  // Unite absente de la liste (ancienne donnee) : on l'ajoute, sinon elle serait effacee
+  const unitSel = document.getElementById('mat-unit');
+  unitSel.value = m?.unit || 'm²';
+  if (m && m.unit && unitSel.value !== m.unit) {
+    const o = document.createElement('option'); o.textContent = m.unit;
+    unitSel.appendChild(o); unitSel.value = m.unit;
+  }
   document.getElementById('mat-finish').value = m?.finish||'';
   document.getElementById('mat-fiche-url').value = m?.fiche_url||'';
   document.getElementById('mat-notes').value = m?.notes||'';
   // Sélecteur fournisseurs
   const supSel = document.getElementById('mat-supplier-id');
   supSel.innerHTML = '<option value="">— Aucun —</option>' +
-    (db.matSuppliers||[]).map(s=>`<option value="${s.id}"${parseInt(m?.supplier_id)===s.id?' selected':''}>${escHTML(s.name)}</option>`).join('');
+    [...(db.matSuppliers||[])].sort((a,b)=>(a.name||'').localeCompare(b.name||'','fr')).map(s=>`<option value="${s.id}"${(parseInt(m?.supplier_id)===s.id || (supDepart && supDepart.id===s.id))?' selected':''}>${escHTML(s.name)}</option>`).join('');
+  s33MatRemise();
   // Chips projets
   const selIds = m ? (m.project_ids||[]).map(String) : [];
   const wrap = document.getElementById('mat-projects-wrap');
@@ -9577,26 +9668,43 @@ async function saveMaterial() {
     name,
     reference:   document.getElementById('mat-reference').value.trim()||null,
     supplier_id: supId,
-    price:       parseFloat(document.getElementById('mat-price').value)||null,
+    price:       _s33MatNombre('mat-price'),
+    price_archi: _s33MatNombre('mat-price-archi'),
+    dimensions:  document.getElementById('mat-dimensions').value.trim().slice(0, 200)||null,
     unit:        document.getElementById('mat-unit').value,
     finish:      document.getElementById('mat-finish').value.trim()||null,
     fiche_url:   document.getElementById('mat-fiche-url').value.trim()||null,
     notes:       document.getElementById('mat-notes').value.trim()||null,
     project_ids: projIds
   };
+  if (obj.price != null && obj.price_archi != null && obj.price_archi > obj.price &&
+      !confirm('Le prix architecte (' + s33MatPrix(obj.price_archi) + ' MAD) est plus élevé que le prix client (' + s33MatPrix(obj.price) + ' MAD). Enregistrer quand même ?')) return;
   const editId = document.getElementById('mat-edit-id').value;
-  if (editId) {
-    await sbUpdate('mat_materials', parseInt(editId), obj);
-    db.matMaterials = (db.matMaterials||[]).map(m=>m.id===parseInt(editId)?{...m,...obj}:m);
-    toast('Matériau modifié');
-  } else {
-    const res = await sbInsert('mat_materials', obj);
-    const ins = (Array.isArray(res)&&res[0]) ? res[0] : {...obj,id:Date.now()};
-    ins.project_ids = ins.project_ids||[];
-    db.matMaterials = [...(db.matMaterials||[]),ins];
-    toast('Matériau ajouté');
+  // Un enregistrement rate ne s'annonce pas reussi : la fenetre reste ouverte
+  try {
+    if (editId) {
+      await sbUpdateOrThrow('mat_materials', parseInt(editId), obj);
+      db.matMaterials = (db.matMaterials||[]).map(m=>m.id===parseInt(editId)?{...m,...obj}:m);
+      toast('Matériau modifié');
+    } else {
+      const res = await sbInsertOrThrow('mat_materials', obj);
+      const ins = (Array.isArray(res)&&res[0]) ? res[0] : null;
+      if (!ins || !ins.id) throw new Error('materiau non enregistre');
+      ins.project_ids = ins.project_ids||[];
+      db.matMaterials = [...(db.matMaterials||[]),ins];
+      toast('Matériau ajouté');
+    }
+  } catch (e) {
+    console.error('materiau', e);
+    toast('Enregistrement impossible — vérifiez la connexion et réessayez', 'error');
+    return;
   }
   closeModal('material-modal'); renderMateriaux();
+}
+function _s33MatNombre(idChamp) {
+  const v = String(document.getElementById(idChamp).value || '').replace(',', '.').trim();
+  const n = parseFloat(v);
+  return v !== '' && isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
 }
 async function deleteMaterial(id) {
   const m = (db.matMaterials||[]).find(x=>x.id===id);

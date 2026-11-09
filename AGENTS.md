@@ -71,6 +71,9 @@ ligne), sans framework ni étape de compilation.
   le document, il vient après le tableau d'échéancier.
 - **Référence d'un nouveau devis** = son numéro (`ref = num`, donné par
   `s33NumeroSuivant('devis')` à l'enregistrement).
+- **Matériaux** (`mat_materials`) : `price` = prix client, `price_archi` =
+  prix architecte (vu par l'équipe dans l'app, jamais dans une page ou un
+  document client), `dimensions` en texte libre.
 - **Montant d'une facture** (`invoices.amount`) : **TTC**. Le HT se déduit avec
   `s33InvTvaRate(inv)`.
 - **Visites de chantier** : un seul module, le **PV de chantier**

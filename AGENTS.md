@@ -129,6 +129,16 @@ Chaque fonction vérifie qui l'appelle :
 - `devis-sign`, `pv-sign` : la signature doit être une vraie image base64.
 - `brief-client` : réponses du questionnaire client (`brief.html?b=<jeton>`),
   écrites par jeton ; la table `client_briefs` n'est pas ouverte sans compte.
+- `client-portal` : espace client par jeton (`?portal=`) ; v13 : abonnement
+  du téléphone du client aux notifications (`push_subscribe`,
+  `push_unsubscribe` → table `portal_push_subscriptions`, écrite par le
+  serveur seul). Code dans le dépôt depuis la v13.
+- `send-push` : `portal_project_id` vise les téléphones des clients d'un
+  projet (jamais mélangés avec ceux de l'équipe) ; adresses périmées retirées.
+- **Prévenir un client** : `s33PrevenirClient(projetId, noms)` (envois
+  groupés). Un document ajouté dans un dossier que le client voit déjà en
+  entier lui est partagé tout seul (`s33PartageAuto`), sauf PDF de PV, état
+  de panneau et pièces envoyées par le client.
 - `lien-court` : public, lecture seule ; un code de 10 à 12 lettres et
   chiffres → le lien complet si un seul jeton commence par ce code ; pour un
   devis, `DEV-019` → son lien de signature s'il a déjà été partagé ; sinon 404.

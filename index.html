@@ -3369,7 +3369,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-09.1 — materiaux prix client et prix architecte';
+const S33_BUILD = '2026-11-10.1 — client prevenu des nouveaux documents';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -6364,8 +6364,14 @@ function s33SignalerDepot(table, body) {
   } catch(e) { console.warn('[depot] signalement', e); }
 }
 
-async function sbInsert(table, body) { const r = await sbFetch(table, 'POST', body, '', false); s33SignalerDepot(table, body); s33ToucherProjet(_projetConcerne(table, body, '')); return r; }
-async function sbInsertOrThrow(table, body) { const r = await sbFetch(table, 'POST', body, '', true); s33SignalerDepot(table, body); s33ToucherProjet(_projetConcerne(table, body, '')); return r; }
+async function sbInsert(table, body) { const r = await sbFetch(table, 'POST', body, '', false); s33SignalerDepot(table, body); s33ToucherProjet(_projetConcerne(table, body, '')); _s33ApresAjout(table, r); return r; }
+async function sbInsertOrThrow(table, body) { const r = await sbFetch(table, 'POST', body, '', true); s33SignalerDepot(table, body); s33ToucherProjet(_projetConcerne(table, body, '')); _s33ApresAjout(table, r); return r; }
+// Un document ajoute dans un dossier que le client voit deja en entier lui
+// est partage tout seul, et il est prevenu (voir s33PartageAuto).
+function _s33ApresAjout(table, r) {
+  if (table !== 'media' || !Array.isArray(r) || !r.length) return;
+  setTimeout(() => { try { s33PartageAuto(r); } catch (e) { console.warn('partage auto', e); } }, 0);
+}
 
 // ── Chargement différé (lazy) des données binaires media ─────────────
 // La colonne `data` (base64) n'est PAS chargée au démarrage.
@@ -14934,6 +14940,8 @@ function renderClientPortalShare(projectId) {
 
     // Visites du client (journal rempli par la fonction client-portal)
     html += '<div id="s33-portal-visits" style="margin-bottom:16px;"></div>';
+    // Notifications sur le telephone du client (admin et co-admins)
+    html += '<div id="s33-portal-notif" style="margin-bottom:16px;"></div>';
 
     // Sélection des documents/photos visibles — regroupés par dossier :
     // cocher le dossier entier, ou le déplier pour choisir un par un.
@@ -14998,6 +15006,7 @@ function renderClientPortalShare(projectId) {
     inp.indeterminate = !!(window._s33ShareSome || [])[parseInt(inp.dataset.fgroup)];
   });
   s33PortalLoadVisits(projectId);
+  s33PortalNotifAfficher(projectId, true);
   if (typeof s33PortalLoadPlanComs === 'function') s33PortalLoadPlanComs(projectId);
 }
 
@@ -15064,6 +15073,7 @@ async function s33PortalToggleFolder(projectId, gi, visible) {
   const ids = items.map(m => m.id).join(',');
   const ok = await sbFetch('media', 'PATCH', { client_visible: visible }, '?id=in.(' + ids + ')');
   if (ok === false) { toast('Erreur — réessayez'); renderClientPortalShare(projectId); return; }
+  if (visible) s33PrevenirClient(projectId, items.filter(m => !m.client_visible).map(m => m.name));
   items.forEach(m => { m.client_visible = visible; });
   renderClientPortalShare(projectId);
   toast(visible ? 'Dossier « ' + fn + ' » partagé (' + items.length + ')' : 'Dossier « ' + fn + ' » retiré du partage');
@@ -15104,10 +15114,100 @@ async function s33PortalRevoke(projectId) {
   toast('Espace client désactivé');
 }
 
+// ═══ PREVENIR LE CLIENT SUR SON TELEPHONE ═════════════════════════════
+// Demande de Chaima (10/11/2026). Un document partage avec le client (case
+// cochee, dossier coche, ou ajoute dans un dossier qu'il voit deja en entier)
+// lui envoie une notification, s'il l'a acceptee dans son espace (« Me
+// prevenir des nouveaux documents »). Les partages d'un meme moment partent
+// ensemble : un seul message pour cinq plans. Fonction send-push, cible
+// portal_project_id (table portal_push_subscriptions).
+const _S33_DOSSIER_ANCIEN = { contrat: 'Documents administratifs', doc_admin: 'Documents administratifs', certif_propriete: 'Documents administratifs', calcul_contenance: 'Documents administratifs', plan_cadastral: 'Plans / Coupes / Façades', pv_chantier: 'PV de chantier', photo_chantier: 'Photos de chantier' };
+function s33DossierDuDoc(m) { return (m && m.folder) || _S33_DOSSIER_ANCIEN[m && m.doc_type] || 'Documents administratifs'; }
+// Jamais partages tout seuls : le PDF d'un PV (il passe par la validation),
+// l'etat d'un panneau, et les pieces envoyees par le client lui-meme.
+const _S33_PAS_DE_PARTAGE_AUTO = ['pv_chantier', 'panneau_state', 'piece_client'];
+const _s33NotifClients = {}; // projectId -> { n, dernier } (appareils abonnes)
+const _s33AEnvoyer = {};     // projectId -> { noms, t }
+
+function s33PrevenirClient(projectId, noms) {
+  noms = (noms || []).map(x => String(x || '').trim()).filter(Boolean);
+  if (!noms.length) return;
+  const f = _s33AEnvoyer[projectId] = _s33AEnvoyer[projectId] || { noms: [] };
+  f.noms.push(...noms);
+  clearTimeout(f.t);
+  f.t = setTimeout(() => { delete _s33AEnvoyer[projectId]; _s33PrevenirEnvoyer(projectId, f.noms); }, 4000);
+}
+async function _s33PrevenirEnvoyer(projectId, noms) {
+  const p = (db.projects || []).find(x => String(x.id) === String(projectId));
+  if (!p || !p.portal_token || p.portal_revoked_at) return;
+  const uniq = [...new Set(noms)], n = uniq.length;
+  const liste = uniq.slice(0, 3).map(x => '« ' + x + ' »').join(', ') + (n > 3 ? ' et ' + (n - 3) + ' autre' + (n - 3 > 1 ? 's' : '') : '');
+  const corps = (n === 1 ? 'Nouveau document dans votre espace : ' : n + ' nouveaux documents dans votre espace : ') + liste;
+  let chemin = '/';
+  try { const u = new URL(s33LienCourt('espace', p.portal_token)); chemin = u.pathname + u.search; } catch (_) {}
+  try {
+    const r = await fetch(SUPABASE_URL + '/functions/v1/send-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY) },
+      body: JSON.stringify({ portal_project_id: p.id, title: 'Studio 33 Architects — ' + (p.name || 'votre projet'), body: corps, url: chemin, tag: 'espace_' + p.id })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error('envoi ' + r.status);
+    _s33NotifClients[p.id] = { n: Math.max(0, (j.total || 0) - (j.removed || 0)), dernier: j.sent > 0 ? new Date().toISOString() : (_s33NotifClients[p.id] || {}).dernier };
+    toast(j.sent > 0
+      ? 'Client prévenu sur son téléphone (' + (n > 1 ? n + ' documents' : '1 document') + ')'
+      : 'Partagé — le client n’a pas encore activé les notifications dans son espace');
+    s33PortalNotifAfficher(p.id);
+  } catch (e) {
+    console.warn('prevenir client', e);
+    toast('Partagé, mais la notification au client n’est pas partie — vérifiez la connexion');
+  }
+}
+// Document ajoute : partage tout seul s'il arrive dans un dossier que le
+// client voit deja en entier (au moins un document, tous partages).
+async function s33PartageAuto(lignes) {
+  for (const row of lignes) {
+    if (!row || !row.id || row.client_visible || !row.project_id) continue;
+    if (_S33_PAS_DE_PARTAGE_AUTO.includes(row.doc_type)) continue;
+    const p = (db.projects || []).find(x => String(x.id) === String(row.project_id));
+    if (!p || !p.portal_token || p.portal_revoked_at) continue;
+    const dossier = s33DossierDuDoc(row);
+    const voisins = (db.media || []).filter(m => String(m.projectId ?? m.project_id) === String(p.id) && String(m.id) !== String(row.id) && s33DossierDuDoc(m) === dossier);
+    if (!voisins.length || !voisins.every(m => m.client_visible)) continue;
+    try { await sbFetch('media', 'PATCH', { client_visible: true }, '?id=eq.' + row.id, true); }
+    catch (e) { console.warn('partage auto', e); toast('« ' + (row.name || 'Document') + ' » ajouté, mais pas encore partagé avec le client — cochez-le dans Espace client'); continue; }
+    row.client_visible = true;
+    const local = (db.media || []).find(m => String(m.id) === String(row.id));
+    if (local) local.client_visible = true;
+    else setTimeout(() => { const l = (db.media || []).find(m => String(m.id) === String(row.id)); if (l) l.client_visible = true; }, 1500);
+    s33PrevenirClient(p.id, [row.name || 'Document']);
+  }
+}
+// Fenetre de partage : le client a-t-il active les notifications ?
+async function s33PortalNotifAfficher(projectId, relire) {
+  const box = document.getElementById('s33-portal-notif');
+  if (!box) return;
+  if (!(currentUser && (currentUser.role === 'admin' || currentUser.permissions?.is_co_admin === true))) { box.innerHTML = ''; return; }
+  if (relire || !_s33NotifClients[projectId]) {
+    try {
+      const rows = await sbFetch('portal_push_subscriptions', 'GET', null, '?project_id=eq.' + parseInt(projectId, 10) + '&select=id,last_sent_at&order=last_sent_at.desc.nullslast', true);
+      _s33NotifClients[projectId] = { n: (rows || []).length, dernier: (rows || [])[0] ? rows[0].last_sent_at : null };
+    } catch (_) { box.innerHTML = ''; return; }
+  }
+  const e = _s33NotifClients[projectId];
+  box.innerHTML = e.n
+    ? '<div style="display:flex;gap:10px;align-items:flex-start;background:rgba(39,174,96,.08);border:1px solid rgba(39,174,96,.3);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--text);line-height:1.45;">' +
+        '<span class="mi" style="color:#27ae60;font-size:18px;">notifications_active</span><span>Le client reçoit une notification à chaque document partagé (' + e.n + ' appareil' + (e.n > 1 ? 's' : '') + ')' +
+        (e.dernier ? ' · dernière le ' + new Date(e.dernier).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) : '') + '</span></div>'
+    : '<div style="display:flex;gap:10px;align-items:flex-start;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--text-dim);line-height:1.45;">' +
+        '<span class="mi" style="color:var(--text-faint);font-size:18px;">notifications_off</span><span>Le client n’a pas encore activé les notifications. Dans son espace, il touche « Me prévenir des nouveaux documents ». En attendant, le bouton WhatsApp ci-dessus le prévient.</span></div>';
+}
+
 async function s33PortalToggleDoc(mediaId, visible, projectId) {
   const ok = await sbUpdate('media', mediaId, { client_visible: visible });
   if (ok === false) { toast('Erreur — réessayez', 'error'); return; }
   const m = (db.media || []).find(x => String(x.id) === String(mediaId));
+  if (visible && m && !m.client_visible) s33PrevenirClient(projectId, [m.name]);
   if (m) m.client_visible = visible;
   // Mettre à jour les compteurs / cases des dossiers
   renderClientPortalShare(projectId);
@@ -31913,6 +32013,24 @@ window.openVisitReport = function(pid) {
   'use strict';
   const token = (function(){ try { return new URLSearchParams(location.search).get('portal'); } catch(_) { return null; } })();
   if (!token) return; // pas en mode portail → app normale
+  const MODE_REUNION = (function(){ try { return new URLSearchParams(location.search).get('reunion') === '1'; } catch(_) { return false; } })();
+
+  // Ajouté à l'écran d'accueil, l'espace doit rouvrir CET espace (pas l'app
+  // interne) : sinon, sur iPhone, les notifications ne pourraient pas venir.
+  if (!MODE_REUNION) {
+    try {
+      const lk = document.querySelector('link[rel="manifest"]');
+      if (lk && /^data:application\/manifest\+json,/.test(lk.getAttribute('href') || '')) {
+        const m = JSON.parse(decodeURIComponent(lk.getAttribute('href').slice(lk.getAttribute('href').indexOf(',') + 1)));
+        m.name = 'Mon projet — Studio 33 Architects'; m.short_name = 'Mon projet';
+        m.description = 'Votre espace projet Studio 33 Architects';
+        m.start_url = location.href; m.id = location.href; m.scope = location.origin + '/';
+        lk.setAttribute('href', 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(m)));
+      }
+      const ti = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (ti) ti.setAttribute('content', 'Mon projet');
+    } catch (_) {}
+  }
 
   // ── Bilingue français / arabe (mémorisé sur l'appareil du client) ──
   let LANG = 'fr';
@@ -31953,6 +32071,13 @@ window.openVisitReport = function(pid) {
       sendFailed: 'Message non envoyé — vérifiez votre connexion et réessayez.',
       footer: 'Studio 33 Architects · Agadir · Casablanca', footer2: 'Espace en lecture seule — mis à jour en temps réel',
       phases: { ESQ: 'Esquisse', APS: 'Avant-projet sommaire', APD: 'Avant-projet définitif', EXE: 'Études d\'exécution', Chantier: 'Chantier' },
+      notifTitle: 'Être prévenu des nouveaux documents',
+      notifTxt: 'Recevez une notification sur ce téléphone dès que votre architecte ajoute un document dans votre espace.',
+      notifBtn: 'Me prévenir', notifOn: 'Notifications activées sur ce téléphone',
+      notifOnTxt: 'Vous serez prévenu à chaque nouveau document.', notifStop: 'Ne plus être prévenu',
+      notifDenied: 'Les notifications sont bloquées pour ce site dans les réglages de votre téléphone ou de votre navigateur.',
+      notifIOS: 'Sur iPhone : touchez le bouton Partager, puis « Sur l’écran d’accueil ». Ouvrez ensuite votre espace depuis la nouvelle icône et touchez « Me prévenir ».',
+      notifFail: 'Activation impossible — vérifiez votre connexion et réessayez.',
       locale: 'fr-FR', langBtn: 'العربية'
     },
     ar: {
@@ -31988,8 +32113,15 @@ window.openVisitReport = function(pid) {
       msgNote: 'تصل رسالتكم إلى فريق Studio 33 — وسيظهر الرد هنا.',
       rateLimited: 'تم إرسال عدد كبير من الرسائل اليوم — حاولوا غدًا.',
       sendFailed: 'لم يتم إرسال الرسالة — تحقّقوا من الاتصال وحاولوا مجددًا.',
-      footer: 'Studio 33 Architects · أكادير، المغرب', footer2: 'فضاء للقراءة فقط — يُحدَّث في الوقت الفعلي',
+      footer: 'Studio 33 Architects · أكادير · الدار البيضاء', footer2: 'فضاء للقراءة فقط — يُحدَّث في الوقت الفعلي',
       phases: { ESQ: 'التصميم الأولي', APS: 'المشروع التمهيدي الموجز', APD: 'المشروع التمهيدي النهائي', EXE: 'دراسات التنفيذ', Chantier: 'الورش' },
+      notifTitle: 'التوصل بإشعار عند إضافة وثيقة جديدة',
+      notifTxt: 'توصلوا بإشعار على هذا الهاتف بمجرد إضافة مهندسكم وثيقة جديدة في فضائكم.',
+      notifBtn: 'نبّهوني', notifOn: 'الإشعارات مفعّلة على هذا الهاتف',
+      notifOnTxt: 'ستتوصلون بإشعار عند كل وثيقة جديدة.', notifStop: 'إيقاف الإشعارات',
+      notifDenied: 'الإشعارات محظورة لهذا الموقع في إعدادات هاتفكم أو متصفحكم.',
+      notifIOS: 'على آيفون : اضغطوا على زر المشاركة ثم « إضافة إلى الشاشة الرئيسية »، ثم افتحوا فضاءكم من الأيقونة الجديدة واضغطوا « نبّهوني ».',
+      notifFail: 'تعذّر التفعيل — تحقّقوا من الاتصال وحاولوا مجددًا.',
       locale: 'ar-MA', langBtn: 'Français'
     }
   };
@@ -32126,6 +32258,9 @@ window.openVisitReport = function(pid) {
       '<div style="font-size:15px;font-weight:800;color:#1a1a1a;display:flex;align-items:center;gap:8px;"><span class="mi" style="font-size:19px;color:#E4640B;">waving_hand</span>' + t.welcome + (p.clientName ? ' ' + esc(p.clientName) : '') + '</div>' +
       '<div style="font-size:12px;color:#8a6d4e;margin-top:4px;line-height:1.5;">' + t.welcomeTxt + '</div>' +
     '</div>';
+
+    // Notifications sur ce telephone (jamais en mode reunion : c'est l'appareil du cabinet)
+    if (!MODE_REUNION) html += '<div id="s33p-notif"></div>';
 
     // Carte projet : avancement + règlement des honoraires
     html += '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,.05);margin-bottom:20px;">' +
@@ -32361,7 +32496,100 @@ window.openVisitReport = function(pid) {
     html += '<div style="text-align:center;margin-top:34px;font-size:11px;color:#bbb;">' + t.footer + '<br>' + t.footer2 + '</div>';
     host.innerHTML = shell(html);
     setTimeout(scrollThread, 100);
+    s33pNotifMaj();
   }
+
+  // ── Notifications sur le telephone du client (10/11/2026) ──
+  // Le client touche « Me prevenir » : son navigateur s'abonne (Web Push) et
+  // l'abonnement part a la fonction client-portal, rattache a CE projet. Le
+  // cabinet le previent ensuite a chaque document partage (send-push).
+  const PUSH_CLE = 'BM8EHs_PZIXvM4RzGr_HcnYJAsJPDg5AgE9rMVKi8-0hrLZKd68siyrb3MPIkw6j6upr5JEBb6ok8T-WweOxbas';
+  const CLE_NOTIF = 's33p_notif_' + String(token).slice(0, 12);
+  function _cleOctets(b) {
+    const pad = '='.repeat((4 - b.length % 4) % 4);
+    const raw = atob((b + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function _estIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function _estInstallee() { try { return navigator.standalone === true || matchMedia('(display-mode: standalone)').matches; } catch (_) { return false; } }
+  async function _abonnement() {
+    try { const reg = await navigator.serviceWorker.getRegistration(); return reg ? await reg.pushManager.getSubscription() : null; } catch (_) { return null; }
+  }
+  function _lireCle() { try { return localStorage.getItem(CLE_NOTIF) === '1'; } catch (_) { return false; } }
+  function _ecrireCle(v) { try { if (v) localStorage.setItem(CLE_NOTIF, '1'); else localStorage.removeItem(CLE_NOTIF); } catch (_) {} }
+  window.s33pNotifMaj = async function(erreur) {
+    const box = document.getElementById('s33p-notif');
+    if (!box) return;
+    const t = L();
+    const possible = !!(navigator.serviceWorker && window.PushManager && window.Notification);
+    let etat;
+    if (!possible) etat = (_estIOS() && !_estInstallee()) ? 'ios' : 'non';
+    else if (Notification.permission === 'denied') etat = 'bloque';
+    else etat = (Notification.permission === 'granted' && _lireCle() && await _abonnement()) ? 'actif' : 'propose';
+    const ico = (n, c) => '<span class="mi" style="font-size:22px;color:' + c + ';flex-shrink:0;">' + n + '</span>';
+    const carte = inner => '<div style="background:#fff;border:1px solid #eee;border-radius:16px;padding:16px 18px;margin-bottom:14px;display:flex;gap:12px;align-items:flex-start;">' + inner + '</div>';
+    if (etat === 'non') { box.innerHTML = ''; return; }
+    if (etat === 'actif') {
+      box.innerHTML = carte(ico('notifications_active', '#27ae60') +
+        '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;">' + t.notifOn + '</div>' +
+        '<div style="font-size:12px;color:#888;margin-top:3px;line-height:1.5;">' + t.notifOnTxt + '</div>' +
+        '<button onclick="s33pNotifArreter(this)" style="margin-top:8px;background:none;border:none;padding:0;color:#999;font-size:12px;text-decoration:underline;cursor:pointer;font-family:inherit;">' + t.notifStop + '</button></div>');
+      return;
+    }
+    if (etat === 'bloque') { box.innerHTML = carte(ico('notifications_off', '#999') + '<div style="font-size:12.5px;color:#777;line-height:1.5;">' + t.notifDenied + '</div>'); return; }
+    if (etat === 'ios') {
+      box.innerHTML = carte(ico('notifications', '#F97316') +
+        '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;">' + t.notifTitle + '</div>' +
+        '<div style="font-size:12px;color:#888;margin-top:3px;line-height:1.5;">' + t.notifIOS + '</div></div>');
+      return;
+    }
+    box.innerHTML = carte(ico('notifications', '#F97316') +
+      '<div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;">' + t.notifTitle + '</div>' +
+      '<div style="font-size:12px;color:#888;margin-top:3px;line-height:1.5;">' + t.notifTxt + '</div>' +
+      (erreur ? '<div style="font-size:12px;color:#c0392b;margin-top:6px;">' + t.notifFail + '</div>' : '') +
+      '<button onclick="s33pNotifActiver(this)" style="margin-top:10px;background:#F97316;color:#fff;border:none;border-radius:99px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;"><span class="mi" style="font-size:16px;">notifications_active</span>' + t.notifBtn + '</button></div>');
+  };
+  window.s33pNotifActiver = async function(btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { s33pNotifMaj(); return; }
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _cleOctets(PUSH_CLE) });
+      const r = await fetch(FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'push_subscribe', subscription: sub.toJSON() }) });
+      if (!r.ok) throw new Error('abonnement ' + r.status);
+      _ecrireCle(true);
+      s33pNotifMaj();
+    } catch (e) {
+      console.warn('notifications client', e);
+      s33pNotifMaj(true);
+    }
+  };
+  window.s33pNotifArreter = async function(btn) {
+    if (btn) btn.disabled = true;
+    // Le meme telephone peut suivre un autre projet : on retire seulement CE projet
+    try {
+      const sub = await _abonnement();
+      if (sub) await fetch(FN_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'push_unsubscribe', endpoint: sub.endpoint }) });
+    } catch (_) {}
+    _ecrireCle(false);
+    s33pNotifMaj();
+  };
+  // Notification touchee alors que l'espace est deja ouvert : on ouvre
+  // l'espace qu'elle annonce (un meme telephone peut suivre deux projets)
+  try {
+    if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', e => {
+      if (!e.data || e.data.type !== 's33-nav') return;
+      let u = null;
+      try { u = new URL(e.data.url, location.href); } catch (_) {}
+      if (u && u.origin === location.origin && /^\/(espace\/|index\.html|$)/.test(u.pathname) && u.search) location.href = u.href;
+      else location.reload();
+    });
+  } catch (_) {}
 
   // Validation « Bon pour accord » d'un document
   window.s33pFolderToggle = function(i) {
@@ -39451,10 +39679,12 @@ window.openVisitReport = function(pid) {
       'Bienvenue chez Studio 33 Architects !\n' +
       'Nous sommes ravis de vous accompagner pour votre projet « ' + p.name + ' ».\n\n' +
       'Voici votre espace projet personnel — gardez ce lien précieusement :\n' + link + '\n' +
-      'Vous y suivrez l avancement en direct, vos documents, vos plans et vos règlements, et vous pouvez nous y écrire à tout moment.\n\n' +
+      'Vous y suivrez l avancement en direct, vos documents, vos plans et vos règlements, et vous pouvez nous y écrire à tout moment.\n' +
+      'Touchez « Me prévenir » dans votre espace : vous recevrez une notification à chaque nouveau document.\n\n' +
       'مرحباً بكم في Studio 33 Architects! يسعدنا مرافقتكم في مشروعكم « ' + p.name + ' ».\n' +
-      'هذا فضاء مشروعكم الخاص — عبر الرابط أعلاه تتابعون تقدم الأشغال والوثائق والتصاميم، ويمكنكم مراسلتنا في أي وقت.\n\n' +
-      'À très vite,\nStudio 33 Architects — Agadir');
+      'هذا فضاء مشروعكم الخاص — عبر الرابط أعلاه تتابعون تقدم الأشغال والوثائق والتصاميم، ويمكنكم مراسلتنا في أي وقت.\n' +
+      'اضغطوا « نبّهوني » في فضائكم لتتوصلوا بإشعار عند كل وثيقة جديدة.\n\n' +
+      'À très vite,\nStudio 33 Architects — Agadir · Casablanca');
     window.open('https://wa.me/' + waIntl(c) + '?text=' + msg, '_blank');
   };
 

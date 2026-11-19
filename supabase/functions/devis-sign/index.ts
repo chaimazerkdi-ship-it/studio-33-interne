@@ -6,6 +6,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // son bon de commande) : le GET renvoie donc aussi le HT, la TVA, la date et
 // — uniquement si le devis est signé — la signature apposée. Le détail de
 // la mission (prestations comprises) est renvoyé quand le devis le porte.
+// v7 (19/11/2026) : le cachet du cabinet (stockage admin-docs/cabinet/cachet.png)
+// et la signature du cabinet, s'il y en a une, sont renvoyés : le client les
+// voit sur sa page et sur son PDF, comme sur le devis du cabinet.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -21,6 +24,26 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 }
 const H = { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` };
+
+// Cachet du cabinet, gardé 10 minutes en mémoire (une image, pas de donnée client)
+let _cachet: { data: string | null; t: number } = { data: null, t: 0 };
+async function cachet(): Promise<string | null> {
+  if (Date.now() - _cachet.t < 10 * 60 * 1000) return _cachet.data;
+  let data: string | null = null;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/storage/v1/object/admin-docs/cabinet/cachet.png`, { headers: H });
+    if (r.ok) {
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      if (bytes.length > 0 && bytes.length < 1500000) {
+        let bin = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        data = "data:image/png;base64," + btoa(bin);
+      }
+    }
+  } catch (_) { /* pas de cachet : le devis s'affiche sans */ }
+  _cachet = { data, t: Date.now() };
+  return data;
+}
 
 async function rest(pathAndQuery: string) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${pathAndQuery}`, { headers: H });
@@ -90,6 +113,7 @@ Deno.serve(async (req) => {
         ? md.items.filter((x: any) => x && x.ok !== false && String(x.t || "").trim())
             .map((x: any) => String(x.t).trim().slice(0, 600)).slice(0, 60)
         : [];
+      const studioSig = d.signatures && d.signatures.studio && d.signatures.studio.image ? d.signatures.studio : null;
       return json({
         num: d.num || d.ref, client_name: d.client_name, projet: d.projet,
         ttc, ht: parseFloat(d.ht) || 0, tva_rate: d.tva_rate == null ? 20 : parseFloat(d.tva_rate),
@@ -102,6 +126,8 @@ Deno.serve(async (req) => {
         signature: clientSig
           ? { image: clientSig.image, signer_name: clientSig.signer_name, signed_at: clientSig.signed_at, via: clientSig.via || "lien_distant" }
           : null,
+        signature_studio: studioSig ? { image: studioSig.image, signed_at: studioSig.signed_at } : null,
+        cachet: await cachet(),
       });
     }
 

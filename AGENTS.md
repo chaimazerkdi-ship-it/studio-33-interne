@@ -74,6 +74,11 @@ ligne), sans framework ni étape de compilation.
 - **Matériaux** (`mat_materials`) : `price` = prix client, `price_archi` =
   prix architecte (vu par l'équipe dans l'app, jamais dans une page ou un
   document client), `dimensions` en texte libre.
+- **Cachet du cabinet** : fichier du stockage `admin-docs/cabinet/cachet.png`
+  (jamais dans le dépôt, qui est public), déposé par l'admin seule dans
+  Profil → Cachet (politiques restrictives `s33_cachet_*`). Posé
+  automatiquement sur les devis, factures et notes d'honoraires :
+  `s33CachetCharger()` puis `s33CachetDessiner(doc, cachet, x, y, l, h)`.
 - **Montant d'une facture** (`invoices.amount`) : **TTC**. Le HT se déduit avec
   `s33InvTvaRate(inv)`.
 - **Visites de chantier** : un seul module, le **PV de chantier**
@@ -127,6 +132,8 @@ Chaque fonction vérifie qui l'appelle :
 - `send-push` : membre connecté ou autre fonction serveur ; le lien de la
   notification reste sur le site.
 - `devis-sign`, `pv-sign` : la signature doit être une vraie image base64.
+  `devis-sign` (v7) renvoie aussi le cachet du cabinet et la signature du
+  cabinet, pour la page et le PDF du client.
 - `brief-client` : réponses du questionnaire client (`brief.html?b=<jeton>`),
   écrites par jeton ; la table `client_briefs` n'est pas ouverte sans compte.
 - `client-portal` : espace client par jeton (`?portal=`) ; v13 : abonnement

@@ -1372,6 +1372,11 @@
   #devis-doc .dv-footer { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #ddd; padding-top: 20px; margin-top: 24px; }
   #devis-doc .sig-block { text-align: center; font-size: 11.5px; }
   #devis-doc .sig-block .sig-title { font-weight: 700; margin-bottom: 5px; }
+  #devis-doc .sig-box { position: relative; }
+  #devis-doc .sig-box .dv-cachet, .sig-box .dv-cachet { position: absolute; left: 20%; top: 15%; width: 60%; height: 70%; object-fit: contain; pointer-events: none; }
+  #devis-doc .sig-box .sig-doc-img, #devis-doc .sig-box .sig-doc-meta { position: relative; z-index: 1; }
+  .pp-cachet-apercu { background: #fff; border: 1px solid var(--border); border-radius: 12px; min-height: 120px; display: flex; align-items: center; justify-content: center; padding: 14px; color: #999; font-size: 12.5px; text-align: center; }
+  .pp-cachet-apercu img { max-width: 100%; max-height: 170px; }
   #devis-doc .sig-box { width: 160px; height: 70px; border: 1px solid #ccc; border-radius: 3px; background: #f9f9f6; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #bbb; margin: 6px auto; }
 
   #devis-doc .dv-bottom-bar { padding: 0 55px 30px; margin-top: 32px; }
@@ -3369,7 +3374,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-10.1 — client prevenu des nouveaux documents';
+const S33_BUILD = '2026-11-19.1 — cachet automatique sur devis et factures';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -12243,6 +12248,16 @@ async function s33InvoicePdf(id) {
     if (!paid && inv.due_date) { doc.text('À régler avant le ' + fmtD2(inv.due_date) + '.', M, y); y += 4.4; }
     doc.text('Règlement : espèces ou virement bancaire — IBAN : 022010000008003079157925', M, y);
 
+    // Cachet et signature du cabinet (pose automatiquement)
+    let ySigF = y + 10;
+    if (ySigF > 238) { doc.addPage(); ySigF = 30; }
+    const cachetF = await s33CachetCharger().catch(() => null);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
+    doc.text('Agadir, le ' + fmtD2(inv.date), W - M - 62, ySigF);
+    doc.text('Cachet et signature', W - M - 62, ySigF + 5);
+    if (cachetF) s33CachetDessiner(doc, cachetF, W - M - 62, ySigF + 8, 40, 17);
+    else { doc.setDrawColor(200); doc.setLineWidth(0.2); doc.rect(W - M - 62, ySigF + 8, 62, 26); }
+
     // Pied de page : coordonnées + mentions légales (ICE)
     const yB = 276;
     doc.setDrawColor.apply(doc, INK); doc.setLineWidth(0.3);
@@ -12395,8 +12410,9 @@ async function s33GenPdfNoteHonoraires(d) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor.apply(doc, DIM);
     doc.text('Agadir, le ' + fmtD2(d.f_date), W - M - 62, ySig);
     doc.text('Cachet et signature', W - M - 62, ySig + 5);
-    doc.setDrawColor(200); doc.setLineWidth(0.2);
-    doc.rect(W - M - 62, ySig + 8, 62, 26);
+    const cachetNH = await s33CachetCharger().catch(() => null);
+    if (cachetNH) s33CachetDessiner(doc, cachetNH, W - M - 62, ySig + 8, 40, 17);
+    else { doc.setDrawColor(200); doc.setLineWidth(0.2); doc.rect(W - M - 62, ySig + 8, 62, 26); }
 
     // Pied de page — hauteur fixe, vraiment en bas de la feuille A4
     const yB = 276;
@@ -13399,6 +13415,7 @@ function updateDevis() {
       </div>
     </div>
   `;
+  s33CachetApercu();
 }
 
 async function saveDevis() {
@@ -13909,6 +13926,104 @@ function s33PrintHTML(html) {
 // client, pour que les deux documents ne puissent pas diverger.
 //   d = { ref, clientName, projet, ht, tvaRate, dateStr, phases, logo, sigs }
 //   logo = { data, w, h } ; sigs = { studio, client }
+// ═══ CACHET DU CABINET ═════════════════════════════════════════════════
+// Demande de Chaima (19/11/2026) : son cachet est pose automatiquement sur
+// les devis (case « Cachet & Signature »), les factures et les notes
+// d'honoraires, et sur la page ou le client signe son devis. Fichier du
+// stockage admin-docs/cabinet/cachet.png : depose par l'admin seule (regle de
+// la base), lu par l'equipe une fois par session. Jamais dans le depot.
+const S33_CACHET_CHEMIN = 'cabinet/cachet.png';
+let _s33Cachet;          // undefined : pas encore lu ; null : aucun cachet ; { data, w, h }
+let _s33CachetVuA = 0;
+let _s33CachetLecture = null;
+function s33CachetInfo(data) {
+  return new Promise(res => {
+    if (!data || !/^data:image\/png;base64,/.test(String(data))) return res(null);
+    const i = new Image();
+    i.onload = () => res(i.naturalWidth ? { data: String(data), w: i.naturalWidth, h: i.naturalHeight } : null);
+    i.onerror = () => res(null);
+    i.src = data;
+  });
+}
+function s33CachetCharger(force) {
+  // « Aucun cachet » est revérifié au bout de 2 minutes (réseau capricieux)
+  if (!force && _s33Cachet && _s33Cachet.data) return Promise.resolve(_s33Cachet);
+  if (!force && _s33Cachet === null && Date.now() - _s33CachetVuA < 120000) return Promise.resolve(null);
+  if (_s33CachetLecture) return _s33CachetLecture;
+  _s33CachetLecture = (async () => {
+    try {
+      if (typeof _mediaStorageUrl !== 'function' || typeof supabaseToken === 'undefined' || !supabaseToken) return null;
+      const url = await _mediaStorageUrl(S33_CACHET_CHEMIN, 300);
+      if (!url) { _s33Cachet = null; _s33CachetVuA = Date.now(); return null; }
+      const r = await fetch(url);
+      if (!r.ok) { _s33Cachet = null; _s33CachetVuA = Date.now(); return null; }
+      const blob = await r.blob();
+      const brut = await new Promise((ok, ko) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result)); fr.onerror = ko; fr.readAsDataURL(blob); });
+      _s33Cachet = await s33CachetInfo(brut.replace(/^data:[^;,]*;base64,/, 'data:image/png;base64,'));
+      _s33CachetVuA = Date.now();
+      return _s33Cachet;
+    } catch (e) { console.warn('cachet', e); return null; }
+    finally { _s33CachetLecture = null; }
+  })();
+  return _s33CachetLecture;
+}
+// Pose le cachet dans un cadre (x, y, l, h en mm), centre, sans le deformer
+function s33CachetDessiner(doc, c, x, y, w, h) {
+  if (!c || !c.data || !c.w || !c.h) return;
+  const k = Math.min(w / c.w, h / c.h), cw = c.w * k, ch = c.h * k;
+  try { doc.addImage(c.data, 'PNG', x + (w - cw) / 2, y + (h - ch) / 2, cw, ch, 's33-cachet', 'FAST'); }
+  catch (e) { console.warn('cachet pdf', e); }
+}
+// Apercu du devis : le cachet dans la case du cabinet
+async function s33CachetApercu() {
+  const c = await s33CachetCharger();
+  const box = document.querySelector('#devis-doc .sig-block .sig-box');
+  if (!c || !box || box.querySelector('.dv-cachet')) return;
+  if (!box.querySelector('img') && /^\s*Cachet/.test(box.textContent)) box.textContent = '';
+  const im = document.createElement('img');
+  im.className = 'dv-cachet'; im.alt = ''; im.src = c.data;
+  box.insertBefore(im, box.firstChild);
+}
+// Image choisie par l'admin : fond retire (s'il n'est pas deja transparent),
+// recadree au plus pres, allegee (700 px au plus), en PNG transparent.
+async function s33CachetPreparer(file) {
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('image illisible')); i.src = src; });
+    const k0 = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+    const W = Math.max(1, Math.round(img.naturalWidth * k0)), H = Math.max(1, Math.round(img.naturalHeight * k0));
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0, W, H);
+    const im = g.getImageData(0, 0, W, H), px = im.data;
+    let transp = 0;
+    for (let i = 3; i < px.length; i += 4) if (px[i] < 16) transp++;
+    if (transp / (W * H) < 0.05) {
+      // Fond opaque (photo sur papier) : couleur des quatre coins, puis tout
+      // ce qui s'en approche devient transparent
+      const coins = [[0, 0], [W - 10, 0], [0, H - 10], [W - 10, H - 10]];
+      let r = 0, v = 0, b = 0, n = 0;
+      coins.forEach(([x0, y0]) => { for (let y = Math.max(0, y0); y < Math.min(H, y0 + 10); y++) for (let x = Math.max(0, x0); x < Math.min(W, x0 + 10); x++) { const o = (y * W + x) * 4; r += px[o]; v += px[o + 1]; b += px[o + 2]; n++; } });
+      r /= n; v /= n; b /= n;
+      for (let o = 0; o < px.length; o += 4) {
+        const d = Math.sqrt((px[o] - r) ** 2 + (px[o + 1] - v) ** 2 + (px[o + 2] - b) ** 2);
+        px[o + 3] = Math.round(Math.max(0, Math.min(1, (d - 45) / 70)) * px[o + 3]);
+      }
+      g.putImageData(im, 0, 0);
+    }
+    // Cadre au plus pres de l'encre
+    let x1 = W, y1 = H, x2 = -1, y2 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (px[(y * W + x) * 4 + 3] > 24) { if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y; }
+    if (x2 < x1 || y2 < y1) throw new Error('aucun cachet visible dans l’image');
+    const marge = Math.round(Math.max(x2 - x1, y2 - y1) * 0.02);
+    x1 = Math.max(0, x1 - marge); y1 = Math.max(0, y1 - marge); x2 = Math.min(W - 1, x2 + marge); y2 = Math.min(H - 1, y2 + marge);
+    const cw = x2 - x1 + 1, ch = y2 - y1 + 1, k = Math.min(1, 700 / Math.max(cw, ch));
+    const o = document.createElement('canvas'); o.width = Math.round(cw * k); o.height = Math.round(ch * k);
+    const og = o.getContext('2d'); og.imageSmoothingQuality = 'high';
+    og.drawImage(c, x1, y1, cw, ch, 0, 0, o.width, o.height);
+    return { data: o.toDataURL('image/png'), w: o.width, h: o.height };
+  } finally { URL.revokeObjectURL(src); }
+}
+
 async function s33BuildDevisPdf(d) {
   d = d || {};
   const ref = d.ref || '';
@@ -13921,6 +14036,8 @@ async function s33BuildDevisPdf(d) {
   const dateStr = d.dateStr || new Date().toLocaleDateString('fr-FR');
   const phases = Array.isArray(d.phases) ? d.phases : [];
   const _sigs = d.sigs || {};
+  // Cachet du cabinet : fourni (page client) ou lu dans le stockage (app)
+  const _cachet = d.cachet !== undefined ? d.cachet : await s33CachetCharger().catch(() => null);
   {
     if (!window.jspdf || !window.jspdf.jsPDF) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
     if (!window.jspdf.jsPDF.API || !window.jspdf.jsPDF.API.autoTable) await pvLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
@@ -14075,13 +14192,15 @@ async function s33BuildDevisPdf(d) {
     // Les vraies signatures enregistrées (sur place ou à distance) sont dessinées dans les cadres
     let ySig = Math.max(y + 6, 232);
     if (ySig > 250) { doc.addPage(); ySig = 232; }
-    const sig = (x, title, name, label, sd) => {
+    const sig = (x, title, name, label, sd, cachet) => {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, INK);
       doc.text(title, x + 31, ySig, { align: 'center' });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
       s33PdfMixed(doc, name, x + 31, ySig + 4.2, { align: 'center', maxW: 62 });
       doc.setDrawColor(200); doc.setFillColor(249, 249, 246); doc.setLineWidth(0.2);
       doc.roundedRect(x, ySig + 7, 62, 20, 1.5, 1.5, 'FD');
+      // Le cachet d'abord, la signature (s'il y en a une) par-dessus
+      if (cachet) s33CachetDessiner(doc, cachet, x + 13, ySig + 9.5, 36, 15);
       if (sd && sd.image) {
         try {
           doc.addImage(sd.image, 'PNG', x + 13, ySig + 8.2, 36, 17);
@@ -14089,12 +14208,12 @@ async function s33BuildDevisPdf(d) {
         doc.setFontSize(6.4); doc.setTextColor.apply(doc, FAINT);
         const dt = sd.signed_at ? new Date(sd.signed_at) : null;
         doc.text('Signé' + (dt ? ' le ' + dt.toLocaleDateString('fr-FR') + ' à ' + dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '') + (sd.via === 'lien_distant' ? ' — à distance' : ''), x + 31, ySig + 30.5, { align: 'center' });
-      } else {
+      } else if (!cachet) {
         doc.setFontSize(7.2); doc.setTextColor.apply(doc, FAINT);
         doc.text(label, x + 31, ySig + 17.5, { align: 'center' });
       }
     };
-    sig(M, "Maître d'œuvre :", 'STUDIO 33 ARCHITECTS', 'Cachet & Signature', _sigs.studio);
+    sig(M, "Maître d'œuvre :", 'STUDIO 33 ARCHITECTS', 'Cachet & Signature', _sigs.studio, _cachet);
     sig(W - M - 62, "Maître d'ouvrage :", (clientName || '').toUpperCase(), 'Signature', _sigs.client);
 
     // Bande de contacts : bas de page fixe
@@ -14220,7 +14339,9 @@ function printDevis() {
   .dv-footer{display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid #ddd;padding-top:14px;margin-top:14px;}
   .sig-block{text-align:center;font-size:10px;}
   .sig-block .sig-title{font-weight:700;margin-bottom:3px;}
-  .sig-box{width:140px;height:55px;border:1px solid #ccc;border-radius:3px;background:#f9f9f6;display:flex;align-items:center;justify-content:center;font-size:9px;color:#bbb;margin:4px auto;}
+  .sig-box{position:relative;width:140px;height:55px;border:1px solid #ccc;border-radius:3px;background:#f9f9f6;display:flex;align-items:center;justify-content:center;font-size:9px;color:#bbb;margin:4px auto;}
+  .sig-box .dv-cachet{position:absolute;left:20%;top:15%;width:60%;height:70%;object-fit:contain;}
+  .sig-box .sig-doc-img,.sig-box .sig-doc-meta{position:relative;z-index:1;}
   .dv-bottom-bar{padding:0 50px 20px;margin-top:16px;}
   .dv-gold-sep{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
   .dv-gold-sep .line{flex:1;height:1px;background:#c9a96e;}
@@ -22527,6 +22648,7 @@ function renderProfilePanel() {
   if (isAdmin) {
     tabs.push({ id:'equipe', label:'Équipe' });
     tabs.push({ id:'dashboard', label:'Dashboard' });
+    tabs.push({ id:'cachet', label:'Cachet' });
   }
   tabsEl.innerHTML = tabs.map(t =>
     `<button class="panel-tab${_ppCurrentTab === t.id ? ' active' : ''}" onclick="switchPPTab('${t.id}')">${t.label}</button>`
@@ -22536,7 +22658,75 @@ function renderProfilePanel() {
   if (_ppCurrentTab === 'profil')     renderPPProfil();
   else if (_ppCurrentTab === 'equipe')    renderPPEquipe();
   else if (_ppCurrentTab === 'dashboard') renderPPDashboard();
+  else if (_ppCurrentTab === 'cachet') renderPPCachet();
 }
+
+/* ── Cachet du cabinet (admin) ───────────────────────────────── */
+async function renderPPCachet() {
+  const content = document.getElementById('pp-content');
+  if (!content) return;
+  content.innerHTML =
+    '<div class="pp-form-row">' +
+      '<span class="pp-label">Cachet du cabinet</span>' +
+      '<div style="font-size:12.5px;color:var(--text-dim);line-height:1.5;margin:4px 0 12px;">Posé automatiquement sur chaque devis, facture et note d’honoraires, et sur la page où le client signe son devis. Toi seule peux le changer.</div>' +
+      '<div id="pp-cachet-apercu" class="pp-cachet-apercu">Chargement…</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">' +
+        '<button class="btn btn-gold" id="pp-cachet-deposer" onclick="s33CachetChoisir()"><span class="mi mi-sm">upload</span> Déposer mon cachet</button>' +
+        '<button class="btn btn-outline" id="pp-cachet-retirer" onclick="s33CachetRetirer()" style="display:none;"><span class="mi mi-sm">delete</span> Retirer</button>' +
+      '</div>' +
+      '<div style="font-size:11.5px;color:var(--text-faint);margin-top:10px;line-height:1.45;">Une image PNG à fond transparent est idéale. Une photo du cachet sur papier blanc marche aussi : le fond est retiré tout seul.</div>' +
+    '</div>';
+  const c = await s33CachetCharger(true);
+  const ap = document.getElementById('pp-cachet-apercu');
+  if (!ap) return;
+  ap.innerHTML = c ? '<img alt="Cachet du cabinet" src="' + c.data + '">' : 'Aucun cachet déposé : les devis et les factures sortent sans cachet.';
+  const ret = document.getElementById('pp-cachet-retirer');
+  if (ret) ret.style.display = c ? '' : 'none';
+  const dep = document.getElementById('pp-cachet-deposer');
+  if (dep && c) dep.innerHTML = '<span class="mi mi-sm">upload</span> Changer de cachet';
+}
+window.s33CachetChoisir = function() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    const btn = document.getElementById('pp-cachet-deposer');
+    if (btn) { btn.disabled = true; btn.textContent = 'Préparation…'; }
+    try {
+      const c = await s33CachetPreparer(f);
+      const blob = _s33DataUrlVersBlob(c.data);
+      const res = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + S33_CACHET_CHEMIN, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY), 'Content-Type': 'image/png', 'x-upsert': 'true', 'cache-control': 'no-cache' },
+        body: blob
+      });
+      if (!res.ok) throw new Error(res.status === 400 || res.status === 403 ? 'refusé : seule l’administratrice peut changer le cachet' : 'envoi refusé (' + res.status + ')');
+      _s33Cachet = c; _s33CachetVuA = Date.now();
+      toast('Cachet enregistré — il apparaît sur les devis et les factures');
+    } catch (e) {
+      console.warn('cachet', e);
+      toast('Cachet non enregistré : ' + (e.message || 'erreur') + ' — réessayez');
+    }
+    if (_ppCurrentTab === 'cachet') renderPPCachet();
+  };
+  inp.click();
+};
+window.s33CachetRetirer = async function() {
+  if (!confirm('Retirer le cachet ? Les prochains devis et factures sortiront sans cachet.')) return;
+  try {
+    const res = await fetch(SUPABASE_URL + '/storage/v1/object/' + S33_STORAGE_BUCKET + '/' + S33_CACHET_CHEMIN, {
+      method: 'DELETE',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + (supabaseToken || SUPABASE_KEY) }
+    });
+    if (!res.ok) throw new Error('retrait refusé (' + res.status + ')');
+    _s33Cachet = null; _s33CachetVuA = Date.now();
+    toast('Cachet retiré');
+  } catch (e) {
+    toast('Cachet non retiré : ' + (e.message || 'erreur') + ' — réessayez');
+  }
+  if (_ppCurrentTab === 'cachet') renderPPCachet();
+};
 
 function switchPPTab(tab) {
   _ppCurrentTab = tab;
@@ -27698,6 +27888,7 @@ setInterval(() => {
       sigBoxes[0].style.height = 'auto';
       sigBoxes[0].style.padding = '6px';
     }
+    s33CachetApercu();
     if (merged.client && merged.client.image) {
       sigBoxes[1].innerHTML = '<img src="' + escHTML(merged.client.image) + '" class="sig-doc-img"/>' +
         '<div class="sig-doc-meta">' + escHTML(merged.client.signer_name || '') + ' · ' + new Date(merged.client.signed_at).toLocaleDateString('fr-FR') + '</div>';
@@ -36859,6 +37050,11 @@ window.openVisitReport = function(pid) {
                   }).join('') +
                   '</div>' +
                 '</div>' : '') +
+              (/^data:image\/png;base64,[A-Za-z0-9+\/]+=*$/.test(String(d.cachet || '')) ?
+                '<div style="margin-top:14px;display:flex;align-items:center;gap:14px;padding:10px 14px;border:1px solid #f0ece2;border-radius:12px;">' +
+                  '<img src="' + d.cachet + '" alt="Cachet Studio 33 Architects" style="height:44px;width:auto;max-width:45%;object-fit:contain;">' +
+                  '<div style="font-size:11.5px;color:#888;line-height:1.45;">Devis établi et cacheté par Studio 33 Architects</div>' +
+                '</div>' : '') +
               '<div style="font-size:11px;color:#999;margin-top:14px;">En signant ci-dessous, vous acceptez ce devis et son échéancier de paiement. Votre signature, votre nom, la date et l\'heure seront enregistrés.</div>' +
               '<label style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em;display:block;margin:16px 0 6px;">Votre nom complet</label>' +
               '<input id="s33s-name" type="text" value="' + esc(d.client_name || '') + '" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid #ddd;border-radius:10px;font-size:14px;font-family:inherit;">' +
@@ -36895,7 +37091,8 @@ window.openVisitReport = function(pid) {
           phases: Array.isArray(d.phases) ? d.phases : [],
           mission: Array.isArray(d.mission) ? d.mission : [],
           logo: (typeof S33_LOGO_BW !== 'undefined') ? { data: S33_LOGO_BW, w: 1000, h: 384 } : null,
-          sigs: d.signature ? { client: d.signature } : {}
+          sigs: Object.assign({}, d.signature ? { client: d.signature } : {}, d.signature_studio ? { studio: d.signature_studio } : {}),
+          cachet: await s33CachetInfo(d.cachet)
         });
         const nom = 'Devis_' + String(d.num || 'S33').replace(/[^a-zA-Z0-9_-]/g, '_') + '_signe.pdf';
         await s33DownloadPdf(doc, nom);

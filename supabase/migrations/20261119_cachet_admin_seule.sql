@@ -19,3 +19,25 @@ create policy s33_cachet_modif_admin on storage.objects
 create policy s33_cachet_retrait_admin on storage.objects
   as restrictive for delete to public
   using (bucket_id <> 'admin-docs' or name not like 'cabinet/%' or public.s33_admin_principale());
+
+-- Correction appliquee le meme jour : sans compte, la fonction
+-- s33_admin_principale() n'est pas permise, ce qui bloquait TOUT depot sans
+-- compte dans le stockage. Les trois regles ci-dessus visent donc les membres
+-- connectes ; sans compte, une regle simple interdit seulement le dossier du
+-- cachet.
+alter policy s33_cachet_depot_admin on storage.objects to authenticated;
+alter policy s33_cachet_modif_admin on storage.objects to authenticated;
+alter policy s33_cachet_retrait_admin on storage.objects to authenticated;
+
+create policy s33_cachet_depot_sans_compte on storage.objects
+  as restrictive for insert to anon
+  with check (bucket_id <> 'admin-docs' or name not like 'cabinet/%');
+
+create policy s33_cachet_modif_sans_compte on storage.objects
+  as restrictive for update to anon
+  using (bucket_id <> 'admin-docs' or name not like 'cabinet/%')
+  with check (bucket_id <> 'admin-docs' or name not like 'cabinet/%');
+
+create policy s33_cachet_retrait_sans_compte on storage.objects
+  as restrictive for delete to anon
+  using (bucket_id <> 'admin-docs' or name not like 'cabinet/%');

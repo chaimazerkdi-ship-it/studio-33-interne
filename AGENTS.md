@@ -79,6 +79,10 @@ ligne), sans framework ni étape de compilation.
   Profil → Cachet (politiques restrictives `s33_cachet_*`). Posé
   automatiquement sur les devis, factures et notes d'honoraires :
   `s33CachetCharger()` puis `s33CachetDessiner(doc, cachet, x, y, l, h)`.
+- **ICE d'un client société** : `clients.ice` (chiffres seulement), saisi
+  dans la fiche client ou le formulaire de facture ; imprimé sous le client
+  sur ses factures. La facture n'a plus la ligne « Règlement : espèces ou
+  virement » (choix de Chaima, 19/11/2026).
 - **Montant d'une facture** (`invoices.amount`) : **TTC**. Le HT se déduit avec
   `s33InvTvaRate(inv)`.
 - **Visites de chantier** : un seul module, le **PV de chantier**

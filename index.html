@@ -3374,7 +3374,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-19.1 — cachet automatique sur devis et factures';
+const S33_BUILD = '2026-11-19.2 — ICE du client sur la facture';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -3754,7 +3754,7 @@ const S33_BUILD = '2026-11-19.1 — cachet automatique sur devis et factures';
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
           <button id="btn-toggle-archived-clients" class="btn" onclick="toggleArchivedClientsView()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);font-size:12px;font-weight:600;padding:7px 14px;border-radius:var(--radius-pill);cursor:pointer;"><span class="mi">inventory_2</span> Archivés</button>
           <input class="search-input" placeholder="Rechercher un client..." oninput="filterClients(this.value)" id="clients-search">
-          <button class="btn btn-gold" onclick="openModal('client-modal')">+ Nouveau client</button>
+          <button class="btn btn-gold" onclick="s33NouveauClient()">+ Nouveau client</button>
         </div>
       </div>
       <!-- Alphabetical names list -->
@@ -5932,6 +5932,10 @@ const S33_BUILD = '2026-11-19.1 — cachet automatique sur devis et factures';
       </div>
     </div>
     <div class="form-row">
+      <label>ICE (société)</label>
+      <input type="text" id="c-ice" inputmode="numeric" maxlength="30" placeholder="15 chiffres — à remplir pour une société">
+    </div>
+    <div class="form-row">
       <label>Notes</label>
       <textarea id="c-notes" placeholder="Remarques, préférences..."></textarea>
     </div>
@@ -5951,12 +5955,16 @@ const S33_BUILD = '2026-11-19.1 — cachet automatique sur devis et factures';
     <div class="form-row-2">
       <div class="form-row" style="margin-bottom:0">
         <label>Client</label>
-        <select id="i-client"></select>
+        <select id="i-client" onchange="s33IceRemplir()"></select>
       </div>
       <div class="form-row" style="margin-bottom:0">
         <label>Projet</label>
         <select id="i-project"></select>
       </div>
+    </div>
+    <div class="form-row">
+      <label>ICE du client (société)</label>
+      <input type="text" id="i-ice" inputmode="numeric" maxlength="30" placeholder="Pour une société : 15 chiffres — gardé dans sa fiche client">
     </div>
     <div class="form-row">
       <label>Objet de la facture</label>
@@ -9055,6 +9063,7 @@ function openModal(id) {
     document.getElementById('invoice-save-btn').textContent = 'Créer la facture';
     populateClientSelect('i-client');
     populateProjectSelect('i-project');
+    s33IceRemplir();
     document.getElementById('i-object').value = '';
     document.getElementById('i-amount').value = '';
     document.getElementById('i-date').value = s33Aujourdhui();
@@ -11048,15 +11057,25 @@ async function saveClient() {
     email: document.getElementById('c-email').value,
     type: document.getElementById('c-type').value,
     notes: document.getElementById('c-notes').value,
+    ice: s33IceNettoyer(document.getElementById('c-ice').value),
   };
   if (!obj.name) { _formError('c-name', 'Le nom du client est obligatoire'); return; }
-  if (editId) {
-    await sbUpdate('clients', parseInt(editId), obj);
-    toast('Client modifié');
-  } else {
-    await sbInsert('clients', obj);
-    logActivity('add_client', currentUser.name + ' a ajouté le client "' + (obj.name || '') + '"', 'client', null, obj.name || null);
-    toast('Client ajouté');
+  if (obj.ice === false) { _formError('c-ice', 'L’ICE ne contient que des chiffres'); return; }
+  if (obj.ice && obj.ice.replace(/ /g, '').length !== 15 && !confirm('Un ICE compte normalement 15 chiffres (ici ' + obj.ice.replace(/ /g, '').length + '). Enregistrer quand même ?')) return;
+  // Un enregistrement rate ne s'annonce pas reussi : la fenetre reste ouverte
+  try {
+    if (editId) {
+      await sbUpdateOrThrow('clients', parseInt(editId), obj);
+      toast('Client modifié');
+    } else {
+      await sbInsertOrThrow('clients', obj);
+      logActivity('add_client', currentUser.name + ' a ajouté le client "' + (obj.name || '') + '"', 'client', null, obj.name || null);
+      toast('Client ajouté');
+    }
+  } catch (e) {
+    console.error('client', e);
+    toast('Client non enregistré — vérifiez la connexion et réessayez');
+    return;
   }
   closeModal('client-modal');
   await loadDB();
@@ -11075,7 +11094,30 @@ function editClient(id) {
   document.getElementById('c-email').value = c.email || '';
   document.getElementById('c-type').value = c.type;
   document.getElementById('c-notes').value = c.notes || '';
+  document.getElementById('c-ice').value = c.ice || '';
   openModal('client-modal');
+}
+// « + Nouveau client » : formulaire vide (avant, une fiche ouverte puis
+// fermee restait en mode modification)
+function s33NouveauClient() {
+  document.getElementById('client-modal-title').textContent = 'Nouveau client';
+  document.getElementById('client-edit-id').value = '';
+  ['c-name', 'c-phone', 'c-email', 'c-notes', 'c-ice'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
+  document.getElementById('c-type').value = 'Standard';
+  openModal('client-modal');
+}
+// ICE : chiffres et espaces seulement ; '' -> null ; autre chose -> false
+function s33IceNettoyer(v) {
+  const t = String(v || '').trim().replace(/\s+/g, ' ');
+  if (!t) return null;
+  return /^[0-9 ]{1,30}$/.test(t) ? t : false;
+}
+// Facture : l'ICE du client choisi (modifiable ; enregistre dans sa fiche)
+function s33IceRemplir() {
+  const sel = document.getElementById('i-client'), inp = document.getElementById('i-ice');
+  if (!sel || !inp) return;
+  const c = (db.clients || []).find(x => String(x.id) === String(sel.value));
+  inp.value = (c && c.ice) || '';
 }
 
 async function archiveClient(id) {
@@ -11892,6 +11934,7 @@ function editInvoice(id) {
   populateProjectSelect('i-project');
   // Fill fields
   document.getElementById('i-client').value = inv.clientId || inv.client_id || '';
+  s33IceRemplir();
   document.getElementById('i-project').value = inv.projectId || inv.project_id || '';
   document.getElementById('i-object').value = inv.object || '';
   document.getElementById('i-amount').value = inv.amount || '';
@@ -11920,6 +11963,15 @@ async function saveInvoice() {
     tva_rate: (function() { const r = parseFloat(document.getElementById('i-tvarate')?.value); return isNaN(r) ? 20 : r; })(),
   };
   if (!obj.object || !obj.amount) return;
+
+  // ICE saisi ici : il va dans la fiche du client (une seule fois pour toutes ses factures)
+  const iceSaisi = s33IceNettoyer((document.getElementById('i-ice') || {}).value);
+  if (iceSaisi === false) { toast('L’ICE ne contient que des chiffres'); return; }
+  const cliIce = (db.clients || []).find(c => c.id === obj.client_id);
+  if (cliIce && (iceSaisi || null) !== (cliIce.ice || null)) {
+    try { await sbUpdateOrThrow('clients', cliIce.id, { ice: iceSaisi }); cliIce.ice = iceSaisi; }
+    catch (e) { toast('ICE non enregistré — vérifiez la connexion et réessayez'); return; }
+  }
 
   if (editId) {
     // MODE ÉDITION
@@ -12207,6 +12259,14 @@ async function s33InvoicePdf(id) {
     y += 4.2;
     doc.text('05 28 84 33 30 · Studio33architecture@gmail.com', M, y);
     if (client && client.email) doc.text(String(client.email), W / 2 + 6, y);
+    // ICE du client (societe), juste sous ses coordonnees
+    if (client && client.ice) {
+      const yIce = client.email ? y + 4.8 : (client.phone ? y + 0.6 : y - 4.2);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.8); doc.setTextColor.apply(doc, INK);
+      doc.text('ICE : ' + String(client.ice), W / 2 + 6, yIce);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, DIM);
+      y = Math.max(y, yIce);
+    }
     y += 10;
 
     // Tableau de la prestation
@@ -12246,7 +12306,7 @@ async function s33InvoicePdf(id) {
     // Échéance / règlement
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor(85);
     if (!paid && inv.due_date) { doc.text('À régler avant le ' + fmtD2(inv.due_date) + '.', M, y); y += 4.4; }
-    doc.text('Règlement : espèces ou virement bancaire — IBAN : 022010000008003079157925', M, y);
+    // (Ligne « Règlement : espèces ou virement… » retirée à la demande de Chaima, 19/11/2026)
 
     // Cachet et signature du cabinet (pose automatiquement)
     let ySigF = y + 10;

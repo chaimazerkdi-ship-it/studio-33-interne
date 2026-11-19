@@ -3374,7 +3374,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-19.2 — ICE du client sur la facture';
+const S33_BUILD = '2026-11-19.3 — Facture : adresse du client et mode de paiement';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -5932,6 +5932,10 @@ const S33_BUILD = '2026-11-19.2 — ICE du client sur la facture';
       </div>
     </div>
     <div class="form-row">
+      <label>Adresse</label>
+      <input type="text" id="c-address" maxlength="200" placeholder="Rue, quartier, ville — imprimée sur ses factures">
+    </div>
+    <div class="form-row">
       <label>ICE (société)</label>
       <input type="text" id="c-ice" inputmode="numeric" maxlength="30" placeholder="15 chiffres — à remplir pour une société">
     </div>
@@ -5961,6 +5965,10 @@ const S33_BUILD = '2026-11-19.2 — ICE du client sur la facture';
         <label>Projet</label>
         <select id="i-project"></select>
       </div>
+    </div>
+    <div class="form-row">
+      <label>Adresse du client</label>
+      <input type="text" id="i-address" maxlength="200" placeholder="Rue, quartier, ville — gardée dans sa fiche client">
     </div>
     <div class="form-row">
       <label>ICE du client (société)</label>
@@ -6006,7 +6014,7 @@ const S33_BUILD = '2026-11-19.2 — ICE du client sur la facture';
       </div>
     </div>
     <div class="form-row">
-      <label>Mode de paiement prévu</label>
+      <label>Mode de paiement (écrit sur la facture)</label>
       <select id="i-payment-method">
         <option value="">— Non spécifié —</option>
         <option value="Virement">Virement bancaire</option>
@@ -11058,6 +11066,7 @@ async function saveClient() {
     type: document.getElementById('c-type').value,
     notes: document.getElementById('c-notes').value,
     ice: s33IceNettoyer(document.getElementById('c-ice').value),
+    address: s33AdresseNettoyer(document.getElementById('c-address').value),
   };
   if (!obj.name) { _formError('c-name', 'Le nom du client est obligatoire'); return; }
   if (obj.ice === false) { _formError('c-ice', 'L’ICE ne contient que des chiffres'); return; }
@@ -11095,6 +11104,7 @@ function editClient(id) {
   document.getElementById('c-type').value = c.type;
   document.getElementById('c-notes').value = c.notes || '';
   document.getElementById('c-ice').value = c.ice || '';
+  document.getElementById('c-address').value = c.address || '';
   openModal('client-modal');
 }
 // « + Nouveau client » : formulaire vide (avant, une fiche ouverte puis
@@ -11102,7 +11112,7 @@ function editClient(id) {
 function s33NouveauClient() {
   document.getElementById('client-modal-title').textContent = 'Nouveau client';
   document.getElementById('client-edit-id').value = '';
-  ['c-name', 'c-phone', 'c-email', 'c-notes', 'c-ice'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
+  ['c-name', 'c-phone', 'c-email', 'c-notes', 'c-ice', 'c-address'].forEach(i => { const el = document.getElementById(i); if (el) el.value = ''; });
   document.getElementById('c-type').value = 'Standard';
   openModal('client-modal');
 }
@@ -11112,12 +11122,19 @@ function s33IceNettoyer(v) {
   if (!t) return null;
   return /^[0-9 ]{1,30}$/.test(t) ? t : false;
 }
-// Facture : l'ICE du client choisi (modifiable ; enregistre dans sa fiche)
+// Adresse : une ligne, espaces resserres ; '' -> null
+function s33AdresseNettoyer(v) {
+  const t = String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return t || null;
+}
+// Facture : l'ICE et l'adresse du client choisi (modifiables ; enregistres dans sa fiche)
 function s33IceRemplir() {
-  const sel = document.getElementById('i-client'), inp = document.getElementById('i-ice');
-  if (!sel || !inp) return;
+  const sel = document.getElementById('i-client');
+  if (!sel) return;
   const c = (db.clients || []).find(x => String(x.id) === String(sel.value));
-  inp.value = (c && c.ice) || '';
+  const inp = document.getElementById('i-ice'), adr = document.getElementById('i-address');
+  if (inp) inp.value = (c && c.ice) || '';
+  if (adr) adr.value = (c && c.address) || '';
 }
 
 async function archiveClient(id) {
@@ -11967,10 +11984,16 @@ async function saveInvoice() {
   // ICE saisi ici : il va dans la fiche du client (une seule fois pour toutes ses factures)
   const iceSaisi = s33IceNettoyer((document.getElementById('i-ice') || {}).value);
   if (iceSaisi === false) { toast('L’ICE ne contient que des chiffres'); return; }
+  const adrSaisie = s33AdresseNettoyer((document.getElementById('i-address') || {}).value);
   const cliIce = (db.clients || []).find(c => c.id === obj.client_id);
-  if (cliIce && (iceSaisi || null) !== (cliIce.ice || null)) {
-    try { await sbUpdateOrThrow('clients', cliIce.id, { ice: iceSaisi }); cliIce.ice = iceSaisi; }
-    catch (e) { toast('ICE non enregistré — vérifiez la connexion et réessayez'); return; }
+  if (cliIce) {
+    const maj = {};
+    if ((iceSaisi || null) !== (cliIce.ice || null)) maj.ice = iceSaisi;
+    if ((adrSaisie || null) !== (cliIce.address || null)) maj.address = adrSaisie;
+    if (Object.keys(maj).length) {
+      try { await sbUpdateOrThrow('clients', cliIce.id, maj); Object.assign(cliIce, maj); }
+      catch (e) { toast('Fiche du client non mise à jour (ICE, adresse) — vérifiez la connexion et réessayez'); return; }
+    }
   }
 
   if (editId) {
@@ -12249,25 +12272,33 @@ async function s33InvoicePdf(id) {
     // Émetteur / Client
     doc.setFont('helvetica', 'bold'); doc.setFontSize(7.6); doc.setTextColor(150);
     doc.text('ÉMETTEUR', M, y); doc.text('CLIENT', W / 2 + 6, y); y += 5;
+    // Colonne de gauche : le cabinet
     doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
     doc.text('Studio 33 Architects', M, y);
-    const nCli = s33PdfMixed(doc, client ? client.name : '—', W / 2 + 6, y, { maxW: 80 }) || 1;
-    y += 4.6 + (nCli - 1) * 4;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, DIM);
-    doc.text('01 Imm paternelle, Rue de Madrid, Agadir', M, y);
-    if (client && client.phone) doc.text(String(client.phone), W / 2 + 6, y);
-    y += 4.2;
-    doc.text('05 28 84 33 30 · Studio33architecture@gmail.com', M, y);
-    if (client && client.email) doc.text(String(client.email), W / 2 + 6, y);
-    // ICE du client (societe), juste sous ses coordonnees
-    if (client && client.ice) {
-      const yIce = client.email ? y + 4.8 : (client.phone ? y + 0.6 : y - 4.2);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.8); doc.setTextColor.apply(doc, INK);
-      doc.text('ICE : ' + String(client.ice), W / 2 + 6, yIce);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, DIM);
-      y = Math.max(y, yIce);
+    doc.text('01 Imm paternelle, Rue de Madrid, Agadir', M, y + 4.6);
+    doc.text('05 28 84 33 30 · Studio33architecture@gmail.com', M, y + 8.8);
+    const yGauche = y + 8.8;
+    // Colonne de droite : le client — nom, adresse, email, ICE.
+    // Pas de telephone (non obligatoire, choix de Chaima, 19/11/2026).
+    const xC = W / 2 + 6;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor.apply(doc, INK);
+    const nCli = s33PdfMixed(doc, client ? client.name : '—', xC, y, { maxW: 80 }) || 1;
+    let yC = y + (nCli - 1) * 4;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, DIM);
+    if (client && client.address) {
+      yC += 4.6;
+      const nAdr = s33PdfMixed(doc, String(client.address), xC, yC, { maxW: 80 }) || 1;
+      yC += (nAdr - 1) * 3.6;
     }
-    y += 10;
+    if (client && client.email) { yC += 4.2; doc.text(String(client.email), xC, yC); }
+    if (client && client.ice) {
+      yC += 4.6;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.8); doc.setTextColor.apply(doc, INK);
+      doc.text('ICE : ' + String(client.ice), xC, yC);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor.apply(doc, DIM);
+    }
+    y = Math.max(yGauche, yC) + 10;
 
     // Tableau de la prestation
     let headBottomY = null;
@@ -12306,7 +12337,13 @@ async function s33InvoicePdf(id) {
     // Échéance / règlement
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor(85);
     if (!paid && inv.due_date) { doc.text('À régler avant le ' + fmtD2(inv.due_date) + '.', M, y); y += 4.4; }
-    // (Ligne « Règlement : espèces ou virement… » retirée à la demande de Chaima, 19/11/2026)
+    // Mode de paiement : celui choisi pour cette facture, jamais « espèces ou
+    // virement » (demandé par l'article 145 du CGI ; choix de Chaima, 19/11/2026)
+    if (inv.payment_method) {
+      const modeTxt = { 'Virement': 'virement bancaire', 'Chèque': 'chèque', 'Espèces': 'espèces' }[inv.payment_method] || String(inv.payment_method).toLowerCase();
+      const refCh = inv.payment_method === 'Chèque' && inv.cheque_ref ? ' n° ' + String(inv.cheque_ref) : '';
+      s33PdfMixed(doc, 'Mode de paiement : ' + modeTxt + refCh, M, y, { maxW: 110 }); y += 4.4;
+    }
 
     // Cachet et signature du cabinet (pose automatiquement)
     let ySigF = y + 10;

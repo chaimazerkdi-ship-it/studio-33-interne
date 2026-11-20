@@ -12,6 +12,9 @@
 // un autre numero peut ouvrir et signer ce devis. Seuls les devis deja
 // partages (qui ont un jeton de signature) s'ouvrent ainsi.
 //
+// Espace client : le code peut etre le debut du jeton d'un projet (lien par
+// projet) ou d'un client (lien unique avec tous ses projets, 20/11/2026).
+//
 // GET ?t=<type>&c=<code>   (ou t=devis&c=DEV-019)
 //   200 { url } — exactement un jeton commence par ce code
 //   404          — aucun, ou plusieurs (on refuse plutot que de deviner)
@@ -31,10 +34,12 @@ function json(body: unknown, status = 200) {
 }
 
 // type -> table, colonne du jeton, filtre, et ancien lien
-const TYPES: Record<string, { table: string; col: string; filtre: string; url: (j: string) => string }> = {
+type Source = { table: string; col: string; filtre: string };
+const TYPES: Record<string, { table: string; col: string; filtre: string; url: (j: string) => string; aussi?: Source }> = {
   devis:         { table: "devis",         col: "sign_token",       filtre: "&deleted_at=is.null", url: (j) => "/?sign=" + j },
   pv:            { table: "pv_chantier",   col: "sign_token",       filtre: "&deleted_at=is.null", url: (j) => "/?pvsign=" + j },
-  espace:        { table: "projects",      col: "portal_token",     filtre: "",                    url: (j) => "/?portal=" + j },
+  espace:        { table: "projects",      col: "portal_token",     filtre: "",                    url: (j) => "/?portal=" + j,
+                   aussi: { table: "clients", col: "portal_token", filtre: "&deleted_at=is.null" } },
   chantier:      { table: "projects",      col: "entreprise_token", filtre: "",                    url: (j) => "/?ent=" + j },
   questionnaire: { table: "client_briefs", col: "token",            filtre: "",                    url: (j) => "/brief.html?b=" + j },
   facture:       { table: "invoices",      col: "share_token",      filtre: "&deleted_at=is.null", url: (j) => "/?facture=" + j },
@@ -62,14 +67,20 @@ Deno.serve(async (req) => {
     }
     // Lettres et chiffres seulement : aucun joker ne peut passer dans la recherche
     if (!t || !/^[a-z0-9]{10,12}$/.test(c)) return json({ error: "invalid" }, 400);
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/${t.table}?${t.col}=like.${c}*${t.filtre}&select=${t.col}&limit=2`,
-      { headers: H },
-    );
-    if (!r.ok) return json({ error: "server_error" }, 500);
-    const rows = await r.json();
-    if (!Array.isArray(rows) || rows.length !== 1 || !rows[0][t.col]) return json({ error: "not_found" }, 404);
-    return json({ url: t.url(String(rows[0][t.col])) });
+    // Les jetons qui commencent par ce code (dans la table du type, puis dans
+    // la seconde table s'il y en a une) ; un seul en tout, sinon on refuse
+    const trouves: string[] = [];
+    for (const src of [t, ...(t.aussi ? [t.aussi] : [])]) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/${src.table}?${src.col}=like.${c}*${src.filtre}&select=${src.col}&limit=2`,
+        { headers: H },
+      );
+      if (!r.ok) return json({ error: "server_error" }, 500);
+      const rows = await r.json();
+      if (Array.isArray(rows)) for (const row of rows) if (row && row[src.col]) trouves.push(String(row[src.col]));
+    }
+    if (trouves.length !== 1) return json({ error: "not_found" }, 404);
+    return json({ url: t.url(trouves[0]) });
   } catch (_) {
     return json({ error: "server_error" }, 500);
   }

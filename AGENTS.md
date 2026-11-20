@@ -89,6 +89,13 @@ ligne), sans framework ni étape de compilation.
   (`invoices.payment_method`, et le n° du chèque), jamais « espèces ou
   virement ». La loi (art. 145 du CGI) demande l'adresse du client et le mode
   de paiement (choix de Chaima, 19/11/2026).
+- **Espace client unique** (20/11/2026) : un lien par client (bouton « Espace
+  client » de la fiche client → `s33EspaceClientPartager(id)`, jeton
+  `clients.portal_token`, lien `s33LienCourt('espace', jeton)`). Le client
+  voit tous ses projets, même terminés, sauf ceux dont l'accès est suspendu
+  (`projects.portal_revoked_at`). Les liens par projet restent valides et
+  montrent « Mes projets » quand le client en a plusieurs. Les documents
+  visibles se choisissent toujours projet par projet.
 - **Facture envoyée par lien** : bouton « Envoyer » → `s33FactureEnvoyer(id)`
   (jeton `invoices.share_token`, lien `s33LienCourt('facture', jeton)`,
   message WhatsApp préparé). Le client ouvre `?facture=<jeton>` : la fonction
@@ -157,7 +164,11 @@ Chaque fonction vérifie qui l'appelle :
 - `client-portal` : espace client par jeton (`?portal=`) ; v13 : abonnement
   du téléphone du client aux notifications (`push_subscribe`,
   `push_unsubscribe` → table `portal_push_subscriptions`, écrite par le
-  serveur seul). Code dans le dépôt depuis la v13.
+  serveur seul). Code dans le dépôt depuis la v13. v14 : le jeton peut être
+  celui d'un client (`clients.portal_token`) → liste de ses projets
+  (`{ espace }`) ; `projet=<id>` ouvre l'un d'eux (même client, sinon 404) ;
+  `liste=1` revient à la liste ; la réponse d'un projet donne `mes_projets` ;
+  l'abonnement vaut pour tous les projets du client.
 - `send-push` : `portal_project_id` vise les téléphones des clients d'un
   projet (jamais mélangés avec ceux de l'équipe) ; adresses périmées retirées.
 - **Prévenir un client** : `s33PrevenirClient(projetId, noms)` (envois
@@ -168,7 +179,8 @@ Chaque fonction vérifie qui l'appelle :
   → la facture (sans identifiant ni téléphone), le client, le projet et le
   cachet du cabinet.
 - `lien-court` : public, lecture seule ; un code de 10 à 12 lettres et
-  chiffres → le lien complet si un seul jeton commence par ce code ; pour un
+  chiffres → le lien complet si un seul jeton commence par ce code (pour
+  `espace` : jeton d'un projet ou d'un client) ; pour un
   devis, `DEV-019` → son lien de signature s'il a déjà été partagé ; sinon 404.
 
 ## Règles à respecter

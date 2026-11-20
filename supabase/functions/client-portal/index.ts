@@ -17,6 +17,14 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //       gardé dans portal_push_subscriptions (actions push_subscribe /
 //       push_unsubscribe) ; send-push l'utilise quand le cabinet partage un
 //       document. Avant la v13, ce fichier n'existait que sur le serveur.
+// v14 (20/11/2026) : espace client unique. Le jeton peut etre celui d'un
+//       CLIENT (clients.portal_token) : sans « projet », la reponse est la
+//       liste de ses projets ({ espace }) — tous, meme termines, sauf ceux
+//       dont l'acces est suspendu. « projet=<id> » ouvre l'un d'eux (il doit
+//       etre a ce client). Un jeton de projet accepte aussi « liste=1 » et
+//       « projet=<id> » d'un autre projet du meme client. La reponse d'un
+//       projet donne « mes_projets » (nombre de projets de la liste).
+//       L'abonnement aux notifications vaut pour tous les projets du client.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -57,11 +65,32 @@ async function restWrite(path: string, method: string, body: unknown) {
   return await r.json().catch(() => null);
 }
 
+const PROJ_SELECT = "id,name,phase,type,tasks,client_id,budget,livraison_date,portal_revoked_at";
+
 async function findProject(token: string) {
   const projects = await rest(
-    `projects?portal_token=eq.${encodeURIComponent(token)}&deleted_at=is.null&select=id,name,phase,type,tasks,client_id,budget,livraison_date,portal_revoked_at&limit=1`,
+    `projects?portal_token=eq.${encodeURIComponent(token)}&deleted_at=is.null&select=${PROJ_SELECT}&limit=1`,
   );
   return projects[0] || null;
+}
+
+// v14 : lien unique d'un client
+async function findClient(token: string) {
+  const cs = await rest(`clients?portal_token=eq.${encodeURIComponent(token)}&deleted_at=is.null&select=id,name&limit=1`);
+  return cs[0] || null;
+}
+
+// Projets de la liste du client : tous les siens, meme termines, sauf ceux
+// dont l'acces est suspendu par le cabinet
+async function projetsDuClient(clientId: number, select = "id") {
+  const rows = await rest(`projects?client_id=eq.${clientId}&deleted_at=is.null&portal_revoked_at=is.null&select=${select}&order=id.desc`);
+  return Array.isArray(rows) ? rows : [];
+}
+
+function progression(tasks: any) {
+  const t = Array.isArray(tasks) ? tasks : [];
+  const fait = t.filter((x: any) => x && (x.done === true || x.status === "done" || x.status === "termine")).length;
+  return t.length ? Math.round((fait / t.length) * 100) : 0;
 }
 
 async function getClientName(project: any) {
@@ -105,10 +134,53 @@ Deno.serve(async (req) => {
     const token = url.searchParams.get("token") || "";
     if (!token || token.length < 20) return json({ error: "invalid_token" }, 400);
 
-    const project = await findProject(token);
+    // v14 : jeton d'un projet (lien par projet) ou d'un client (lien unique)
+    const parProjet = await findProject(token);
+    const client = parProjet ? null : await findClient(token);
+    if (!parProjet && !client) return json({ error: "not_found" }, 404);
+    // Lien d'un projet suspendu : rien ne s'ouvre par ce lien, pas meme la liste
+    if (parProjet && parProjet.portal_revoked_at) return json({ error: "revoked" }, 403);
+    const clientId: number | null = client ? client.id : (parProjet.client_id || null);
+    const projetParam = url.searchParams.get("projet") || "";
+    if (projetParam && !/^\d{1,9}$/.test(projetParam)) return json({ error: "bad_request" }, 400);
+
+    // Liste des projets du client (jeton client sans projet, ou « liste=1 »)
+    if (req.method === "GET" && ((client && !projetParam) || url.searchParams.get("liste") === "1")) {
+      if (!clientId) return json({ error: "not_found" }, 404);
+      const rows = await projetsDuClient(clientId, "id,name,phase,type,archived,tasks,cover_media_id");
+      const ids = rows.map((p: any) => parseInt(p.cover_media_id, 10)).filter((n: number) => n > 0);
+      const vignettes: Record<string, string> = {};
+      if (ids.length) {
+        const ms = await rest(`media?id=in.(${ids.join(",")})&deleted_at=is.null&select=id,thumb`);
+        for (const m of (ms as any[])) {
+          if (m && typeof m.thumb === "string" && /^data:image\/(png|jpe?g|webp);base64,/.test(m.thumb)) vignettes[String(m.id)] = m.thumb;
+        }
+      }
+      const projets = rows.map((p: any) => ({
+        id: p.id, name: p.name || "", phase: p.phase || "", type: p.type || "",
+        termine: !!p.archived, progress: progression(p.tasks),
+        cover: p.cover_media_id ? (vignettes[String(p.cover_media_id)] || null) : null,
+      })).sort((a: any, b: any) => Number(a.termine) - Number(b.termine));
+      const nom = client ? client.name : ((await rest(`clients?id=eq.${clientId}&select=name&limit=1`))[0]?.name || "");
+      return json({ espace: { client_name: nom || "", projets } });
+    }
+
+    // Le projet ouvert : celui du lien, ou un autre projet du meme client
+    let project: any = parProjet;
+    if (projetParam && !(parProjet && String(parProjet.id) === projetParam)) {
+      if (!clientId) return json({ error: "not_found" }, 404);
+      const rows = await rest(`projects?id=eq.${projetParam}&client_id=eq.${clientId}&deleted_at=is.null&select=${PROJ_SELECT}&limit=1`);
+      project = rows[0] || null;
+    }
     if (!project) return json({ error: "not_found" }, 404);
     // Accès suspendu par le cabinet : message explicite, lecture ET écriture bloquées
     if (project.portal_revoked_at) return json({ error: "revoked" }, 403);
+    // Projets du client concernes par l'abonnement aux notifications
+    const projetsSuivis = async (): Promise<number[]> => {
+      const ids = clientId ? (await projetsDuClient(clientId)).map((p: any) => p.id) : [];
+      if (!ids.includes(project.id)) ids.push(project.id);
+      return ids;
+    };
 
     // ── POST : message, validation de document, ou téléversement de pièce ──
     if (req.method === "POST") {
@@ -120,9 +192,10 @@ Deno.serve(async (req) => {
         const s = payload.subscription || {};
         const endpoint = String(s.endpoint || payload.endpoint || "");
         if (endpoint.length > 1000 || !PUSH_HOTE.test(endpoint)) return json({ error: "bad_request" }, 400);
+        const suivis = await projetsSuivis();
         if (payload.action === "push_unsubscribe") {
           await fetch(
-            `${SUPABASE_URL}/rest/v1/portal_push_subscriptions?project_id=eq.${project.id}&endpoint=eq.${encodeURIComponent(endpoint)}`,
+            `${SUPABASE_URL}/rest/v1/portal_push_subscriptions?project_id=in.(${suivis.join(",")})&endpoint=eq.${encodeURIComponent(endpoint)}`,
             { method: "DELETE", headers: H },
           );
           return json({ ok: true });
@@ -130,21 +203,25 @@ Deno.serve(async (req) => {
         const p256dh = String(s.keys?.p256dh || "");
         const auth = String(s.keys?.auth || "");
         if (!/^[A-Za-z0-9_=-]{20,200}$/.test(p256dh) || !/^[A-Za-z0-9_=-]{8,100}$/.test(auth)) return json({ error: "bad_request" }, 400);
-        const deja = await rest(`portal_push_subscriptions?project_id=eq.${project.id}&select=id,endpoint&order=created_at`);
-        const existe = Array.isArray(deja) && deja.some((d: any) => d.endpoint === endpoint);
-        // Au-delà de 10 appareils, le plus ancien laisse sa place
-        if (!existe && Array.isArray(deja) && deja.length >= MAX_APPAREILS) {
-          await fetch(`${SUPABASE_URL}/rest/v1/portal_push_subscriptions?id=eq.${deja[0].id}`, { method: "DELETE", headers: H });
+        let existe = false;
+        for (const pid of suivis) {
+          const deja = await rest(`portal_push_subscriptions?project_id=eq.${pid}&select=id,endpoint&order=created_at`);
+          const ici = Array.isArray(deja) && deja.some((d: any) => d.endpoint === endpoint);
+          if (pid === project.id) existe = ici;
+          // Au-delà de 10 appareils, le plus ancien laisse sa place
+          if (!ici && Array.isArray(deja) && deja.length >= MAX_APPAREILS) {
+            await fetch(`${SUPABASE_URL}/rest/v1/portal_push_subscriptions?id=eq.${deja[0].id}`, { method: "DELETE", headers: H });
+          }
+          const r = await fetch(`${SUPABASE_URL}/rest/v1/portal_push_subscriptions?on_conflict=project_id,endpoint`, {
+            method: "POST",
+            headers: { ...H, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+            body: JSON.stringify({
+              project_id: pid, endpoint, p256dh, auth,
+              ua: (req.headers.get("user-agent") || "").slice(0, 180),
+            }),
+          });
+          if (!r.ok) return json({ error: "insert_failed" }, 500);
         }
-        const r = await fetch(`${SUPABASE_URL}/rest/v1/portal_push_subscriptions?on_conflict=project_id,endpoint`, {
-          method: "POST",
-          headers: { ...H, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-          body: JSON.stringify({
-            project_id: project.id, endpoint, p256dh, auth,
-            ua: (req.headers.get("user-agent") || "").slice(0, 180),
-          }),
-        });
-        if (!r.ok) return json({ error: "insert_failed" }, 500);
         if (!existe) {
           const cn = await getClientName(project);
           await notifyTeam(project.id, project.name,
@@ -398,7 +475,11 @@ Deno.serve(async (req) => {
       });
     } catch (_) { /* ignore */ }
 
+    let mes_projets = 1;
+    try { if (clientId) mes_projets = Math.max(1, (await projetsDuClient(clientId)).length); } catch (_) { /* ignore */ }
+
     return json({
+      mes_projets,
       project: { name: project.name, phase: project.phase, type: project.type, progress, clientName, livraison: project.livraison_date || null, jalons },
       finance,
       pieces,

@@ -33,11 +33,14 @@ ligne), sans framework ni étape de compilation.
   personne elle-même : ne jamais s'y fier pour un droit.
 - Les fichiers du stockage s'ouvrent et s'envoient avec la session de la
   personne connectée (`'Bearer ' + (supabaseToken || SUPABASE_KEY)`).
-- Les portails publics (espace client, signature de devis, PV, entreprise)
-  passent par leurs fonctions serveur, jamais par la clé publique.
+- Les portails publics (espace client, signature de devis, PV, entreprise,
+  facture) passent par leurs fonctions serveur, jamais par la clé publique.
+- **Stockage sans compte : fermé** (20/11/2026). Les politiques restrictives
+  `s33_sans_compte_*` retirent aux visiteurs sans compte la lecture, le dépôt
+  et la suppression dans `admin-docs` (et le dépôt dans `soil-public`).
 - **Lien envoyé à un client** : toujours `s33LienCourt(type, jeton)` →
   `client.studio33.ma/<type>/?<début du jeton>` (`pv`, `espace`,
-  `chantier`, `questionnaire`). **Devis** : `s33LienCourt('devis', jeton, num)`
+  `chantier`, `questionnaire`, `facture`). **Devis** : `s33LienCourt('devis', jeton, num)`
   → `client.studio33.ma/honoraires/?DEV-019` (choix de Chaima, 31/10/2026, en
   connaissance de cause : taper un autre numéro ouvre l'autre devis s'il a
   déjà été partagé ; le mot « honoraires » plutôt que « devis » dans le lien).
@@ -86,6 +89,14 @@ ligne), sans framework ni étape de compilation.
   (`invoices.payment_method`, et le n° du chèque), jamais « espèces ou
   virement ». La loi (art. 145 du CGI) demande l'adresse du client et le mode
   de paiement (choix de Chaima, 19/11/2026).
+- **Facture envoyée par lien** : bouton « Envoyer » → `s33FactureEnvoyer(id)`
+  (jeton `invoices.share_token`, lien `s33LienCourt('facture', jeton)`,
+  message WhatsApp préparé). Le client ouvre `?facture=<jeton>` : la fonction
+  `facture-client` renvoie sa facture, le PDF est dessiné par
+  `s33BuildFacturePdf({ inv, client, project, cachet })`, le même que dans
+  l'app (`s33InvoicePdf`).
+- **N° de l'Ordre** : « Architecte — Ordre national des architectes n° 5245 »
+  en bas des factures, devis et notes d'honoraires.
 - **Montant d'une facture** (`invoices.amount`) : **TTC**. Le HT se déduit avec
   `s33InvTvaRate(inv)`.
 - **Visites de chantier** : un seul module, le **PV de chantier**
@@ -153,6 +164,9 @@ Chaque fonction vérifie qui l'appelle :
   groupés). Un document ajouté dans un dossier que le client voit déjà en
   entier lui est partagé tout seul (`s33PartageAuto`), sauf PDF de PV, état
   de panneau et pièces envoyées par le client.
+- `facture-client` : public, lecture seule ; un jeton (`invoices.share_token`)
+  → la facture (sans identifiant ni téléphone), le client, le projet et le
+  cachet du cabinet.
 - `lien-court` : public, lecture seule ; un code de 10 à 12 lettres et
   chiffres → le lien complet si un seul jeton commence par ce code ; pour un
   devis, `DEV-019` → son lien de signature s'il a déjà été partagé ; sinon 404.

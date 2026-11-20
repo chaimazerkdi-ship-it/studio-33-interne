@@ -1,8 +1,8 @@
 -- Stockage : plus aucun acces avec la seule cle publique de l'app.
 --
--- ETAT : PAS ENCORE APPLIQUEE (2026-10-24). Supabase demande une
--- confirmation avant de supprimer ces regles ; elle n'a pas encore ete
--- donnee. Retirer cette mention une fois la migration appliquee.
+-- ETAT : JAMAIS APPLIQUEE. Remplacee le 20/11/2026 par
+-- 20261120_stockage_sans_compte.sql, qui retire les memes droits par des
+-- regles restrictives, sans rien supprimer. Ne pas appliquer ce fichier.
 --
 -- L'app ouvre et envoie les documents avec la session de la personne
 -- connectee (regle `admin_docs_authenticated`, conservee). Les portails

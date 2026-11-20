@@ -1,4 +1,5 @@
 // Liens courts envoyes aux clients : client.studio33.ma/<type>/?<code>
+// (types : devis, pv, espace, chantier, questionnaire, facture — 20/11/2026)
 //
 // <code> est le debut du jeton deja existant (10 caracteres ; 12 pour
 // l'espace client). Cette fonction retrouve la ligne qui porte ce jeton et
@@ -36,6 +37,7 @@ const TYPES: Record<string, { table: string; col: string; filtre: string; url: (
   espace:        { table: "projects",      col: "portal_token",     filtre: "",                    url: (j) => "/?portal=" + j },
   chantier:      { table: "projects",      col: "entreprise_token", filtre: "",                    url: (j) => "/?ent=" + j },
   questionnaire: { table: "client_briefs", col: "token",            filtre: "",                    url: (j) => "/brief.html?b=" + j },
+  facture:       { table: "invoices",      col: "share_token",      filtre: "&deleted_at=is.null", url: (j) => "/?facture=" + j },
 };
 
 Deno.serve(async (req) => {

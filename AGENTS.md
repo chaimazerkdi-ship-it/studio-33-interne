@@ -168,7 +168,10 @@ Chaque fonction vérifie qui l'appelle :
   celui d'un client (`clients.portal_token`) → liste de ses projets
   (`{ espace }`) ; `projet=<id>` ouvre l'un d'eux (même client, sinon 404) ;
   `liste=1` revient à la liste ; la réponse d'un projet donne `mes_projets` ;
-  l'abonnement vaut pour tous les projets du client.
+  l'abonnement vaut pour tous les projets du client. v15 : une pièce envoyée
+  par le client (`upload_piece`, PDF/JPEG/PNG vérifiés sur leurs premiers
+  octets) va dans le stockage `proj/<id>/Pieces_client/`, avec la vignette
+  fabriquée par la page ; jamais dans `media.data` ; dépôt raté → rien écrit.
 - `send-push` : `portal_project_id` vise les téléphones des clients d'un
   projet (jamais mélangés avec ceux de l'équipe) ; adresses périmées retirées.
 - **Prévenir un client** : `s33PrevenirClient(projetId, noms)` (envois

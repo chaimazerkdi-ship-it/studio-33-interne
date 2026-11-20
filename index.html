@@ -3374,7 +3374,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-20.2 — Espace client unique avec tous les projets';
+const S33_BUILD = '2026-11-20.3 — Pieces client dans le stockage';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -32662,11 +32662,13 @@ window.openVisitReport = function(pid) {
       if (!f) return;
       if (btn) { btn.disabled = true; btn.textContent = '…'; }
       const fail = function(msg) { if (btn) { btn.disabled = false; btn.innerHTML = t.pieceSend; } alert(msg || t.pieceFail); };
-      const finish = function(dataUrl, mime) {
+      const finish = function(dataUrl, mime, thumb) {
         if (dataUrl.length > 5200000) { fail(t.pieceTooBig); return; }
+        // Le fichier part dans le stockage (fonction client-portal v15) ; la
+        // vignette d'une photo est fabriquee ici, comme dans l'app
         fetch(FN_URL, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'upload_piece', piece_id: pieceId, mime: mime, data: dataUrl })
+          body: JSON.stringify({ action: 'upload_piece', piece_id: pieceId, mime: mime, data: dataUrl, thumb: thumb || null })
         })
           .then(function(r) { return r.json(); })
           .then(function(j) {
@@ -32691,7 +32693,15 @@ window.openVisitReport = function(pid) {
           const cv = document.createElement('canvas');
           cv.width = Math.round(img.width * ratio); cv.height = Math.round(img.height * ratio);
           cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-          finish(cv.toDataURL('image/jpeg', 0.72), 'image/jpeg');
+          let vignette = null;
+          try {
+            const k = Math.min(1, 420 / Math.max(cv.width, cv.height));
+            const cvv = document.createElement('canvas');
+            cvv.width = Math.max(1, Math.round(cv.width * k)); cvv.height = Math.max(1, Math.round(cv.height * k));
+            cvv.getContext('2d').drawImage(cv, 0, 0, cvv.width, cvv.height);
+            vignette = cvv.toDataURL('image/jpeg', 0.72);
+          } catch (_) { vignette = null; }
+          finish(cv.toDataURL('image/jpeg', 0.72), 'image/jpeg', vignette);
         };
         img.onerror = function() { fail(); };
         img.src = URL.createObjectURL(f);

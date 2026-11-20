@@ -25,6 +25,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //       « projet=<id> » d'un autre projet du meme client. La reponse d'un
 //       projet donne « mes_projets » (nombre de projets de la liste).
 //       L'abonnement aux notifications vaut pour tous les projets du client.
+// v15 (20/11/2026) : une piece envoyee par le client (upload_piece) est
+//       deposee dans le stockage (admin-docs, proj/<projet>/Pieces_client/),
+//       jamais en base64 dans media.data ; la page envoie aussi une vignette
+//       (thumb) pour les photos. Depot rate : rien n'est ecrit.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -283,20 +287,49 @@ Deno.serve(async (req) => {
       if (payload.action === "upload_piece") {
         const pid = parseInt(payload.piece_id);
         const data = String(payload.data || "");
-        const mime = String(payload.mime || "");
         if (!pid || !data.startsWith("data:") || data.length > 5500000) return json({ error: "bad_request" }, 400);
+        // v15 : PDF, JPEG ou PNG seulement, verifies sur les premiers octets
+        const m = data.match(/^data:([a-z]+\/[a-z0-9.+-]+)(?:;[^,;]*)*;base64,([A-Za-z0-9+\/]+={0,2})$/);
+        const TYPES: Record<string, { ext: string; debut: number[] }> = {
+          "application/pdf": { ext: "pdf", debut: [0x25, 0x50, 0x44, 0x46] },
+          "image/jpeg": { ext: "jpg", debut: [0xff, 0xd8, 0xff] },
+          "image/png": { ext: "png", debut: [0x89, 0x50, 0x4e, 0x47] },
+        };
+        const genre = m ? TYPES[m[1]] : null;
+        if (!m || !genre) return json({ error: "bad_request" }, 400);
+        let octets: Uint8Array;
+        try {
+          const bin = atob(m[2]);
+          octets = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) octets[i] = bin.charCodeAt(i);
+        } catch (_) { return json({ error: "bad_request" }, 400); }
+        if (octets.length < genre.debut.length || genre.debut.some((b, i) => octets[i] !== b)) return json({ error: "bad_request" }, 400);
+        const mime = m[1];
         const rows = await rest(`pieces_dossier?id=eq.${pid}&project_id=eq.${project.id}&select=id,label,status`);
         const piece = rows[0];
         if (!piece) return json({ error: "not_found" }, 404);
         const clientName = await getClientName(project);
         const now = new Date().toISOString();
-        const sizeKB = Math.round(data.length * 0.75 / 1024);
+        const sizeKB = Math.round(octets.length / 1024);
+        // Le fichier va dans le stockage (jamais dans la table)
+        const libelle = String(piece.label || "piece").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40) || "piece";
+        const chemin = `proj/${project.id}/Pieces_client/${Date.now()}_${pid}_${libelle}.${genre.ext}`;
+        const dep = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${chemin}`, {
+          method: "POST",
+          headers: { ...H, "Content-Type": mime, "x-upsert": "false" },
+          body: octets,
+        });
+        if (!dep.ok) return json({ error: "upload_failed" }, 500);
+        // Vignette fabriquee par la page (photos) : petite image JPEG seulement
+        const thumb = typeof payload.thumb === "string" && payload.thumb.length < 200000 &&
+          /^data:image\/jpeg;base64,[A-Za-z0-9+\/]+={0,2}$/.test(payload.thumb) ? payload.thumb : null;
         const med = await restWrite("media", "POST", {
           name: piece.label + " — " + (clientName || "client"),
           type: "Pièce client",
           is_pdf: mime === "application/pdf",
-          mime: mime || "image/jpeg",
-          data,
+          mime,
+          file_path: chemin,
+          thumb,
           project_id: project.id,
           is_general: false,
           is_project_doc: true,
@@ -307,6 +340,11 @@ Deno.serve(async (req) => {
           client_visible: false,
         });
         const mid = med && med[0] ? med[0].id : null;
+        if (!mid) {
+          // Pas de ligne : on retire le fichier depose, le client reessaiera
+          try { await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${chemin}`, { method: "DELETE", headers: H }); } catch (_) { /* ignore */ }
+          return json({ error: "insert_failed" }, 500);
+        }
         await restWrite(`pieces_dossier?id=eq.${pid}`, "PATCH", {
           status: "recue", media_id: mid, received_at: now,
         });

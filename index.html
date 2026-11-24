@@ -3374,7 +3374,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-20.3 — Pieces client dans le stockage';
+const S33_BUILD = '2026-11-24.1 — Rapports vu et avis de Madame Chaima';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -18086,6 +18086,234 @@ window.s33RapportChoisirJour = function(prefix, j) {
   if (titre) titre.textContent = _s33RapportJour[prefix] ? 'Rapport oublié' : 'Rapport du jour';
 };
 
+// ── Rapports : « vu » et avis de Madame Chaima (24/11/2026) ─────────────
+// Seule l'admin principale (role admin) marque « vu » et laisse un avis ;
+// la base le garantit (declencheur s33_garde_avis_rapport). Un « jour » =
+// toutes les lignes d'une personne pour une date : on les ecrit ensemble.
+// « Vu » : automatique quand la barre du bas de la carte reste a l'ecran.
+// Pouce ou commentaire : l'employee est prevenue (app + telephone).
+function _s33EstChaima() { return !!(currentUser && currentUser.role === 'admin'); }
+function _s33IdsRapport(rows) {
+  return (rows || []).map(r => r && r.id).filter(id => /^\d+$/.test(String(id))).map(Number);
+}
+function _s33AvisDuJour(rows) {
+  const ids = _s33IdsRapport(rows);
+  const vrais = (rows || []).filter(r => r && ids.includes(Number(r.id)));
+  const avec = vrais.filter(r => r.avis || r.avis_commentaire)
+    .sort((a, b) => String(b.avis_le || '').localeCompare(String(a.avis_le || '')))[0] || null;
+  const vus = vrais.filter(r => r.vu_le);
+  return {
+    ids,
+    vuLe: vrais.length && vus.length === vrais.length ? vus.map(r => r.vu_le).sort().pop() : null,
+    avis: avec ? (avec.avis || null) : null,
+    commentaire: avec ? (avec.avis_commentaire || null) : null,
+    userId: vrais.length ? String(vrais[0].user_id || '') : ''
+  };
+}
+function _s33QuandCourt(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  } catch (_) { return ''; }
+}
+// Barre du bas d'une carte « jour »
+function s33RapportAvisHTML(rows) {
+  const a = _s33AvisDuJour(rows);
+  if (!a.ids.length) return '';
+  const chaima = _s33EstChaima();
+  const sien = currentUser && a.userId === String(currentUser.id);
+  if (chaima && sien) return '';          // ses propres rapports : rien a marquer
+  const cle = a.ids.join(',');
+  const com = a.commentaire
+    ? '<div style="margin-top:8px;background:var(--surface2);border-left:3px solid var(--gold);border-radius:6px;padding:8px 10px;">' +
+        '<div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);margin-bottom:3px;">Commentaire de Madame Chaima</div>' +
+        '<div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;">' + escHTML(a.commentaire) + '</div>' +
+      '</div>'
+    : '';
+  let h = '<div class="s33-ra" data-s33-rapport="' + cle + '"' + (chaima && !a.vuLe ? ' data-s33-a-voir="1"' : '') +
+    ' style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">';
+  if (chaima) {
+    const bouton = (val, icone, lib, coul, fond) => {
+      const actif = a.avis === val;
+      return '<button type="button" onclick="s33RapportAvis(\'' + cle + '\',\'' + val + '\')" title="' + lib + '" aria-pressed="' + actif + '"' +
+        ' style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:99px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;' +
+        (actif ? 'background:' + fond + ';color:' + coul + ';border:1px solid ' + coul + ';' : 'background:transparent;color:var(--text-dim);border:1px solid var(--border);') + '">' +
+        '<span class="mi" style="font-size:16px;">' + icone + '</span>' + lib + '</button>';
+    };
+    h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+      bouton('bien', 'thumb_up', 'Bien', '#15803d', 'rgba(22,163,74,.12)') +
+      bouton('a_revoir', 'thumb_down', 'À revoir', '#c0392b', 'rgba(192,57,43,.10)') +
+      '<button type="button" onclick="s33RapportCommenter(\'' + cle + '\')" style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:99px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;background:transparent;color:var(--text-dim);border:1px solid var(--border);">' +
+        '<span class="mi" style="font-size:16px;">chat</span>' + (a.commentaire ? 'Modifier le commentaire' : 'Commenter') + '</button>' +
+      '<span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--text-faint);">' +
+        (a.vuLe ? '<span class="mi" style="font-size:14px;">done_all</span>Vu' : '') + '</span>' +
+    '</div>';
+  } else {
+    const de = sien ? 'votre rapport' : 'ce rapport';
+    h += '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:' + (a.vuLe ? 'var(--text-dim)' : 'var(--text-faint)') + ';">' +
+      '<span class="mi" style="font-size:16px;color:' + (a.vuLe ? '#2563eb' : 'var(--text-faint)') + ';">' + (a.vuLe ? 'done_all' : 'visibility_off') + '</span>' +
+      (a.vuLe ? 'Madame Chaima a vu ' + de + ' · le ' + escHTML(_s33QuandCourt(a.vuLe)) : 'Pas encore vu par Madame Chaima') +
+    '</div>';
+    if (a.avis) {
+      const bien = a.avis === 'bien';
+      h += '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;font-weight:700;color:' + (bien ? '#15803d' : '#c0392b') + ';">' +
+        '<span class="mi" style="font-size:17px;">' + (bien ? 'thumb_up' : 'thumb_down') + '</span>' +
+        (bien ? 'Madame Chaima a aimé ' + de : 'Madame Chaima : ' + de + ' est à revoir') +
+      '</div>';
+    }
+  }
+  return h + com + '</div>';
+}
+// Redessine sur place les barres d'un « jour »
+function _s33RapportAvisMaj(cle) {
+  const ids = String(cle).split(',').map(Number);
+  const rows = (db.dailyReports || []).filter(r => ids.includes(Number(r.id)));
+  document.querySelectorAll('[data-s33-rapport="' + cle + '"]').forEach(el => {
+    const t = document.createElement('div');
+    t.innerHTML = s33RapportAvisHTML(rows);
+    const neuf = t.firstElementChild;
+    if (neuf) el.replaceWith(neuf); else el.remove();
+  });
+  s33RapportsVuObserver(document.body);
+}
+// Ecrit puis relit : si la base n'a pas pris la valeur, c'est un echec
+async function _s33RapportsEcrire(ids, champs) {
+  const q = '?id=in.(' + ids.join(',') + ')';
+  await sbFetch('daily_reports', 'PATCH', champs, q, true);
+  const rows = await sbFetch('daily_reports', 'GET', null, q + '&select=id,vu_le,avis,avis_commentaire,avis_le', true);
+  if (!Array.isArray(rows) || rows.length !== ids.length) throw new Error('relecture');
+  ['avis', 'avis_commentaire'].forEach(k => {
+    if (k in champs && rows.some(r => (r[k] || null) !== (champs[k] || null))) throw new Error('refuse');
+  });
+  if (champs.vu_le && rows.some(r => !r.vu_le)) throw new Error('refuse');
+  rows.forEach(r => {
+    const loc = (db.dailyReports || []).find(x => Number(x.id) === Number(r.id));
+    if (loc) Object.assign(loc, r);
+  });
+}
+function _s33RapportPrevenir(cle, genre, texte) {
+  const ids = String(cle).split(',').map(Number);
+  const row = (db.dailyReports || []).find(r => ids.includes(Number(r.id)));
+  const uid = row ? String(row.user_id || '') : '';
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) return;
+  let jour = row.date;
+  try { jour = new Date(row.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }); } catch (_) {}
+  const court = t => t.length > 120 ? t.slice(0, 120) + '…' : t;
+  const corps = genre === 'commentaire' ? 'Madame Chaima a commenté votre rapport du ' + jour + ' : « ' + court(texte) + ' »'
+    : genre === 'bien' ? 'Madame Chaima a aimé votre rapport du ' + jour + '.'
+    : 'Madame Chaima vous demande de revoir votre rapport du ' + jour + '.';
+  const icone = genre === 'commentaire' ? 'chat' : genre === 'bien' ? 'thumb_up' : 'thumb_down';
+  try { createNotification(uid, '<span class="mi mi-sm">' + icone + '</span> Votre rapport', corps, 'rapport_avis', 'rapport', null); } catch (_) {}
+  try { if (typeof s33SendPush === 'function') s33SendPush({ userIds: [uid] }, 'Votre rapport', corps, 'rapport', 'avis-rapport-' + row.date); } catch (_) {}
+}
+// Pouce vert / rouge : un appui le met, un second appui le retire
+window.s33RapportAvis = async function(cle, avis) {
+  if (!_s33EstChaima()) return;
+  const ids = String(cle).split(',').map(Number).filter(Boolean);
+  const avant = _s33AvisDuJour((db.dailyReports || []).filter(r => ids.includes(Number(r.id))));
+  const nouveau = avant.avis === avis ? null : avis;
+  const maintenant = new Date().toISOString();
+  const champs = { avis: nouveau, avis_le: maintenant };
+  if (!avant.vuLe) champs.vu_le = maintenant;
+  try { await _s33RapportsEcrire(ids, champs); }
+  catch (e) { console.warn('[rapport] avis', e); toast('Avis non enregistré — vérifiez la connexion et réessayez'); return; }
+  _s33RapportAvisMaj(cle);
+  if (nouveau) _s33RapportPrevenir(cle, nouveau);
+};
+// Commentaire : petite fenetre ; si l'envoi echoue, la fenetre reste ouverte
+window.s33RapportCommenter = function(cle) {
+  if (!_s33EstChaima()) return;
+  const ids = String(cle).split(',').map(Number);
+  const a = _s33AvisDuJour((db.dailyReports || []).filter(r => ids.includes(Number(r.id))));
+  let ov = document.getElementById('s33-ra-modal');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.className = 'modal-overlay open';
+  ov.id = 's33-ra-modal';
+  ov.style.zIndex = '2000';
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.innerHTML = '<div class="modal" style="max-width:460px;" onclick="event.stopPropagation()">' +
+    '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">×</button>' +
+    '<div class="modal-title"><span class="mi" style="vertical-align:-3px;">chat</span> Commentaire sur le rapport</div>' +
+    '<textarea id="s33-ra-txt" maxlength="1000" rows="5" placeholder="Votre commentaire…" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--text);resize:vertical;"></textarea>' +
+    '<div style="font-size:11px;color:var(--text-faint);margin:6px 0 14px;">L’employée le verra sous son rapport et recevra une notification.</div>' +
+    '<div class="form-actions">' +
+      (a.commentaire ? '<button class="btn btn-outline" onclick="s33RapportCommentEnvoyer(\'' + cle + '\', true)">Effacer</button>' : '') +
+      '<button class="btn btn-outline" onclick="this.closest(\'.modal-overlay\').remove()">Annuler</button>' +
+      '<button class="btn btn-gold" id="s33-ra-envoyer" onclick="s33RapportCommentEnvoyer(\'' + cle + '\')">Envoyer</button>' +
+    '</div></div>';
+  document.body.appendChild(ov);
+  const ta = document.getElementById('s33-ra-txt');
+  ta.value = a.commentaire || '';
+  setTimeout(() => ta.focus(), 50);
+};
+window.s33RapportCommentEnvoyer = async function(cle, effacer) {
+  const ta = document.getElementById('s33-ra-txt'), btn = document.getElementById('s33-ra-envoyer');
+  const txt = effacer ? '' : String(ta ? ta.value : '').trim().slice(0, 1000);
+  const ids = String(cle).split(',').map(Number).filter(Boolean);
+  const avant = _s33AvisDuJour((db.dailyReports || []).filter(r => ids.includes(Number(r.id))));
+  if (!txt && !avant.commentaire) { const o = document.getElementById('s33-ra-modal'); if (o) o.remove(); return; }
+  const maintenant = new Date().toISOString();
+  const champs = { avis_commentaire: txt || null, avis_le: maintenant };
+  if (!avant.vuLe) champs.vu_le = maintenant;
+  if (btn) btn.disabled = true;
+  try { await _s33RapportsEcrire(ids, champs); }
+  catch (e) {
+    console.warn('[rapport] commentaire', e);
+    if (btn) btn.disabled = false;
+    toast('Commentaire non enregistré — vérifiez la connexion et réessayez');
+    return;
+  }
+  const o = document.getElementById('s33-ra-modal'); if (o) o.remove();
+  _s33RapportAvisMaj(cle);
+  if (txt && txt !== (avant.commentaire || '')) _s33RapportPrevenir(cle, 'commentaire', txt);
+  toast(txt ? 'Commentaire envoyé' : 'Commentaire effacé');
+};
+// « Vu » automatique : la barre du bas reste entierement visible 1,2 s
+let _s33VuObs = null, _s33VuFile = new Set(), _s33VuCles = new Set(), _s33VuTimer = null;
+const _s33VuAttente = new Map();
+function _s33VuEnvoyer() {
+  clearTimeout(_s33VuTimer);
+  _s33VuTimer = setTimeout(async () => {
+    const ids = Array.from(_s33VuFile).filter(id => {
+      const r = (db.dailyReports || []).find(x => Number(x.id) === id);
+      return r && !r.vu_le;
+    });
+    const cles = Array.from(_s33VuCles);
+    _s33VuFile = new Set(); _s33VuCles = new Set();
+    if (!ids.length) return;
+    try { await _s33RapportsEcrire(ids, { vu_le: new Date().toISOString() }); }
+    catch (e) { console.warn('[rapport] vu', e); return; }   // reessaye a la prochaine apparition
+    cles.forEach(c => _s33RapportAvisMaj(c));
+  }, 400);
+}
+function s33RapportsVuObserver(container) {
+  if (!_s33EstChaima() || !container || !('IntersectionObserver' in window)) return;
+  if (!_s33VuObs) {
+    _s33VuObs = new IntersectionObserver(entries => {
+      entries.forEach(en => {
+        const el = en.target;
+        if (en.isIntersecting && en.intersectionRatio >= 0.99) {
+          if (_s33VuAttente.has(el)) return;
+          _s33VuAttente.set(el, setTimeout(() => {
+            _s33VuAttente.delete(el);
+            if (document.hidden || !el.isConnected) return;
+            const cle = el.getAttribute('data-s33-rapport') || '';
+            cle.split(',').map(Number).filter(Boolean).forEach(id => _s33VuFile.add(id));
+            _s33VuCles.add(cle);
+            _s33VuObs.unobserve(el);
+            _s33VuEnvoyer();
+          }, 1200));
+        } else if (_s33VuAttente.has(el)) {
+          clearTimeout(_s33VuAttente.get(el));
+          _s33VuAttente.delete(el);
+        }
+      });
+    }, { threshold: [0, 0.99] });
+  }
+  container.querySelectorAll('[data-s33-a-voir="1"]').forEach(el => _s33VuObs.observe(el));
+}
+
 function renderRapport() {
   if (!currentUser) return;
   const today = s33Aujourdhui();
@@ -18134,6 +18362,7 @@ function renderRapport() {
           <div style="font-size:12px;color:var(--text);white-space:pre-wrap;${r.blockers ? 'margin-bottom:10px;' : ''}">${escHTML(r.tasks || '')}</div>
           ${r.blockers ? `<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Blocages</div><div style="font-size:12px;color:var(--red);white-space:pre-wrap;">${escHTML(r.blockers)}</div>` : ''}
         </div>`).join('')}
+      ${s33RapportAvisHTML(todayReports)}
       <div style="margin-top:8px;padding-top:16px;border-top:1px solid var(--border);">
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-outline" onclick="editTodayReport()">Modifier / Réécrire tout</button>
@@ -18248,6 +18477,7 @@ function renderRapport() {
             <div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;">${escHTML(r.tasks || '')}</div>
             ${r.blockers ? `<div style="font-size:11px;color:var(--red);margin-top:6px;padding:5px 8px;background:#fee2e2;border-radius:4px;"><span class="mi" style="font-size:12px;vertical-align:-2px;">warning</span> ${escHTML(r.blockers)}</div>` : ''}
           </div>`).join('')}
+        ${s33RapportAvisHTML(g.rows)}
       </div>`;
     }).join('')}`;
 
@@ -18352,6 +18582,7 @@ function renderRapport() {
     </div>`;
 
   document.getElementById('rapport-content').innerHTML = quiHtml + teamTodayHtml + formHtml + weekBarsHtml + teamHtml + historyHtml;
+  s33RapportsVuObserver(document.getElementById('rapport-content'));
 
   // If no report yet today, init the multi-project form
   if (typeof window.mrInit === 'function' && document.getElementById('rp-entries')) {
@@ -22425,6 +22656,7 @@ function viewMemberReports(memberId) {
               <div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;${r.blockers?'margin-bottom:8px;':''}">${escHTML(r.tasks || '')}</div>
               ${r.blockers ? `<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Blocages</div><div style="font-size:12px;color:var(--red);white-space:pre-wrap;padding:5px 8px;background:#fee2e2;border-radius:4px;">${escHTML(r.blockers)}</div>` : ''}
             </div>`).join('')}
+          ${s33RapportAvisHTML(g.rows)}
         </div>`;
       }).join('');
 
@@ -22464,6 +22696,7 @@ function viewMemberReports(memberId) {
     </div>
     ${reportCards}
   `;
+  s33RapportsVuObserver(container);
 }
 
 function closeMemberProfile() {
@@ -22712,13 +22945,13 @@ function renderEquipe() {
       const submitted = _memberSubmitted(m);
       const peutRelancer = !submitted && !_dateFuture;
       const dejaRelance = peutRelancer && relanceDejaFaite(activeDate, m.id);
-      return `<div onclick="viewMemberReports(${JSON.stringify(m.id)})" style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid ${submitted ? 'var(--green)' : 'var(--border)'};border-radius:var(--radius);padding:12px 18px;cursor:pointer;transition:all .15s;min-width:150px;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='';this.style.transform=''">
+      return `<div onclick="viewMemberReports('${String(m.id).replace(/[^A-Za-z0-9_-]/g, '')}')" style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid ${submitted ? 'var(--green)' : 'var(--border)'};border-radius:var(--radius);padding:12px 18px;cursor:pointer;transition:all .15s;min-width:150px;" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='';this.style.transform=''">
         ${avatarHTML(m.id, 36)}
         <div style="flex:1;">
           <div style="font-size:15px;color:var(--text);font-weight:700;">${escHTML(m.name)}</div>
           <div style="font-size:11px;font-weight:500;color:${submitted ? 'var(--green)' : 'var(--red)'};">${submitted ? 'Soumis ✓' : (dejaRelance ? 'En attente · relancée' : 'En attente')}</div>
         </div>
-        ${peutRelancer ? `<span onclick="s33RelancerUn(event, ${JSON.stringify(m.id)}, '${activeDate}')" title="${dejaRelance ? 'Déjà relancée aujourd\'hui' : 'Envoyer un rappel à ' + escHTML(m.name)}" class="mi" style="font-size:19px;color:${dejaRelance ? 'var(--text-faint)' : 'var(--gold)'};padding:4px;border-radius:50%;">notifications</span>` : ''}
+        ${peutRelancer ? `<span onclick="s33RelancerUn(event, '${String(m.id).replace(/[^A-Za-z0-9_-]/g, '')}', '${activeDate}')" title="${dejaRelance ? 'Déjà relancée aujourd\'hui' : 'Envoyer un rappel à ' + escHTML(m.name)}" class="mi" style="font-size:19px;color:${dejaRelance ? 'var(--text-faint)' : 'var(--gold)'};padding:4px;border-radius:50%;">notifications</span>` : ''}
       </div>`;
     }).join('')}
   </div>`;
@@ -22764,10 +22997,12 @@ function renderEquipe() {
           <div style="font-size:12px;color:var(--text);white-space:pre-wrap;line-height:1.5;${r.blockers?'margin-bottom:8px;':''}">${escHTML(r.tasks || '')}</div>
           ${r.blockers ? `<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Blocages</div><div style="font-size:12px;color:var(--red);white-space:pre-wrap;padding:5px 8px;background:#fee2e2;border-radius:4px;">${escHTML(r.blockers)}</div>` : ''}
         </div>`).join('')}
+      ${s33RapportAvisHTML(g.rows)}
     </div>`;
   }).join('');
 
   container.innerHTML = statusHtml + cards;
+  s33RapportsVuObserver(container);
 }
 
 // ── HOOK navigate to init AI page ──

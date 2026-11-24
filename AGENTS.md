@@ -113,6 +113,14 @@ ligne), sans framework ni étape de compilation.
   fiche projet montre les PV et les comptes-rendus de réunion (`reunions`).
   Une réserve levée : `statut: 'levée'` (avec accent) et `levee_date`.
   `chantier_visites` n'est plus écrite.
+- **Rapports — vu et avis** (24/11/2026) : colonnes `daily_reports.vu_le`,
+  `avis` (`bien` / `a_revoir`), `avis_commentaire`, `avis_le`, écrites par
+  l'admin principale seule (déclencheur `s33_garde_avis_rapport` : pour les
+  autres, ces colonnes ne bougent pas ; un rapport modifié par son auteur
+  redevient « pas encore vu »). « Vu » automatique quand la barre du bas de la
+  carte reste à l'écran (`s33RapportsVuObserver`) ; barre commune
+  `s33RapportAvisHTML(rows)` ; pouce ou commentaire → notification + push à
+  l'employée (`_s33RapportPrevenir`), jamais pour le simple « vu ».
 - **Heures travaillées** : `s33HeuresFusionnees()` — le chrono et le rapport du
   même jour décrivent le même travail ; on garde le plus grand des deux, on
   n'additionne jamais.

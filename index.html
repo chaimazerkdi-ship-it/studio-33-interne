@@ -3374,7 +3374,7 @@
 // ═══ VERSION DE L'APP + DÉTECTION DE MISE À JOUR ═══
 // Le numéro de version est visible sur l'écran de connexion ; quand une
 // nouvelle version est publiée, une barre « Recharger » apparaît.
-const S33_BUILD = '2026-11-24.1 — Rapports vu et avis de Madame Chaima';
+const S33_BUILD = '2026-11-25.1 — Mot de passe : message clair et 8 caracteres minimum';
 (function() {
   const tag = document.getElementById('s33-build-tag');
   if (tag) tag.textContent = 'Version ' + S33_BUILD;
@@ -23024,6 +23024,25 @@ function renderEquipe() {
    PROFILE / ADMIN PANEL
    ══════════════════════════════════════════════════════════════ */
 
+// ── Mots de passe : verification avant envoi et messages en francais ──
+// (25/11/2026) Le serveur refusait un mot de passe trop court en anglais
+// (« Password should be at least 6 characters ») : on verifie ici d'abord.
+function s33MdpVerifier(nouveau, confirmation) {
+  const n = String(nouveau || '');
+  if (n.length < 8) return 'Le mot de passe doit avoir au moins 8 caractères.';
+  if (confirmation !== undefined && n !== String(confirmation || '')) return 'Les deux mots de passe ne sont pas identiques.';
+  return null;
+}
+function s33MdpErreurFr(message) {
+  const m = String(message || '').toLowerCase();
+  if (/at least|too short|characters/.test(m)) return 'Le mot de passe doit avoir au moins 8 caractères.';
+  if (/weak|pwned|leaked|known|guess/.test(m)) return 'Ce mot de passe est trop connu (il circule sur Internet). Choisissez-en un autre.';
+  if (/different from the old|same password|same_password/.test(m)) return 'Le nouveau mot de passe doit être différent de l’ancien.';
+  if (/reconnect|session|jwt|expired|réservé/.test(m)) return 'Session expirée — reconnectez-vous, puis réessayez.';
+  if (/already|registered|exists/.test(m)) return 'Cet identifiant existe déjà.';
+  return 'Mot de passe non changé — vérifiez la connexion et réessayez.';
+}
+
 // Le serveur verifie la session et le role admin : aucun mot de passe ici.
 async function adminUsers(action, params, _deja) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, {
@@ -23206,7 +23225,7 @@ function renderPPProfil() {
     ${currentUser && currentUser.role === 'admin' ? `
     <div class="pp-form-row">
       <label class="pp-label" for="pp-new-pass">Nouveau mot de passe</label>
-      <input class="pp-input" id="pp-new-pass" type="password" placeholder="Laisser vide = pas de changement">
+      <input class="pp-input" id="pp-new-pass" type="password" placeholder="8 caractères minimum — vide = pas de changement">
     </div>
     <div class="pp-form-row">
       <label class="pp-label" for="pp-confirm-pass">Confirmer le mot de passe</label>
@@ -23294,8 +23313,10 @@ async function savePPProfil() {
   const newPass     = (document.getElementById('pp-new-pass')?.value     || '');
   const confirmPass = (document.getElementById('pp-confirm-pass')?.value || '');
 
-  if (newPass && newPass !== confirmPass) {
-    toast('Les mots de passe ne correspondent pas'); return;
+  // Mot de passe : verifie AVANT d'enregistrer quoi que ce soit
+  if ((newPass || confirmPass) && currentUser.role === 'admin') {
+    const pb = s33MdpVerifier(newPass, confirmPass);
+    if (pb) { toast(pb); return; }
   }
 
   try {
@@ -23319,9 +23340,17 @@ async function savePPProfil() {
     currentUser.name     = displayName || currentUser.name;
     currentUser.jobTitle = jobTitle;
 
-    // Change password — admin uniquement
+    // Change password — admin uniquement ; un echec garde la saisie
+    let mdpChange = false;
     if (newPass && currentUser.role === 'admin') {
-      await adminUsers('change_password', { auth_user_id: currentUser.id, new_password: newPass });
+      try {
+        await adminUsers('change_password', { auth_user_id: currentUser.id, new_password: newPass });
+        mdpChange = true;
+      } catch (err) {
+        console.error('mot de passe', err);
+        toast(s33MdpErreurFr(err && err.message));
+        return;
+      }
       const npEl = document.getElementById('pp-new-pass');
       const cpEl = document.getElementById('pp-confirm-pass');
       if (npEl) npEl.value = '';
@@ -23331,7 +23360,7 @@ async function savePPProfil() {
     await loadDB();
     updateUIForUser();
     renderProfilePanel();
-    toast('Profil mis à jour !');
+    toast(mdpChange ? 'Mot de passe changé' : 'Profil mis à jour !');
   } catch(e) {
     toast('Erreur : ' + e.message);
     console.error(e);
@@ -23413,7 +23442,7 @@ function renderPPEquipe() {
       </div>
       <div class="pp-form-row">
         <label class="pp-label">Nouveau mot de passe (laisser vide = inchangé)</label>
-        <input class="pp-input" id="me-pass-${m.id}" type="password" placeholder="Nouveau mot de passe...">
+        <input class="pp-input" id="me-pass-${m.id}" type="password" placeholder="8 caractères minimum">
       </div>
       <div style="display:flex;gap:8px;margin-top:4px;">
         <button onclick="saveMemberEdit(${m.id})" class="btn btn-gold" style="flex:1;">Enregistrer</button>
@@ -23447,7 +23476,7 @@ function renderPPEquipe() {
       </div>
       <div class="pp-form-row">
         <label class="pp-label">Mot de passe</label>
-        <input class="pp-input" id="nm-password" type="password" placeholder="Mot de passe initial">
+        <input class="pp-input" id="nm-password" type="password" placeholder="Mot de passe initial (8 caractères minimum)">
       </div>
       <div class="pp-form-row">
         <label class="pp-label">Rôle</label>
@@ -23489,6 +23518,10 @@ async function saveMemberEdit(id) {
     if (el) sections[s] = el.checked;
   });
   const newPass        = (document.getElementById(`me-pass-${id}`)?.value || '').trim();
+  if (newPass) {
+    const pb = s33MdpVerifier(newPass);
+    if (pb) { toast(pb); return; }
+  }
 
   try {
     await sbFetch('team_members', 'PATCH', {
@@ -23499,13 +23532,18 @@ async function saveMemberEdit(id) {
     }, `?id=eq.${id}`);
 
     if (newPass) {
-      await adminUsers('change_password', { auth_user_id: tm.user_id, new_password: newPass });
+      try { await adminUsers('change_password', { auth_user_id: tm.user_id, new_password: newPass }); }
+      catch (err) {
+        console.error('mot de passe membre', err);
+        toast('Fiche enregistrée, mais ' + s33MdpErreurFr(err && err.message).charAt(0).toLowerCase() + s33MdpErreurFr(err && err.message).slice(1));
+        return;
+      }
     }
 
     await loadDB();
     updateUIForUser();
     renderProfilePanel();
-    toast('Membre mis à jour !');
+    toast(newPass ? 'Membre mis à jour — mot de passe changé' : 'Membre mis à jour !');
   } catch(e) {
     toast('Erreur : ' + e.message);
     console.error(e);
@@ -23581,6 +23619,8 @@ async function saveNewMember() {
   if (!username || !displayName || !password) {
     toast('Identifiant, nom et mot de passe sont obligatoires'); return;
   }
+  const pbMdp = s33MdpVerifier(password);
+  if (pbMdp) { toast(pbMdp); return; }
 
   try {
     // Create Supabase auth user
@@ -23605,7 +23645,7 @@ async function saveNewMember() {
     renderProfilePanel();
     toast(`Membre "${displayName}" créé !`);
   } catch(e) {
-    toast('Erreur : ' + e.message);
+    toast(/password|mot de passe|already|registered|exists|session|réservé/i.test(String(e && e.message)) ? s33MdpErreurFr(e.message) : 'Erreur : ' + e.message);
     console.error(e);
   }
 }

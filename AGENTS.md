@@ -121,6 +121,14 @@ ligne), sans framework ni étape de compilation.
   carte reste à l'écran (`s33RapportsVuObserver`) ; barre commune
   `s33RapportAvisHTML(rows)` ; pouce ou commentaire → notification + push à
   l'employée (`_s33RapportPrevenir`), jamais pour le simple « vu ».
+  Commentaire affiché en rouge. 25/11/2026 : l'employée confirme
+  (`avis_lu_le`, « C'est compris ») ou répond (`avis_reponse`, « J'ai une
+  question » → notification + push aux admins) ; la fenêtre
+  `s33AvisAConfirmer()` s'ouvre avec le formulaire de rapport (page Mon
+  Rapport, fenêtre du rapport du jour) tant qu'un commentaire ou un « à
+  revoir » n'est pas confirmé (« Plus tard » seulement après un échec
+  réseau). Seule l'autrice écrit ces colonnes ; un nouveau commentaire de
+  Chaima vide `avis_lu_le`.
 - **Heures travaillées** : `s33HeuresFusionnees()` — le chrono et le rapport du
   même jour décrivent le même travail ; on garde le plus grand des deux, on
   n'additionne jamais.
